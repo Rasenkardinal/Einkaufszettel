@@ -15,6 +15,7 @@ Diese Architecture Decision Records (ADRs) halten wichtige Architekturentscheidu
 | [0001](0001-home-assistant-todo-entity.md) | Home Assistant und To-do-Entität als Plattform | Angenommen |
 | [0002](0002-owned-data-and-import.md) | Eigene Datenhaltung und einmaliger Listenimport | Angenommen |
 | [0003](0003-products-and-list-items.md) | Produktkatalog von konkreten Listeneinträgen trennen | Angenommen |
+| [0004](0004-alpha-scope.md) | Alpha-Umfang und Import-Lebenszyklus | Angenommen |
 
 ## Noch offene Architekturfragen
 
@@ -25,5 +26,5 @@ Diese Punkte sind noch nicht entschieden und müssen vor der jeweiligen Implemen
 - Wie werden initiale und wiederholte Importe, Duplikate und Änderungen an der Quelle behandelt?
 - Welche Synchronisierungsregeln gelten später für Hinzufügen, Abhaken, Löschen und Konflikte zwischen Alexa und Easy Shopping?
 - Wird eine eigene Lovelace-Karte oder ein Custom Panel gebaut, und wann?
-- Welche To-do-Funktionen unterstützt die erste Version außer Abhaken?
+- Welche weiteren To-do-Funktionen sollen nach der Alpha ergänzt werden? Den Alpha-Umfang beschreibt ADR 0004.
 - Welche Alexa-Listenintegration ist installiert, und stellt sie die Liste sowie Änderungen tatsächlich als HA-`todo`-Entität bereit?

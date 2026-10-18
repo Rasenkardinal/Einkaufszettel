@@ -1,0 +1,22 @@
+{
+  "title": "Easy Shopping",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Copy a To-do list",
+        "description": "Copy open items into an independent local list. The source is not changed. This alpha does not synchronize subsequent changes.",
+        "data": {
+          "source_entity_id": "Source To-do list (e.g. Alexa)",
+          "name": "Name of the local list"
+        }
+      }
+    },
+    "error": {
+      "cannot_read_source": "Cannot read this list. Select an available external To-do list and try again.",
+      "empty_name": "Enter a name for the local list."
+    },
+    "abort": {
+      "already_configured": "This source list has already been configured."
+    }
+  }
+}

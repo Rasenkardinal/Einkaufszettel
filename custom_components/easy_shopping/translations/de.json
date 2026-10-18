@@ -1,0 +1,22 @@
+{
+  "title": "Easy Shopping",
+  "config": {
+    "step": {
+      "user": {
+        "title": "To-do-Liste kopieren",
+        "description": "Offene Eintraege in eine eigenstaendige lokale Liste kopieren. Die Quelle bleibt unveraendert. Diese Alpha synchronisiert keine spaeteren Aenderungen.",
+        "data": {
+          "source_entity_id": "Quell-To-do-Liste (z. B. Alexa)",
+          "name": "Name der lokalen Liste"
+        }
+      }
+    },
+    "error": {
+      "cannot_read_source": "Die Liste konnte nicht gelesen werden. Eine verfuegbare externe To-do-Liste auswaehlen und erneut versuchen.",
+      "empty_name": "Bitte einen Namen fuer die lokale Liste eingeben."
+    },
+    "abort": {
+      "already_configured": "Diese Quellliste ist bereits eingerichtet."
+    }
+  }
+}
