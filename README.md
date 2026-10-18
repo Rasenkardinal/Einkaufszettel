@@ -20,6 +20,14 @@ Eine lokale, zuverlässige Einkaufsliste für mehrere Haushaltsmitglieder. Artik
 
 ## Installation und Benutzung
 
+### HACS
+
+In HACS unter **Benutzerdefinierte Repositories** die URL `https://github.com/Rasenkardinal/Easy-Shopping` mit dem Typ **Integration** hinzufügen und herunterladen. Danach HA neu starten und Easy Shopping unter **Geräte & Dienste** hinzufügen.
+
+Falls HACS meldet, dass Commit `f7858a4` nicht verwendet werden kann: Dieser ältere Stand enthält noch keine HACS-Metadaten. In HACS die Repository-Informationen aktualisieren (gegebenenfalls das Repository erneut öffnen oder HACS neu laden) und den aktuellen Stand von `main` herunterladen. Den alten Commit nicht erneut auswählen.
+
+### Manuelle Installation
+
 1. Voraussetzung: Home Assistant mit To-do-Unterstützung (API-Basis: HA 2025.10) und eine bereits verfügbare Quellliste als `todo`-Entität. Easy Shopping übernimmt weder die Alexa-Anmeldung noch die Anbindung von Amazon.
 2. Den vollständigen Ordner [custom_components/easy_shopping](custom_components/easy_shopping) in den HA-Konfigurationsordner unter `custom_components/easy_shopping` kopieren. Eine eventuell vorhandene ältere Version dieses Integrationsordners vorher sichern.
 3. Home Assistant neu starten.
