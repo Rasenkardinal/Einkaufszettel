@@ -1,5 +1,12 @@
 {
   "title": "Easy Shopping",
+  "entity": {
+    "button": {
+      "copy_source": {
+        "name": "{list_name}: Copy source list"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {

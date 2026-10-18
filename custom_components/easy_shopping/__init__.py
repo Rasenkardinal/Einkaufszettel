@@ -14,7 +14,7 @@ from .const import CONF_SOURCE, DOMAIN, STORAGE_VERSION
 from .model import ShoppingItem, load_items
 from .source import async_read_source
 
-PLATFORMS = [Platform.TODO]
+PLATFORMS = [Platform.TODO, Platform.BUTTON]
 
 
 @dataclass

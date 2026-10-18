@@ -71,7 +71,7 @@ def integration(monkeypatch):
     module("homeassistant.config_entries", ConfigEntry=Generic)
     module(
         "homeassistant.const",
-        Platform=SimpleNamespace(TODO="todo"),
+        Platform=SimpleNamespace(TODO="todo", BUTTON="button"),
         CONF_NAME="name",
         STATE_UNAVAILABLE="unavailable",
         STATE_UNKNOWN="unknown",
@@ -84,6 +84,11 @@ def integration(monkeypatch):
     )
     module("homeassistant.helpers")
     module("homeassistant.helpers.storage", Store=Store)
+    dispatcher = module(
+        "homeassistant.helpers.dispatcher",
+        async_dispatcher_connect=Mock(),
+        async_dispatcher_send=Mock(),
+    )
     module(
         "homeassistant.helpers.entity_registry",
         async_get=lambda hass: SimpleNamespace(async_get=lambda entity_id: None),
@@ -92,6 +97,7 @@ def integration(monkeypatch):
         "homeassistant.helpers.entity_platform", AddConfigEntryEntitiesCallback=object
     )
     module("homeassistant.components")
+    module("homeassistant.components.button", ButtonEntity=Entity)
     module(
         "homeassistant.components.todo",
         TodoItem=Item,
@@ -108,6 +114,7 @@ def integration(monkeypatch):
     monkeypatch.setitem(sys.modules, spec.name, package)
     spec.loader.exec_module(package)
     todo = importlib.import_module(f"{spec.name}.todo")
+    button = importlib.import_module(f"{spec.name}.button")
     model = importlib.import_module(f"{spec.name}.model")
     hass = SimpleNamespace(
         states=SimpleNamespace(get=lambda entity_id: SimpleNamespace(state="1")),
@@ -134,6 +141,8 @@ def integration(monkeypatch):
     yield SimpleNamespace(
         package=package,
         todo=todo,
+        button=button,
+        dispatcher=dispatcher,
         model=model,
         hass=hass,
         entry=entry,
@@ -245,3 +254,80 @@ async def test_service_can_supply_status_as_string(integration):
     item.status = "completed"
     await entity.async_update_todo_item(item)
     assert env.entry.runtime_data.items[0].status == "completed"
+
+
+async def test_copy_button_appends_once_and_keeps_local_edits(integration):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    data = env.entry.runtime_data
+    original = data.items[0]
+    data.items = [
+        env.model.ShoppingItem(
+            original.uid, "Meine Milch", "completed", "3 Flaschen", source_uid="a"
+        )
+    ]
+    env.hass.services.async_call.return_value = {
+        "todo.alexa": {
+            "items": [
+                {"uid": "a", "summary": "Milch", "status": "needs_action"},
+                {"uid": "b", "summary": "Milch", "status": "needs_action"},
+            ]
+        }
+    }
+    button = env.button.CopySourceButton(env.entry)
+    button.hass = env.hass
+    await button.async_press()
+    assert len(data.items) == 2
+    assert data.items[0].summary == "Meine Milch"
+    assert data.items[0].status == "completed"
+    assert data.items[0].description == "3 Flaschen"
+    assert data.items[1].source_uid == "b"
+    env.dispatcher.async_dispatcher_send.assert_called_once_with(
+        env.hass, "easy_shopping_test-entry_updated"
+    )
+    saved = env.store.async_save.await_count
+    await button.async_press()
+    assert len(data.items) == 2
+    assert env.store.async_save.await_count == saved
+
+
+@pytest.mark.parametrize("failure", ["read", "save", "missing_uid"])
+async def test_copy_button_failure_preserves_snapshot(integration, failure):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    original = list(env.entry.runtime_data.items)
+    env.hass.services.async_call.return_value = {
+        "todo.alexa": {
+            "items": [
+                {
+                    "uid": "b" if failure != "missing_uid" else None,
+                    "summary": "Brot",
+                    "status": "needs_action",
+                }
+            ]
+        }
+    }
+    if failure == "read":
+        env.hass.services.async_call.side_effect = env.error("Source unavailable")
+    if failure == "save":
+        env.store.async_save.side_effect = OSError("Disk full")
+    button = env.button.CopySourceButton(env.entry)
+    button.hass = env.hass
+    with pytest.raises(env.error, match="Cannot copy"):
+        await button.async_press()
+    assert env.entry.runtime_data.items == original
+    env.dispatcher.async_dispatcher_send.assert_not_called()
+
+
+async def test_simultaneous_copy_presses_do_not_duplicate_items(integration):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    env.hass.services.async_call.return_value = {
+        "todo.alexa": {
+            "items": [{"uid": "new", "summary": "Brot", "status": "needs_action"}]
+        }
+    }
+    button = env.button.CopySourceButton(env.entry)
+    button.hass = env.hass
+    await asyncio.gather(button.async_press(), button.async_press())
+    assert len(env.entry.runtime_data.items) == 2

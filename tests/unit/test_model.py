@@ -106,3 +106,23 @@ def test_unknown_uid_does_not_change_any_item():
     with pytest.raises(ValueError, match="Unknown item UID"):
         model.update_item(original, "missing", "Brot", "completed", None, None)
     assert original == [model.ShoppingItem("one", "Milch")]
+
+
+def test_merge_uses_source_ids_and_retains_completed_items():
+    old = model.ShoppingItem("local", "Meine Milch", "completed", source_uid="a")
+    incoming = [
+        model.ShoppingItem("copy-a", "Milch", source_uid="a"),
+        model.ShoppingItem("copy-b", "Milch", source_uid="b"),
+        model.ShoppingItem("copy-b-again", "Milch", source_uid="b"),
+    ]
+    assert model.append_new_items([old], incoming) == [old, incoming[1]]
+
+
+def test_merge_refuses_to_guess_identity_without_source_ids():
+    with pytest.raises(ValueError, match="Source item IDs"):
+        model.append_new_items([], [model.ShoppingItem("local", "Milch")])
+
+
+def test_merge_empty_source_preserves_existing_items():
+    old = model.ShoppingItem("local", "Milch", source_uid="a")
+    assert model.append_new_items([old], []) == [old]

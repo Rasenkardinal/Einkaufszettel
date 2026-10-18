@@ -226,3 +226,41 @@ async def test_corrupt_storage_does_not_overwrite_or_reimport(hass, source):
         assert not await hass.config_entries.async_setup(entry.entry_id)
         save.assert_not_called()
         read.assert_not_called()
+
+
+async def test_button_appends_and_refreshes_todo_state(hass, source):
+    entry = await setup_copy(hass)
+    original_uid = entry.runtime_data.items[0].uid
+    await hass.services.async_call(
+        "todo",
+        "update_item",
+        {
+            "entity_id": "todo.easy_shopping",
+            "item": original_uid,
+            "status": "completed",
+        },
+        blocking=True,
+    )
+    source._attr_todo_items = [
+        *source.todo_items,
+        TodoItem(
+            uid="new-source", summary="Butter", status=TodoItemStatus.NEEDS_ACTION
+        ),
+    ]
+    source.async_write_ha_state()
+    from homeassistant.helpers import entity_registry as er
+
+    registry = er.async_get(hass)
+    button_id = registry.async_get_entity_id(
+        "button", DOMAIN, f"{entry.entry_id}_copy_source"
+    )
+    assert button_id is not None
+    for _ in range(2):
+        await hass.services.async_call(
+            "button", "press", {"entity_id": button_id}, blocking=True
+        )
+        await hass.async_block_till_done()
+        assert hass.states.get("todo.easy_shopping").state == "2"
+        assert len(await read_items(hass)) == 3
+    assert entry.runtime_data.items[0].uid == original_uid
+    assert entry.runtime_data.items[0].status == "completed"

@@ -9,9 +9,11 @@ from homeassistant.components.todo import (
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import EasyShoppingConfigEntry, EasyShoppingData
+from .const import update_signal
 from .model import parse_due, update_item
 
 
@@ -42,7 +44,17 @@ class EasyShoppingTodo(TodoListEntity):
     def __init__(self, data: EasyShoppingData, unique_id: str, name: str) -> None:
         self._data = data
         self._attr_unique_id = unique_id
+        self._update_signal = update_signal(unique_id)
         self._attr_name = name
+
+    async def async_added_to_hass(self) -> None:
+        """Refresh To-do subscriptions after a manual source copy."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, self._update_signal, self.async_write_ha_state
+            )
+        )
 
     @property
     def todo_items(self) -> list[TodoItem]:

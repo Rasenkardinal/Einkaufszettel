@@ -1,5 +1,12 @@
 {
   "title": "Easy Shopping",
+  "entity": {
+    "button": {
+      "copy_source": {
+        "name": "{list_name}: Quellliste kopieren"
+      }
+    }
+  },
   "config": {
     "step": {
       "user": {

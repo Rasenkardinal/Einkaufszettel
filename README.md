@@ -2,7 +2,7 @@
 
 Flexible, gemeinsam nutzbare Einkaufsliste für Home Assistant mit frei zuordenbaren Kategorien und Alexa-Anbindung.
 
-> **Projektstatus:** Alpha `0.1.0-alpha.2`. Die Custom Integration enthält einen Konfigurationsflow, einmaligen Import und eine dauerhaft gespeicherte HA-To-do-Liste zum Abhaken. Noch keine Synchronisierung und keine eigene Smartphone-UI.
+> **Projektstatus:** Alpha `0.1.0-alpha.3`. Konfigurationsflow, initialer Import, manueller Kopieren-Knopf und eine dauerhaft gespeicherte HA-To-do-Liste zum Abhaken. Noch keine automatische Synchronisierung und keine eigene Smartphone-UI.
 
 ## Ziel
 
@@ -12,6 +12,7 @@ Eine lokale, zuverlässige Einkaufsliste für mehrere Haushaltsmitglieder. Artik
 
 - Eine vorhandene HA-To-do-Liste wird im Integrations-Konfigurationsflow ausgewählt. Voraussetzung ist, dass die Alexa-Liste in HA als `todo`-Entität mit lesbaren Einträgen verfügbar ist.
 - Offene Quell-Einträge werden einmalig in eine eigene Easy-Shopping-Liste kopiert.
+- Ein manueller Kopieren-Knopf ergänzt später neue offene Quell-Einträge anhand ihrer Quell-IDs. Bereits kopierte Einträge bleiben unverändert.
 - Easy Shopping stellt eine eigene HA-To-do-Listen-Entität bereit, die in HA angezeigt und abgehakt werden kann.
 - Die Kopie ist lokal und dauerhaft; Änderungen werden in dieser Version nicht zurück zur Quelle synchronisiert.
 - Abhaken und Wiederöffnen, Bearbeiten des Namens sowie der Beschreibung und Fälligkeit erfolgen über die HA-To-do-Oberfläche.
@@ -45,7 +46,18 @@ type: todo-list
 entity: todo.easy_shopping
 ```
 
-**Wichtig:** Nur offene Einträge werden einmalig kopiert. Neue Alexa-Einträge nach dem Import erscheinen in dieser Alpha nicht automatisch in Easy Shopping. Der Neustart oder das Neuladen der Integration löst keinen erneuten Import aus, auch bei leerer lokaler Liste. Pro Quell-Entitäts-ID ist ein Konfigurationseintrag vorgesehen.
+**Wichtig:** Nur offene Einträge werden kopiert. Neue Alexa-Einträge nach dem Import erscheinen nicht automatisch in Easy Shopping, sondern erst beim manuellen Kopieren. Der Neustart oder das Neuladen der Integration löst keinen erneuten Import aus, auch bei leerer lokaler Liste. Pro Quell-Entitäts-ID ist ein Konfigurationseintrag vorgesehen.
+
+### Alexa-/Quellliste erneut kopieren
+
+Nach dem Update auf Alpha `0.1.0-alpha.3` HA neu starten. Unter **Einstellungen → Geräte & Dienste → Easy Shopping → Entitäten** die Button-Entität **„Easy Shopping: Quellliste kopieren“** öffnen und **Drücken** wählen. Bei einem abweichenden Listennamen trägt der Knopf diesen Namen. Die Entität kann außerdem als Button auf ein Dashboard gelegt oder über `button.press` angesprochen werden.
+
+- Nur bisher unbekannte, offene Quell-IDs werden ergänzt. Wiederholtes Drücken erzeugt keine Duplikate derselben Quell-ID.
+- Bereits kopierte Artikel bleiben unverändert: lokale Namen, Notizen, Fälligkeit und Erledigt-Status werden nicht zurückgesetzt. Ein bereits abgehakter Artikel wird durch erneutes Kopieren nicht wieder geöffnet.
+- Derselbe Artikelname mit einer neuen Quell-ID gilt als neuer Eintrag. Das Wiederöffnen einer alten Quell-ID gilt dagegen nicht als neuer Einkauf.
+- Die Quelle wird weder abgehakt noch anderweitig verändert. Änderungen und Löschungen der Quelle werden nicht auf bestehende lokale Einträge übertragen.
+- Sicheres wiederholtes Kopieren benötigt stabile, nichtleere Quell-IDs. Fehlen sie an aktuellen oder früher importierten Einträgen, meldet der Knopf einen Fehler und verändert die Liste nicht, statt anhand von Namen zu raten.
+- Ist die Quelle nicht erreichbar oder schlägt das Speichern fehl, wird ein Fehler gemeldet und der lokale Bestand bleibt erhalten.
 
 ## Daten und Fehlerverhalten
 
@@ -80,7 +92,7 @@ Die Integrationssuite benötigt eine von HA unterstützte Testumgebung; ein erfo
 
 ### Prüfstand dieser Alpha
 
-Lokal unter Windows/Python 3.13 wurden 37 Tests erfolgreich ausgeführt: Modelltests und Tests unserer Import-/Speicher-/Entitätslogik mit ausdrücklich simulierten HA-Schnittstellen. Ruff, Formatierung, Python-Syntax und JSON-Metadaten sind geprüft. Die Tests mit echtem HA konnten lokal nicht ausgeführt werden: Die Testabhängigkeit `lru-dict` ließ sich ohne Microsoft-C++-Build-Tools nicht installieren. Die Linux-CI ist vorbereitet, aber dieses Ergebnis ersetzt keinen erfolgreichen CI-Lauf oder Test in der Zielinstallation.
+Lokal unter Windows/Python 3.13 wurden 46 Tests erfolgreich ausgeführt: Modelltests, Paketmetadaten und Tests unserer Import-/Speicher-/Entitätslogik mit ausdrücklich simulierten HA-Schnittstellen, einschließlich des Kopieren-Knopfs. Ruff, Formatierung, Python-Syntax und JSON-Metadaten sind geprüft. Die Tests mit echtem HA konnten lokal nicht ausgeführt werden: Die Testabhängigkeit `lru-dict` ließ sich ohne Microsoft-C++-Build-Tools nicht installieren. Die Linux-CI ist vorbereitet, aber dieses Ergebnis ersetzt keinen erfolgreichen CI-Lauf oder Test in der Zielinstallation.
 
 Vor produktiver Verwendung in HA prüfen:
 
@@ -89,6 +101,7 @@ Vor produktiver Verwendung in HA prüfen:
 3. HA neu starten; lokale IDs und Erledigt-Status müssen erhalten bleiben.
 4. Die Quelle vorübergehend nicht verfügbar machen und die bestehende Kopie weiter verwenden.
 5. Eine leere Quellliste kopieren, anschließend neue Quelleinträge hinzufügen und neu laden: Die lokale Kopie muss leer bleiben.
+6. Einen neuen Artikel in der Quelle ergänzen, den Kopieren-Knopf zweimal drücken: genau ein neuer lokaler Eintrag muss erscheinen; zuvor lokal abgehakte Artikel müssen erledigt bleiben.
 
 ## Dokumentation
 

@@ -1,0 +1,54 @@
+"""Manually append new items from the configured source list."""
+
+from homeassistant.components.button import ButtonEntity
+from homeassistant.const import CONF_NAME
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+from . import EasyShoppingConfigEntry
+from .const import CONF_SOURCE, update_signal
+from .model import append_new_items
+from .source import async_read_source
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: EasyShoppingConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Expose one copy button per configured list."""
+    async_add_entities([CopySourceButton(entry)])
+
+
+class CopySourceButton(ButtonEntity):
+    """Copy unseen open source entries without changing existing local entries."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "copy_source"
+    _attr_icon = "mdi:content-copy"
+
+    def __init__(self, entry: EasyShoppingConfigEntry) -> None:
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_copy_source"
+        self._attr_translation_placeholders = {"list_name": entry.data[CONF_NAME]}
+
+    async def async_press(self) -> None:
+        """Read, merge and persist atomically before notifying the To-do UI."""
+        data = self._entry.runtime_data
+        async with data.lock:
+            try:
+                incoming = await async_read_source(
+                    self.hass, self._entry.data[CONF_SOURCE]
+                )
+                updated = append_new_items(data.items, incoming)
+                if updated == data.items:
+                    return
+                await data.store.async_save(
+                    {"items": [item.to_dict() for item in updated]}
+                )
+            except (HomeAssistantError, ValueError, OSError, TimeoutError) as err:
+                raise HomeAssistantError(f"Cannot copy source list: {err}") from err
+            data.items = updated
+            async_dispatcher_send(self.hass, update_signal(self._entry.entry_id))

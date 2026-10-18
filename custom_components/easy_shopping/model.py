@@ -101,6 +101,21 @@ def load_items(data: object) -> list[ShoppingItem]:
     return items
 
 
+def append_new_items(
+    existing: list[ShoppingItem], incoming: list[ShoppingItem]
+) -> list[ShoppingItem]:
+    """Append unseen source identities without resetting local edits."""
+    if any(not item.source_uid for item in [*existing, *incoming]):
+        raise ValueError("Source item IDs are required for safe repeated copying")
+    seen = {item.source_uid for item in existing}
+    result = list(existing)
+    for item in incoming:
+        if item.source_uid not in seen:
+            result.append(item)
+            seen.add(item.source_uid)
+    return result
+
+
 def update_item(
     items: list[ShoppingItem],
     uid: str,
