@@ -2,7 +2,7 @@
 
 Flexible, gemeinsam nutzbare Einkaufsliste für Home Assistant mit frei zuordenbaren Kategorien und Alexa-Anbindung.
 
-> **Projektstatus:** Alpha `0.1.0-alpha.1`. Die Custom Integration enthält einen Konfigurationsflow, einmaligen Import und eine dauerhaft gespeicherte HA-To-do-Liste zum Abhaken. Noch keine Synchronisierung und keine eigene Smartphone-UI.
+> **Projektstatus:** Alpha `0.1.0-alpha.2`. Die Custom Integration enthält einen Konfigurationsflow, einmaligen Import und eine dauerhaft gespeicherte HA-To-do-Liste zum Abhaken. Noch keine Synchronisierung und keine eigene Smartphone-UI.
 
 ## Ziel
 
@@ -35,6 +35,8 @@ Falls HACS meldet, dass Commit `f7858a4` nicht verwendet werden kann: Dieser äl
 5. Die Quell-To-do-Liste auswählen und einen Namen für die lokale Kopie vergeben. Im Flow wird die Lesbarkeit geprüft; beim anschließenden Einrichten wird der aktuelle Inhalt importiert.
 6. In der HA-Seitenleiste **To-do-Listen** öffnen und die neue Liste auswählen. Der Standardname ist **Easy Shopping**; die Entitäts-ID wird von HA vergeben (normalerweise `todo.easy_shopping`).
 7. Einträge abhaken oder wieder öffnen. Die Quellliste bleibt unverändert.
+
+Easy Shopping ist als Service-Integration eingestuft und wird unter **Einstellungen → Geräte & Dienste → Integrationen** verwaltet. Version `0.1.0-alpha.1` war noch als Helper eingestuft und kann deshalb nur unter **Helfer** statt in der normalen Integrationsübersicht auftauchen. Nach dem Update auf `0.1.0-alpha.2` HA neu starten; eine bestehende Konfiguration und ihre kopierte Liste bleiben erhalten. Die Integration nicht löschen und neu hinzufügen.
 
 Optional lässt sich die HA-Standardkarte auf einem Dashboard verwenden. Die tatsächliche Entitäts-ID gegebenenfalls anpassen:
 

@@ -21,5 +21,6 @@ def test_hacs_metadata_and_integration_layout():
     manifest = json.loads((components[0] / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["domain"] == components[0].name
     assert manifest["name"] == hacs["name"]
+    assert manifest["integration_type"] == "service"
     assert (components[0] / "__init__.py").is_file()
     assert (components[0] / "config_flow.py").is_file()
