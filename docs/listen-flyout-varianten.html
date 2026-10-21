@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Einkaufszettel – 8 Listen-Flyouts</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background: #111; color: #f4f4f4; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    :focus-visible { outline: 2px solid #a3e635; outline-offset: 3px; }
+    [hidden] { display: none !important; }
+    .gallery { max-width: 1600px; margin: auto; padding: 32px 24px 60px; }
+    h1 { font-size: clamp(25px, 4vw, 38px); margin: 8px 0 12px; }
+    .intro { max-width: 850px; color: #aaa; line-height: 1.6; }
+    .intro strong { color: #eee; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 30px 18px; margin-top: 30px; }
+    article { min-width: 0; }
+    article > h2 { font-size: 15px; margin: 0 0 12px; }
+    .description { font-size: 13px; color: #aaa; line-height: 1.5; margin: 14px 2px 0; }
+    .phone { position: relative; min-height: 555px; padding: 22px 16px; border: 1px solid #353535; border-radius: 24px; background: #171717; }
+    .brand { display: flex; align-items: center; gap: 8px; color: #aaa; font-size: 10px; font-weight: 700; letter-spacing: .13em; }
+    .brand img { width: 24px; height: 24px; border-radius: 7px; }
+    .brand span { margin-left: auto; font-size: 20px; letter-spacing: 0; }
+    .picker { position: relative; margin: 22px 0 18px; }
+    .trigger { display: flex; align-items: center; gap: 10px; max-width: 100%; padding: 0; border: 0; background: transparent; color: #fafafa; text-align: left; min-height: 44px; }
+    .title { font-size: 28px; letter-spacing: -.04em; font-weight: 750; overflow-wrap: anywhere; }
+    .arrow { color: #aaa; font-size: 16px; transition: transform .15s; }
+    .trigger[aria-expanded="true"] .arrow { transform: rotate(180deg); }
+    .panel { position: absolute; left: 0; top: calc(100% + 8px); z-index: 3; width: 100%; padding: 7px; border: 1px solid #404040; border-radius: 14px; background: #242424; box-shadow: 0 16px 40px #0009; max-height: 335px; overflow: auto; }
+    .panel h3 { font-size: 10px; text-transform: uppercase; color: #aaa; letter-spacing: .13em; padding: 8px 10px; margin: 0; }
+    .options { display: grid; gap: 4px; }
+    .option { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; border: 0; border-radius: 9px; padding: 10px; background: transparent; color: #eee; text-align: left; }
+    .option:hover { background: #383838; }
+    .option[aria-pressed="true"] { background: #373737; }
+    .option .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .tick { width: 16px; color: #fff; }
+    .option:not([aria-pressed="true"]) .tick { visibility: hidden; }
+    .status { display: flex; align-items: center; gap: 8px; border: 1px solid #333; border-radius: 10px; padding: 11px; font-size: 11px; color: #bbb; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #87b897; }
+    .add { display: flex; gap: 8px; margin: 18px 0 24px; }
+    .add span { flex: 1; border-bottom: 1px solid #444; padding: 12px 2px; color: #888; font-size: 12px; }
+    .add b { display: grid; place-items: center; background: #eee; color: #111; border-radius: 9px; width: 42px; font-size: 24px; }
+    .list-label { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #aaa; margin-bottom: 12px; }
+    .item { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #303030; padding: 15px 0; font-size: 13px; }
+    .box { width: 17px; height: 17px; border: 1px solid #777; border-radius: 5px; }
+    .item small { margin-left: auto; color: #888; }
+    .badge { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: #444; font-size: 12px; font-weight: 700; flex: none; }
+    .sub { display: block; font-size: 10px; color: #aaa; margin-top: 3px; font-weight: 400; }
+    .v2 .panel { padding: 0; border-radius: 0 0 13px 13px; top: 100%; }
+    .v2 .trigger { padding: 7px 10px; margin-left: -10px; }
+    .v2 .trigger[aria-expanded="true"] { width: calc(100% + 10px); background: #242424; border-radius: 12px 12px 0 0; }
+    .v2 .option { border-radius: 0; padding: 13px 14px; }
+    .v2 .panel h3 { border-bottom: 1px solid #383838; }
+    .v3 .option[aria-pressed="true"] { box-shadow: inset 3px 0 #a3e635; background: #30362a; }
+    .v3 .tick { color: #a3e635; }
+    .v4 .options { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    .v4 .option { flex-direction: column; justify-content: center; gap: 8px; min-height: 90px; background: #303030; text-align: center; position: relative; }
+    .v4 .tick { position: absolute; right: 5px; top: 5px; }
+    .v4 .option[aria-pressed="true"] { box-shadow: inset 0 0 0 1px #ddd; background: #3b3b3b; }
+    .v5 .panel { background: #ededeb; color-scheme: light; border-color: #eee; }
+    .v5 .option { color: #191919; }
+    .v5 .option:hover, .v5 .option[aria-pressed="true"] { background: #d7d7d3; }
+    .v5 .tick { color: #191919; }
+    .v5 .panel h3 { color: #666; }
+    .v6 .panel { border-radius: 20px; background: #202020; }
+    .search { width: 100%; min-height: 42px; padding: 10px; border: 1px solid #444; border-radius: 9px; background: #171717; color: #fff; margin: 2px 0 8px; }
+    .no-results { color: #aaa; padding: 10px; font-size: 12px; }
+    .v7 .panel { border: 0; background: #1b1b1b; border-radius: 8px; padding: 12px; box-shadow: 0 15px 30px #000b, 0 0 0 1px #333; }
+    .v7 .option { padding: 9px 2px; border-bottom: 1px solid #333; border-radius: 0; }
+    .v7 .option[aria-pressed="true"] { background: transparent; font-weight: 750; }
+    .v7 .panel h3 { padding-left: 2px; }
+    .v8 .panel { padding: 10px; border-radius: 16px; }
+    .v8 .option { border: 1px solid #3c3c3c; background: #2c2c2c; margin-bottom: 3px; }
+    .v8 .option[aria-pressed="true"] { border-color: #eee; }
+    .v8 .option .badge { background: #ddd; color: #222; border-radius: 50%; }
+    .reset { border: 1px solid #555; background: #242424; color: #eee; border-radius: 8px; padding: 10px 14px; min-height: 44px; }
+    @media (max-width: 1200px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } .gallery { padding: 24px 16px; } }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <main class="gallery">
+    <p class="intro">EINKAUFSZETTEL · LISTENAUSWAHL</p>
+    <h1>Acht Flyouts direkt am Listennamen</h1>
+    <p class="intro">Auf <strong>„Kaufland ▾“</strong> tippen: Die Liste klappt direkt darunter auf, ohne native Browserauswahl und ohne Radio-Punkte. Alle Varianten sind bedienbar. Auswahl, Escape, Tastatur und Schließen per Klick außerhalb funktionieren. <strong>Nur Beispieldaten – keine Änderungen an der App.</strong></p>
+    <p class="intro">Meine Favoriten: <strong>01</strong> für maximale Ruhe, <strong>03</strong> für klare Orientierung und <strong>06</strong> bei vielen Listen.</p>
+    <button class="reset" type="button">Alle Flyouts öffnen / schließen</button>
+    <section class="grid" aria-label="Acht Flyout-Entwürfe"></section>
+  </main>
+  <script>
+    const lists = [
+      { name: "Kaufland", count: 8, icon: "K", items: ["Milch", "Brot", "Tomaten"] },
+      { name: "Edeka", count: 5, icon: "E", items: ["Kaffee", "Joghurt", "Äpfel"] },
+      { name: "Baumarkt", count: 3, icon: "B", items: ["Schrauben", "Pinsel", "Holzleim"] },
+      { name: "Drogerie", count: 4, icon: "D", items: ["Seife", "Zahnpasta", "Waschmittel"] },
+    ];
+    const variants = [
+      ["01 · Purist", "Ruhige, kompakte Liste. Nur Namen und ein Häkchen für die aktive Liste – mein Favorit für den Alltag."],
+      ["02 · Titel wird Flyout", "Titel und Auswahl bilden eine zusammenhängende Fläche. Der Zusammenhang zwischen Auslöser und Auswahl ist besonders deutlich."],
+      ["03 · Akzentkante", "Aktive Liste mit schmaler Akzentkante und Häkchen. Der Akzent könnte später der gewählten App-Farbe folgen."],
+      ["04 · Listenkacheln", "Vier große Ziele als 2×2-Raster. Gut unterscheidbar und mit dem Daumen leicht zu treffen."],
+      ["05 · Heller Kontrast", "Bewusster Kontrast zum dunklen Hintergrund: ein helles, gestaltetes Flyout statt des grauen Systemdialogs."],
+      ["06 · Suchbares Flyout", "Suche direkt über den Listen. Empfehlenswert, wenn später deutlich mehr Einkaufslisten hinzukommen."],
+      ["07 · Journal", "Reduzierte Textliste mit feinen Trennlinien. Kleine Artikelzahlen helfen bei der Orientierung, ohne zusätzliche Symbole."],
+      ["08 · Listen-Karten", "Jede Liste als schmale Karte mit Initiale und Artikelzahl. Etwas informativer, aber weiterhin kompakt."],
+    ];
+    const grid = document.querySelector(".grid");
+    variants.forEach(([heading, description], index) => {
+      const article = document.createElement("article");
+      article.className = `v${index + 1}`;
+      article.innerHTML = `
+        <h2>${heading}</h2>
+        <div class="phone">
+          <div class="brand"><img src="../custom_components/einkaufszettel/www/icon.svg" alt="">EINKAUFSZETTEL<span aria-hidden="true">···</span></div>
+          <div class="picker">
+            <button class="trigger" type="button" aria-expanded="false" aria-controls="flyout-${index}" aria-label="Einkaufsliste auswählen, aktuell Kaufland"><span class="title">Kaufland</span><span class="arrow" aria-hidden="true">▾</span></button>
+            <section class="panel" id="flyout-${index}" aria-label="Einkaufsliste auswählen" hidden>
+              <h3>Liste wechseln</h3>
+              ${index === 5 ? '<input class="search" type="search" aria-label="Listen durchsuchen" placeholder="Liste suchen …" autocomplete="off">' : ""}
+              <div class="options"></div>
+              <p class="no-results" hidden>Keine passende Liste.</p>
+            </section>
+          </div>
+          <div class="status"><i class="dot"></i>Mit Home Assistant verbunden</div>
+          <div class="add" aria-hidden="true"><span>Was fehlt noch?</span><b>+</b></div>
+          <div class="list-label">Auf der Liste · <span class="article-count">8 Artikel</span></div>
+          <div class="sample-items" aria-live="polite"></div>
+        </div>
+        <p class="description">${description}</p>`;
+      grid.append(article);
+      const trigger = article.querySelector(".trigger");
+      const panel = article.querySelector(".panel");
+      const options = article.querySelector(".options");
+      const search = article.querySelector(".search");
+      let selected = 0;
+      const setOpen = (open, focus = false) => {
+        panel.hidden = !open;
+        trigger.setAttribute("aria-expanded", String(open));
+        if (open && search) {
+          search.value = "";
+          filter("");
+        }
+        if (focus) {
+          if (open) (search || options.children[selected]).focus();
+          else trigger.focus();
+        }
+      };
+      article.setOpen = setOpen;
+      const renderItems = () => {
+        article.querySelector(".sample-items").replaceChildren(...lists[selected].items.map((name) => {
+          const row = document.createElement("div");
+          row.className = "item";
+          const box = document.createElement("span");
+          box.className = "box";
+          box.setAttribute("aria-hidden", "true");
+          row.append(box, document.createTextNode(name));
+          return row;
+        }));
+      };
+      lists.forEach((list, listIndex) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "option";
+        button.setAttribute("aria-pressed", String(listIndex === selected));
+        button.setAttribute("aria-label", list.name);
+        const hasIcon = index === 3 || index === 7;
+        button.innerHTML = `${hasIcon ? `<span class="badge" aria-hidden="true">${list.icon}</span>` : ""}<span class="name">${list.name}${index === 7 ? `<span class="sub">${list.count} offene Artikel</span>` : ""}</span>${index === 6 ? `<small>${list.count}</small>` : ""}<span class="tick" aria-hidden="true">✓</span>`;
+        button.addEventListener("click", () => {
+          selected = listIndex;
+          trigger.querySelector(".title").textContent = list.name;
+          trigger.setAttribute("aria-label", `Einkaufsliste auswählen, aktuell ${list.name}`);
+          article.querySelector(".article-count").textContent = `${list.count} Artikel`;
+          [...options.children].forEach((option, i) => option.setAttribute("aria-pressed", String(i === selected)));
+          renderItems();
+          setOpen(false, true);
+        });
+        options.append(button);
+      });
+      function filter(value) {
+        [...options.children].forEach((button, i) => {
+          button.hidden = !lists[i].name.toLocaleLowerCase("de").includes(value.toLocaleLowerCase("de"));
+        });
+        article.querySelector(".no-results").hidden = [...options.children].some(button => !button.hidden);
+      }
+      search?.addEventListener("input", () => filter(search.value));
+      trigger.addEventListener("click", () => setOpen(panel.hidden));
+      trigger.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          setOpen(true, true);
+        }
+      });
+      article.addEventListener("keydown", (event) => {
+        if (panel.hidden) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setOpen(false, true);
+        }
+        if (panel.contains(event.target) && ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+          const buttons = [...options.children].filter(button => !button.hidden);
+          if (!buttons.length) return;
+          event.preventDefault();
+          const current = buttons.indexOf(document.activeElement);
+          const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 :
+            (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+          buttons[next].focus();
+        }
+      });
+      document.addEventListener("click", (event) => {
+        if (!article.querySelector(".picker").contains(event.target) && !event.target.closest(".reset")) setOpen(false);
+      });
+      article.querySelector(".picker").addEventListener("focusout", (event) => {
+        if (event.relatedTarget && !article.querySelector(".picker").contains(event.relatedTarget)) setOpen(false);
+      });
+      renderItems();
+    });
+    document.querySelector(".reset").addEventListener("click", () => {
+      const open = [...document.querySelectorAll(".panel")].some(panel => panel.hidden);
+      [...grid.children].forEach(article => article.setOpen(open));
+    });
+  </script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 """Authenticated WebSocket API for the installed shopping-list web app."""
 
+import asyncio
 from typing import Any
+from uuid import uuid4
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -9,10 +11,111 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.storage import Store
 
 from .const import CONF_SOURCE, DOMAIN, update_signal
 from .model import ShoppingItem, append_new_items, update_item
 from .source import async_read_source
+
+
+async def _market_command(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    action = msg["type"].rsplit("/", 1)[-1]
+    if action != "get_supermarkets" and (
+        connection.user is None or not connection.user.is_admin
+    ):
+        connection.send_error(
+            msg["id"], "unauthorized", "HA-Administratorrechte erforderlich."
+        )
+        return
+    lock = hass.data.setdefault(f"{DOMAIN}.supermarkets_lock", asyncio.Lock())
+    async with lock:
+        store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}.supermarkets")
+        try:
+            data = await store.async_load()
+            markets = [] if data is None else data["supermarkets"]
+            if not isinstance(markets, list) or any(
+                not isinstance(market, dict)
+                or not isinstance(market.get("id"), str)
+                or not market["id"]
+                or not isinstance(market.get("name"), str)
+                or not market["name"].strip()
+                or len(market["name"]) > 100
+                for market in markets
+            ):
+                raise ValueError("Ungültige gespeicherte Supermarktdaten.")
+            if len({market["id"] for market in markets}) != len(markets):
+                raise ValueError("Doppelte IDs in den gespeicherten Supermarktdaten.")
+            if action != "get_supermarkets":
+                uid = msg["market_id"]
+                if uid and not any(market["id"] == uid for market in markets):
+                    raise ValueError(
+                        "Der Supermarkt wurde nicht gefunden. Bitte neu laden."
+                    )
+                if action == "delete_supermarket":
+                    if not uid:
+                        raise ValueError("Bitte wähle einen Supermarkt.")
+                    markets = [market for market in markets if market["id"] != uid]
+                else:
+                    name = msg["name"].strip()
+                    if not name or len(name) > 100:
+                        raise ValueError("Der Name muss 1–100 Zeichen enthalten.")
+                    if any(
+                        m["id"] != uid and m["name"].casefold() == name.casefold()
+                        for m in markets
+                    ):
+                        raise ValueError(
+                            "Ein Supermarkt mit diesem Namen existiert bereits."
+                        )
+                    if uid:
+                        markets = [
+                            {**m, "name": name} if m["id"] == uid else m
+                            for m in markets
+                        ]
+                    else:
+                        markets = [*markets, {"id": uuid4().hex, "name": name}]
+                await store.async_save({"supermarkets": markets})
+        except (HomeAssistantError, OSError, ValueError, KeyError, TypeError) as err:
+            connection.send_error(msg["id"], "cannot_manage_supermarkets", str(err))
+            return
+        connection.send_result(msg["id"], markets)
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_supermarkets"})
+@websocket_api.async_response
+async def websocket_get_supermarkets(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Read the shared supermarket registry."""
+    await _market_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/save_supermarket",
+        vol.Required("market_id"): str,
+        vol.Required("name"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_save_supermarket(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Create or rename a supermarket; an empty ID creates a new one."""
+    await _market_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/delete_supermarket",
+        vol.Required("market_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_delete_supermarket(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Delete a supermarket without changing any shopping list."""
+    await _market_command(hass, connection, msg)
 
 
 def _get_entry(hass: HomeAssistant, connection, msg: dict[str, Any]):

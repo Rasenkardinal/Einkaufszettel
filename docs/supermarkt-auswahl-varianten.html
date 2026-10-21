@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Einkaufszettel – acht Supermarkt-Auswahlen</title>
+  <link rel="stylesheet" href="../custom_components/einkaufszettel/www/app.css">
+  <style>
+    body { background: #0d0d0d; }
+    .gallery { max-width: 1600px; margin: auto; padding: 40px 28px 60px; }
+    .intro { margin-bottom: 30px; }
+    .intro h1 { font-size: clamp(26px, 4vw, 40px); }
+    .intro p { max-width: 850px; color: #aaa; line-height: 1.6; font-size: 14px; }
+    .intro .eyebrow { margin: 0 0 12px; }
+    .legend { display: flex; gap: 10px; flex-wrap: wrap; }
+    .legend span { border: 1px solid #383838; border-radius: 8px; padding: 7px 10px; font-size: 12px; color: #ccc; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px 20px; }
+    article { min-width: 0; }
+    article > h2 { font-size: 15px; margin: 0 0 9px; }
+    .description { color: #aaa; font-size: 12px; line-height: 1.5; min-height: 54px; margin: 12px 2px 0; }
+    .phone { position: relative; min-height: 640px; padding: 20px 16px; border: 1px solid var(--line); border-radius: 24px; background: radial-gradient(ellipse at 50% 0, var(--glow), transparent 55%), var(--bg); }
+    .phone .topbar { margin-bottom: 18px; gap: 4px; }
+    .phone .eyebrow { font-size: 9px; margin: 5px 0 22px; }
+    .phone .brand-icon { width: 22px; height: 22px; }
+    .phone .brand { gap: 7px; }
+    .phone .list-title { margin-left: -29px; max-width: calc(100% + 29px); gap: 7px; }
+    .phone h3 { margin: 0; font-size: 24px; line-height: 1.1; letter-spacing: -.04em; overflow-wrap: anywhere; }
+    .list-title select, .picker select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+    .list-title:focus-within, .picker:focus-within { outline: 2px solid #fff; outline-offset: 3px; }
+    .dots { border: 0; background: transparent; color: #aaa; font-size: 18px; padding: 0 0 12px 4px; pointer-events: none; }
+    .phone .sync-card { padding: 9px 10px; gap: 9px; }
+    .phone .sync-card strong { font-size: 10px; }
+    .phone .sync-card p { font-size: 10px; }
+    .phone .icon-button { width: 26px; height: 28px; font-size: 20px; pointer-events: none; }
+    .phone .add-form { margin: 15px 0 20px; }
+    .phone .add-form input { width: 100%; font-size: 12px; padding: 10px; }
+    .phone .add-form .primary { width: 40px; min-height: 40px; font-size: 20px; pointer-events: none; }
+    .phone .list-heading { gap: 5px; }
+    .phone .list-heading h2 { font-size: 10px; }
+    .count { color: #aaa; font-size: 10px; }
+    .category { margin: 14px 0 7px; font-size: 9px; color: #999; letter-spacing: .1em; text-transform: uppercase; }
+    .phone .item { min-height: 42px; padding: 6px 10px; font-size: 12px; gap: 8px; justify-content: flex-start; }
+    .check { display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid #888; border-radius: 4px; font-size: 11px; flex: none; }
+    .quantity { margin-left: auto; color: #aaa; font-size: 10px; }
+    .completed { margin-top: 12px; }
+    .completed .check { background: #888; color: #171717; }
+    .completed .name { text-decoration: line-through; }
+    .picker { position: relative; display: inline-flex; align-items: center; gap: 7px; min-height: 36px; max-width: 100%; border: 1px solid #383838; border-radius: 8px; padding: 6px 9px; background: #202020; color: #eee; font-size: 11px; vertical-align: middle; }
+    .picker .store-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .triangle { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #aaa; flex: none; margin-left: auto; }
+    .store-icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; flex: none; }
+    .store-slot { margin: -4px 0 15px; }
+    .inline-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
+    .inline-title .picker { max-width: 49%; }
+    .variant-1 .topbar { margin-bottom: 12px; }
+    .variant-1 .list-title { display: none; }
+    .title-choice { position: relative; display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+    .title-choice h3 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .title-choice select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+    .variant-2 .picker { border-radius: 999px; }
+    .variant-3 .picker { padding: 0; border: 0; background: transparent; }
+    .variant-3 .store-slot { display: flex; align-items: center; gap: 8px; color: #888; font-size: 10px; }
+    .variant-4 .list-heading .picker { max-width: 61%; font-size: 10px; min-height: 32px; padding: 5px 7px; }
+    .route-bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid #383838; border-bottom: 1px solid #383838; padding: 8px 0; margin: -5px 0 16px; }
+    .route-bar > span { font-size: 10px; color: #aaa; }
+    .route-bar .picker { border: 0; background: transparent; padding-right: 0; }
+    .segments { display: flex; gap: 5px; margin-bottom: 15px; }
+    .segments button { min-height: 34px; flex: 1; padding: 5px; border: 1px solid #383838; border-radius: 8px; background: #202020; color: #aaa; font-size: 10px; }
+    .segments button[aria-pressed="true"] { background: #eee; border-color: #eee; color: #171717; }
+    .mini-label { font-size: 9px; color: #999; margin: -4px 0 7px; }
+    .variant-7 .store-slot { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+    .variant-7 .store-slot > span { color: #aaa; font-size: 10px; }
+    .variant-7 .picker { width: 38px; justify-content: center; padding: 6px; }
+    .variant-7 .triangle { position: absolute; right: 3px; bottom: 5px; border-left-width: 3px; border-right-width: 3px; border-top-width: 4px; }
+    .variant-8 { padding-bottom: 74px; }
+    .variant-8 .store-slot { position: absolute; bottom: 16px; left: 16px; right: 16px; margin: 0; }
+    .variant-8 .picker { width: 100%; box-shadow: 0 6px 24px #0008; }
+    .variant-8 .picker small { color: #999; font-size: 9px; }
+    .recommendation { color: #ddd; font-size: 11px; }
+    @media(max-width: 1150px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media(max-width: 640px) { .grid { grid-template-columns: 1fr; } .gallery { padding: 28px 16px; } .description { min-height: 0; } }
+  </style>
+</head>
+<body data-theme="mono">
+  <main class="gallery">
+    <header class="intro">
+      <p class="eyebrow">Einkaufszettel · UI-Entwürfe</p>
+      <h1>Eine Liste. Unterschiedliche Einkaufswege.</h1>
+      <p>Acht kleine Supermarkt-Auswahlen im bestehenden Mono-Design. „Wocheneinkauf“ ist die Liste, „Kaufland Mitte“ der unabhängig gewählte Markt bzw. die Filiale. Die Auswahl ist in jeder Vorschau bedienbar.</p>
+      <p><strong>Nur ein Entwurf:</strong> Die angezeigten Abteilungen und ihre Reihenfolge sind Beispieldaten, keine echten Marktstrukturen. Es werden keine App- oder Listendaten verändert.</p>
+      <div class="legend"><span>Liste: Wocheneinkauf / Haushalt</span><span>Markt: Kaufland Mitte / Edeka Nord / Ohne Markt</span><span>Empfehlung: 02 oder 04</span></div>
+    </header>
+    <section class="grid" aria-label="Acht Varianten der Supermarktauswahl"></section>
+  </main>
+  <script>
+    const icon = '<svg class="store-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10M3 10l2-6h14l2 6M3 10c0 3 4 3 4 0 0 3 5 3 5 0 0 3 5 3 5 0 0 3 4 3 4 0M9 20v-6h6v6"/></svg>';
+    const variants = [
+      ["01 · Neben dem Listentitel", "Zwei kompakte Auswahlen auf einer Zeile. Sehr direkt, bei langen Listennamen aber enger."],
+      ["02 · Markt-Chip unter dem Titel", "Kleine, klar getrennte Auswahl unter der Liste. Gut erkennbar und auch für Filialnamen geeignet.", true],
+      ["03 · Dezente Textzeile", "„Markt:“ mit Name und Dreieck, ohne Rahmen. Besonders ruhig und platzsparend."],
+      ["04 · Rechts am Listenanfang", "Die Marktauswahl sitzt direkt bei den Artikeln, deren Reihenfolge sie beeinflusst.", true],
+      ["05 · Kompakte Sortierleiste", "„Einkaufsweg“ erklärt den Zweck der Auswahl. Schmale Trennlinien statt einer weiteren Karte."],
+      ["06 · Zwei Favoriten", "Direkter Wechsel zwischen zwei häufig besuchten Filialen; „Ohne“ zeigt die ungruppierte Liste."],
+      ["07 · Kleines Markt-Symbol", "Name plus quadratische Symbolauswahl. Unauffällig, aber weniger selbsterklärend als ein Chip."],
+      ["08 · Schwebend am unteren Rand", "Mit dem Daumen erreichbar und getrennt vom Listentitel. Benötigt unten reservierten Platz."]
+    ];
+    const markets = { kaufland: "Kaufland Mitte", edeka: "Edeka Nord", none: "Ohne Markt" };
+    const products = {
+      fruit: { category: "Obst & Gemüse", name: "Äpfel", quantity: "4 Stk." },
+      dairy: { category: "Kühlregal", name: "Milch", quantity: "1 l" },
+      dry: { category: "Vorrat", name: "Haferflocken", quantity: "500 g" }
+    };
+    const orders = { kaufland: ["fruit", "dry", "dairy"], edeka: ["dairy", "fruit", "dry"], none: ["dairy", "dry", "fruit"] };
+    function picker(number) {
+      return `<label class="picker">${icon}<span class="store-name">Kaufland Mitte</span>${number === 8 ? "<small>Einkaufsweg</small>" : ""}<span class="triangle"></span><select aria-label="Supermarkt auswählen – Variante ${number}">${Object.entries(markets).map(([id, name]) => `<option value="${id}">${name}</option>`).join("")}</select></label>`;
+    }
+    function listChoice(number, extraClass = "list-title") {
+      return `<div class="${extraClass}"><h3>Wocheneinkauf</h3><span class="list-arrow" aria-hidden="true"></span><select aria-label="Einkaufsliste auswählen – Variante ${number}"><option>Wocheneinkauf</option><option>Haushalt</option></select></div>`;
+    }
+    function renderProducts(phone, market) {
+      const container = phone.querySelector(".product-list");
+      container.replaceChildren();
+      for (const id of orders[market]) {
+        const product = products[id];
+        if (market !== "none") {
+          const category = document.createElement("p");
+          category.className = "category";
+          category.textContent = product.category;
+          container.append(category);
+        }
+        const row = document.createElement("div");
+        row.className = "item";
+        row.innerHTML = `<span class="check" aria-hidden="true"></span><span>${product.name}</span><span class="quantity">${product.quantity}</span>`;
+        container.append(row);
+      }
+      container.style.display = market === "none" ? "grid" : "block";
+      container.style.gap = market === "none" ? "8px" : "";
+      const name = phone.querySelector(".store-name");
+      if (name) name.textContent = markets[market];
+      const iconLabel = phone.querySelector(".icon-market-name");
+      if (iconLabel) iconLabel.textContent = markets[market];
+      phone.querySelectorAll(".segments button").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.market === market)));
+    }
+    const grid = document.querySelector(".grid");
+    variants.forEach(([title, description, recommended], index) => {
+      const number = index + 1;
+      const article = document.createElement("article");
+      let slot = `<div class="store-slot">${picker(number)}</div>`;
+      if (number === 1 || number === 4) slot = "";
+      if (number === 3) slot = `<div class="store-slot"><span>Markt:</span>${picker(number)}</div>`;
+      if (number === 5) slot = `<div class="route-bar"><span>Einkaufsweg</span>${picker(number)}</div>`;
+      if (number === 6) slot = `<p class="mini-label">SUPERMARKT</p><div class="segments" role="group" aria-label="Supermarkt auswählen – Variante 6">${Object.entries(markets).map(([id, name]) => `<button data-market="${id}" aria-pressed="${id === "kaufland"}">${id === "none" ? "Ohne" : name}</button>`).join("")}</div>`;
+      if (number === 7) slot = `<div class="store-slot"><span class="icon-market-name">Kaufland Mitte</span>${picker(number).replace('<span class="store-name">Kaufland Mitte</span>', "")}</div>`;
+      article.innerHTML = `<h2>${title}</h2><div class="phone variant-${number}">
+        <header class="topbar"><div class="brand"><img class="brand-icon" src="../custom_components/einkaufszettel/www/icon.svg" alt=""><div><p class="eyebrow">EINKAUFSZETTEL</p>${listChoice(number)}</div></div><span class="dots" aria-hidden="true">•••</span></header>
+        ${number === 1 ? `<div class="inline-title">${listChoice(number, "title-choice")}${picker(number)}</div>` : ""}
+        ${number !== 8 ? slot : ""}
+        <div class="sync-card"><span class="dot"></span><div><strong>Offline – lokale Liste</strong><p>2 Änderungen ausstehend</p></div><span class="icon-button" aria-hidden="true">↻</span></div>
+        <div class="add-form"><input placeholder="Was fehlt noch?" aria-label="Neuer Artikel (nur Vorschau)" disabled><span class="primary" aria-hidden="true">＋</span></div>
+        <div class="list-heading"><h2>Auf der Liste</h2>${number === 4 ? picker(number) : '<span class="count">3 offen</span>'}</div>
+        <div class="product-list" aria-live="polite"></div>
+        <div class="item completed"><span class="check">✓</span><span class="name">Kaffee</span><span class="quantity">250 g</span></div>
+        ${number === 8 ? slot : ""}
+        </div><p class="description">${description}${recommended ? '<br><span class="recommendation">★ Empfehlung</span>' : ""}</p>`;
+      grid.append(article);
+      const phone = article.querySelector(".phone");
+      renderProducts(phone, "kaufland");
+      phone.querySelectorAll(".picker select").forEach(select => select.addEventListener("change", () => renderProducts(phone, select.value)));
+      phone.querySelectorAll(".segments button").forEach(button => button.addEventListener("click", () => renderProducts(phone, button.dataset.market)));
+      phone.querySelectorAll(".list-title select, .title-choice select").forEach(select => select.addEventListener("change", () => {
+        phone.querySelectorAll("h3").forEach(heading => heading.textContent = select.value);
+      }));
+    });
+  </script>
+</body>
+</html>

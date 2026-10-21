@@ -63,12 +63,17 @@ Das Dreipunkte-App-Menü ist in aufklappbare Bereiche gegliedert:
 - **Installation:** HA-Anmeldung, App-Installation sowie Browser-/HA-Links zum Öffnen und Testen.
 - **Design:** Acht dunkle Farbschemata zur Auswahl: **Botanical**, **Midnight Plum**, **Market Journal**, **Fresh Signal**, **Mono** (Standard), **Tomato**, **Lime Focus** und **Indigo Pocket**. Die Auswahl wird auf diesem Gerät gespeichert und gilt auch offline für alle Listen. Schrift und Aufbau bleiben gleich.
 - **Listenverwaltung:** **Listen verwalten** (Quellen, App-Namen und Sichtbarkeit) und **Alexa-Liste kopieren**. Der bisherige manuelle Kopiermechanismus bleibt unverändert; automatische oder bidirektionale Alexa-Synchronisation ist damit nicht eingeführt.
+- **Supermärkte verwalten:** Gemeinsame Supermärkte/Filialen anlegen, umbenennen und nach Bestätigung löschen. Änderungen erfordern HA-Administratorrechte und eine Online-Verbindung; Listen werden dadurch nicht verändert. Die Daten liegen getrennt unter `.storage/einkaufszettel.supermarkets` und werden beim Verbinden bzw. Öffnen der Verwaltung neu geladen.
+
+Rechts neben **Auf der Liste** lässt sich unabhängig von der Einkaufsliste ein Supermarkt auswählen, alternativ **Ohne Markt**. Die Auswahl wird je Liste auf diesem Gerät gespeichert. Bereits geladene Märkte stehen auch offline zur Auswahl bereit; Offline-Änderungen an der gemeinsamen Marktverwaltung werden nicht vorgemerkt. Abteilungen, Marktstruktur und eine entsprechende Neusortierung der Artikel sind noch nicht implementiert.
 
 Die nachfolgenden Verweise auf **Setup → Listen verwalten** meinen **App-Menü → Listenverwaltung → Listen verwalten**; Anmeldung und Installationslinks liegen unter **Installation**.
 
 Zum Übernehmen gemeinsamer Listeneinstellungen muss die App mit einem HA-Administrator angemeldet sein. Ohne diese Berechtigung wird eine ausdrückliche Fehlermeldung angezeigt; bestehende Einstellungen bleiben unverändert.
 
-Die Listenauswahl liegt direkt auf dem Listentitel mit dem gefüllten Dreieck rechts oben. Aktive Artikel haben hellere Flächen; erledigte Artikel werden ausgegraut und durchgestrichen, lassen sich aber weiterhin wieder öffnen, bearbeiten und löschen.
+Die Listenauswahl öffnet direkt am Listentitel ein kompaktes Flyout (Entwurf **01 · Purist**). Es zeigt Listennamen und ein Häkchen an der aktiven Liste statt eines nativen Systemdialogs. Auswahl per Tippen oder Tastatur; Pfeiltasten, Pos1/Ende, Escape und Klick außerhalb werden unterstützt. Bereits geladene Listen bleiben offline auswählbar. Aktive Artikel haben hellere Flächen; erledigte Artikel werden ausgegraut und durchgestrichen, lassen sich aber weiterhin wieder öffnen, bearbeiten und löschen.
+
+Die HA-Seitenleiste zeigt genau einen gemeinsamen Eintrag **Einkaufszettel**, unabhängig von der Anzahl aktivierter Listen. Die gewünschte Liste wird innerhalb der App ausgewählt. Nach dem Update Home Assistant neu starten, damit die bisherigen separaten Seitenleistenpunkte entfernt werden.
 
 1. In Home Assistant die neue **Einkaufszettel-Seite in der Seitenleiste** öffnen. Sie zeigt die Web-App direkt in Home Assistant; sie ist der normale Startweg.
 2. Oben rechts das **Dreipunkte-Menü (Setup)** öffnen und **„App in eigenem Browserfenster öffnen / installieren“** wählen. Für Installation und Offline-Betrieb die HTTPS-Adresse verwenden, zum Beispiel über Nabu Casa. Im eigenen Browserfenster beim ersten Aufruf im Setup **Mit HA verbinden** wählen und Home Assistant den Zugriff erlauben; dann über **App installieren** oder das Browsermenü zum Startbildschirm hinzufügen.

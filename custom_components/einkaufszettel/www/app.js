@@ -4,9 +4,19 @@ const TOKEN_KEY = "einkaufszettel.auth";
 const OAUTH_STATE_PREFIX = "einkaufszettel.oauth.";
 const DOMAIN = "einkaufszettel";
 const DESIGN_KEY = "einkaufszettel.design";
+const MARKETS_KEY = "einkaufszettel.supermarkets";
+const MARKET_SELECTION_PREFIX = "einkaufszettel.supermarket.";
 
 const elements = {
   setup: document.querySelector("#setup"),
+  marketSelect: document.querySelector("#market-select"),
+  marketName: document.querySelector("#market-name"),
+  manageSupermarkets: document.querySelector("#manage-supermarkets"),
+  supermarketManagement: document.querySelector("#supermarket-management"),
+  supermarketMessage: document.querySelector("#supermarket-message"),
+  supermarketList: document.querySelector("#supermarket-list"),
+  addSupermarketForm: document.querySelector("#add-supermarket-form"),
+  supermarketNewName: document.querySelector("#supermarket-new-name"),
   designSelect: document.querySelector("#design-select"),
   manageLists: document.querySelector("#manage-lists"),
   listManagement: document.querySelector("#list-management"),
@@ -19,6 +29,7 @@ const elements = {
   message: document.querySelector("#message"),
   listName: document.querySelector("#list-name"),
   listSelect: document.querySelector("#list-select"),
+  listFlyout: document.querySelector("#list-flyout"),
   editItem: document.querySelector("#edit-item"),
   editItemForm: document.querySelector("#edit-item-form"),
   editSummary: document.querySelector("#edit-summary"),
@@ -53,6 +64,172 @@ let busy = false;
 let lastOperationTime = 0;
 let availableLists = [];
 let editingUid;
+let supermarkets = [];
+let selectedMarket = "";
+let managingSupermarkets = false;
+
+function validateSupermarkets(value) {
+  if (!Array.isArray(value) || value.some(market =>
+    !market || typeof market.id !== "string" || !market.id ||
+    typeof market.name !== "string" || !market.name.trim() || market.name.length > 100
+  ) || new Set(value.map(market => market.id)).size !== value.length) {
+    throw new Error("Die Supermarktdaten sind ungültig. Bitte erneut mit Home Assistant verbinden.");
+  }
+  return value;
+}
+
+function renderMarketSelection() {
+  elements.marketSelect.replaceChildren(new Option("Ohne Markt", ""));
+  for (const market of supermarkets) {
+    elements.marketSelect.add(new Option(market.name, market.id));
+  }
+  const market = supermarkets.find(market => market.id === selectedMarket);
+  elements.marketSelect.value = market?.id || "";
+  elements.marketName.textContent = market?.name || "Ohne Markt";
+  elements.marketSelect.disabled = !entryId;
+}
+
+function loadMarketSelection() {
+  selectedMarket = "";
+  try {
+    selectedMarket = entryId ? localStorage.getItem(MARKET_SELECTION_PREFIX + entryId) || "" : "";
+    if (selectedMarket && !supermarkets.some(market => market.id === selectedMarket)) {
+      localStorage.removeItem(MARKET_SELECTION_PREFIX + entryId);
+      selectedMarket = "";
+      showError(new Error("Der gewählte Supermarkt ist nicht mehr verfügbar. Bitte wähle einen anderen."));
+    }
+  } catch (error) {
+    showError(error);
+  }
+  renderMarketSelection();
+}
+
+function loadCachedSupermarkets() {
+  try {
+    const cached = localStorage.getItem(MARKETS_KEY);
+    if (cached) supermarkets = validateSupermarkets(JSON.parse(cached));
+  } catch (error) {
+    showError(error);
+  }
+  loadMarketSelection();
+}
+
+async function refreshSupermarkets() {
+  supermarkets = validateSupermarkets(await sendCommand(`${DOMAIN}/get_supermarkets`));
+  let cacheError;
+  try {
+    localStorage.setItem(MARKETS_KEY, JSON.stringify(supermarkets));
+  } catch (error) {
+    cacheError = new Error(`Supermärkte geladen, aber die Offline-Kopie konnte nicht gespeichert werden: ${error.message}`);
+  }
+  loadMarketSelection();
+  renderSupermarketManagement();
+  if (cacheError) throw cacheError;
+}
+
+elements.marketSelect.addEventListener("change", () => {
+  selectedMarket = elements.marketSelect.value;
+  renderMarketSelection();
+  try {
+    localStorage.setItem(MARKET_SELECTION_PREFIX + entryId, selectedMarket);
+  } catch (error) {
+    showError(new Error(`Die Marktauswahl konnte nicht gespeichert werden: ${error.message}`));
+  }
+});
+
+async function changeSupermarket(command, payload) {
+  if (managingSupermarkets) return;
+  let changed = false;
+  managingSupermarkets = true;
+  elements.supermarketList.inert = true;
+  elements.addSupermarketForm.inert = true;
+  elements.supermarketMessage.textContent = "Wird gespeichert …";
+  try {
+    supermarkets = validateSupermarkets(await sendCommand(`${DOMAIN}/${command}`, payload));
+    changed = true;
+    elements.supermarketMessage.textContent = "In Home Assistant gespeichert.";
+    try {
+      localStorage.setItem(MARKETS_KEY, JSON.stringify(supermarkets));
+    } catch (error) {
+      throw new Error(`In Home Assistant gespeichert, aber die Offline-Kopie konnte nicht gespeichert werden: ${error.message}`);
+    }
+    elements.supermarketNewName.value = "";
+  } catch (error) {
+    elements.supermarketMessage.textContent = error.message;
+  } finally {
+    managingSupermarkets = false;
+    elements.supermarketList.inert = false;
+    elements.addSupermarketForm.inert = false;
+    loadMarketSelection();
+    if (changed) renderSupermarketManagement();
+  }
+}
+
+function renderSupermarketManagement() {
+  elements.supermarketList.replaceChildren();
+  for (const market of supermarkets) {
+    const form = document.createElement("form");
+    form.className = "supermarket-row";
+    const name = document.createElement("input");
+    name.value = market.name;
+    name.required = true;
+    name.maxLength = 100;
+    name.setAttribute("aria-label", `Name: ${market.name}`);
+    const actions = document.createElement("div");
+    actions.className = "dialog-actions";
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.className = "primary";
+    save.textContent = "Umbenennen";
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "secondary";
+    remove.textContent = "Löschen";
+    remove.setAttribute("aria-label", `Supermarkt löschen: ${market.name}`);
+    remove.addEventListener("click", () => {
+      if (confirm(`Supermarkt „${market.name}“ für alle Nutzer löschen? Die Einkaufslisten bleiben erhalten.`)) {
+        changeSupermarket("delete_supermarket", { market_id: market.id });
+      }
+    });
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      if (!name.value.trim()) {
+        name.setCustomValidity("Bitte gib einen Namen ein.");
+        name.reportValidity();
+        return;
+      }
+      changeSupermarket("save_supermarket", { market_id: market.id, name: name.value.trim() });
+    });
+    name.addEventListener("input", () => name.setCustomValidity(""));
+    actions.append(save, remove);
+    form.append(name, actions);
+    elements.supermarketList.append(form);
+  }
+}
+
+elements.manageSupermarkets.addEventListener("click", async () => {
+  elements.supermarketManagement.showModal();
+  renderSupermarketManagement();
+  elements.supermarketMessage.textContent = "Supermärkte werden geladen …";
+  try {
+    await refreshSupermarkets();
+    elements.supermarketMessage.textContent = supermarkets.length ? "" : "Noch keine Supermärkte angelegt.";
+  } catch (error) {
+    elements.supermarketMessage.textContent = `Gespeicherte Offline-Kopie. Verwaltung nur online möglich: ${error.message}`;
+  }
+});
+
+elements.addSupermarketForm.addEventListener("submit", event => {
+  event.preventDefault();
+  const name = elements.supermarketNewName.value.trim();
+  if (!name) {
+    elements.supermarketNewName.setCustomValidity("Bitte gib einen Namen ein.");
+    elements.supermarketNewName.reportValidity();
+    return;
+  }
+  changeSupermarket("save_supermarket", { market_id: "", name });
+});
+elements.supermarketNewName.addEventListener("input", () => elements.supermarketNewName.setCustomValidity(""));
 
 function applyDesign(theme) {
   document.body.dataset.theme = theme;
@@ -230,6 +407,8 @@ function render() {
 function setBusy(value) {
   busy = value;
   elements.listSelect.disabled = value || !availableLists.length;
+  if (elements.listSelect.disabled) closeListFlyout();
+  elements.marketSelect.disabled = value || !entryId;
   elements.addForm.inert = value || !entryId;
   elements.sync.disabled = value;
   elements.copySource.disabled = value || !entryId;
@@ -238,20 +417,82 @@ function setBusy(value) {
 }
 
 function renderListSelection() {
-  elements.listSelect.replaceChildren();
+  elements.listFlyout.replaceChildren();
   const lists = [...availableLists];
   if (entryId && !lists.some((list) => list.entry_id === entryId)) {
     lists.unshift({ entry_id: entryId, name: elements.listName.textContent });
   }
   for (const list of lists) {
-    const option = document.createElement("option");
-    option.value = list.entry_id;
-    option.textContent = list.name;
-    elements.listSelect.append(option);
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "list-option";
+    option.setAttribute("aria-pressed", String(list.entry_id === entryId));
+    const name = document.createElement("span");
+    name.className = "list-option-name";
+    name.textContent = list.name;
+    const check = document.createElement("span");
+    check.className = "list-option-check";
+    check.textContent = "✓";
+    check.setAttribute("aria-hidden", "true");
+    option.append(name, check);
+    option.addEventListener("click", () => {
+      closeListFlyout(true);
+      if (list.entry_id !== entryId) selectList(list.entry_id).catch(showError);
+    });
+    elements.listFlyout.append(option);
   }
-  elements.listSelect.value = entryId || "";
+  elements.listSelect.setAttribute("aria-label", `Einkaufsliste auswählen, aktuell ${elements.listName.textContent}`);
   setBusy(busy);
 }
+
+function closeListFlyout(focus = false) {
+  elements.listFlyout.hidden = true;
+  elements.listSelect.setAttribute("aria-expanded", "false");
+  if (focus) elements.listSelect.focus();
+}
+
+function openListFlyout(focus = false) {
+  if (elements.listSelect.disabled) return;
+  elements.setup.open = false;
+  elements.listFlyout.hidden = false;
+  elements.listSelect.setAttribute("aria-expanded", "true");
+  if (focus) {
+    (elements.listFlyout.querySelector('[aria-pressed="true"]') ||
+      elements.listFlyout.querySelector("button"))?.focus();
+  }
+}
+
+elements.listSelect.addEventListener("click", () => {
+  if (elements.listFlyout.hidden) openListFlyout();
+  else closeListFlyout();
+});
+elements.listSelect.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    openListFlyout(true);
+  }
+});
+elements.listFlyout.addEventListener("keydown", (event) => {
+  const options = [...elements.listFlyout.querySelectorAll("button")];
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || !options.length) return;
+  event.preventDefault();
+  const current = options.indexOf(document.activeElement);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 :
+    (current + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+  options[next].focus();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !elements.listFlyout.hidden) {
+    event.preventDefault();
+    closeListFlyout(true);
+  }
+});
+document.addEventListener("click", (event) => {
+  if (!elements.listSelect.closest(".list-title").contains(event.target)) closeListFlyout();
+});
+elements.listSelect.closest(".list-title").addEventListener("focusout", (event) => {
+  if (event.relatedTarget && !elements.listSelect.closest(".list-title").contains(event.relatedTarget)) closeListFlyout();
+});
 
 async function readCachedLists() {
   return new Promise((resolve, reject) => {
@@ -273,14 +514,15 @@ async function loadSelectedList() {
   );
   render();
   renderListSelection();
+  loadMarketSelection();
 }
 
-elements.listSelect.addEventListener("change", async () => {
+async function selectList(listId) {
   if (busy) return;
   const previousEntry = entryId;
   setBusy(true);
   try {
-    entryId = elements.listSelect.value;
+    entryId = listId;
     await loadSelectedList();
     localStorage.setItem(ENTRY_KEY, entryId);
     const url = new URL(location.href);
@@ -297,7 +539,7 @@ elements.listSelect.addEventListener("change", async () => {
     setBusy(false);
   }
   synchronize().catch(showError);
-});
+}
 
 elements.cancelEdit.addEventListener("click", () => elements.editItem.close());
 elements.editItemForm.addEventListener("submit", async (event) => {
@@ -618,7 +860,13 @@ async function synchronize() {
 async function loadRemoteLists() {
   if (busy) throw new Error("Bitte warte, bis die aktuelle Aktion abgeschlossen ist, und synchronisiere erneut.");
   setBusy(true);
+  let marketError;
   try {
+    try {
+      await refreshSupermarkets();
+    } catch (error) {
+      marketError = error;
+    }
     const lists = await sendCommand(`${DOMAIN}/get_lists`);
     for (const cached of await readCachedLists()) {
       const listed = lists.find((list) => list.entry_id === cached.entry_id);
@@ -636,18 +884,24 @@ async function loadRemoteLists() {
       elements.openAppBrowser.href = url.href;
     }
     renderListSelection();
+    loadMarketSelection();
     if (!lists.length) {
       currentItems = [];
       pendingOperations = [];
       elements.listName.textContent = "Liste auswählen";
       render();
-      elements.message.textContent = "Wähle unter Setup → Listen verwalten eine HA-Liste aus.";
+      elements.message.textContent = marketError
+        ? marketError.message : "Wähle unter Setup → Listen verwalten eine HA-Liste aus.";
       return;
     }
   } finally {
     setBusy(false);
   }
-  await synchronize();
+  try {
+    await synchronize();
+  } finally {
+    if (marketError) showError(marketError);
+  }
 }
 
 elements.manageLists.addEventListener("click", async () => {
@@ -794,6 +1048,7 @@ async function start() {
   elements.openAppBrowser.hidden = false;
   try {
     database = await openDatabase();
+    loadCachedSupermarkets();
     availableLists = (await readCachedLists())
       .filter((list) => list.enabled !== false)
       .map(({ entry_id, name }) => ({ entry_id, name }));

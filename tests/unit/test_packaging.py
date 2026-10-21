@@ -84,6 +84,16 @@ def test_web_app_assets_are_versioned_and_precached():
         assert f'"{asset}"' in worker
 
 
+def test_list_selection_uses_custom_flyout_not_native_popup():
+    html = (
+        ROOT / "custom_components" / "einkaufszettel" / "www" / "app.html"
+    ).read_text(encoding="utf-8")
+    assert '<select id="list-select"' not in html
+    assert '<button id="list-select"' in html
+    assert 'aria-controls="list-flyout"' in html
+    assert 'id="list-flyout" aria-label="Einkaufsliste auswählen" hidden' in html
+
+
 def test_app_menu_groups_existing_actions():
     html = (
         ROOT / "custom_components" / "einkaufszettel" / "www" / "app.html"
@@ -148,3 +158,16 @@ def test_named_dark_designs_share_layout_and_storage():
     assert ".item.completed .item-name { text-decoration: line-through; }" in css
     assert 'class="list-arrow" aria-hidden="true"' in html
     assert "Design-Einstellungen folgen" not in html
+
+
+def test_supermarket_picker_and_management_are_separate_from_lists():
+    webapp = ROOT / "custom_components" / "einkaufszettel" / "www"
+    html = (webapp / "app.html").read_text(encoding="utf-8")
+    heading = re.search(r'<div class="list-heading">(.*?)</div>', html, re.DOTALL)
+    assert heading is not None
+    assert 'id="market-select"' in heading.group(1)
+    assert 'aria-label="Supermarkt auswählen"' in heading.group(1)
+    assert '<option value="">Ohne Markt</option>' in heading.group(1)
+    assert 'id="manage-supermarkets">Supermärkte verwalten</button>' in html
+    assert 'id="supermarket-management"' in html
+    assert 'id="add-supermarket-form"' in html

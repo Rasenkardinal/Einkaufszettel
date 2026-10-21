@@ -20,6 +20,8 @@ from .source import async_read_source
 
 PLATFORMS = [Platform.BUTTON]
 WEBAPP_PATH = Path(__file__).parent / "www"
+PANEL_PATH = f"{DOMAIN}_app"
+PANEL_ENTRIES_KEY = f"{DOMAIN}.panel_entries"
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -38,9 +40,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_configure_list,
         websocket_copy_source,
         websocket_delete_item,
+        websocket_delete_supermarket,
         websocket_get_list,
         websocket_get_lists,
         websocket_get_sources,
+        websocket_get_supermarkets,
+        websocket_save_supermarket,
         websocket_update_item,
     )
 
@@ -53,6 +58,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_update_item,
         websocket_delete_item,
         websocket_copy_source,
+        websocket_get_supermarkets,
+        websocket_save_supermarket,
+        websocket_delete_supermarket,
     ):
         websocket_api.async_register_command(hass, command)
     return True
@@ -68,10 +76,6 @@ class EinkaufszettelData:
 
 
 type EinkaufszettelConfigEntry = ConfigEntry[EinkaufszettelData]
-
-
-def _panel_path(entry: EinkaufszettelConfigEntry) -> str:
-    return f"{DOMAIN}_{entry.entry_id}"
 
 
 async def async_setup_entry(
@@ -123,16 +127,17 @@ async def async_setup_entry(
         if entity.platform == DOMAIN and entity.entity_id.startswith("todo."):
             registry.async_remove(entity.entity_id)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    frontend.async_register_built_in_panel(
-        hass,
-        "iframe",
-        sidebar_title=entry.data["name"],
-        sidebar_icon="mdi:cart-outline",
-        frontend_url_path=_panel_path(entry),
-        config={
-            "url": f"/{DOMAIN}/app.html?entry_id={entry.entry_id}",
-        },
-    )
+    panel_entries = hass.data.setdefault(PANEL_ENTRIES_KEY, set())
+    if not panel_entries:
+        frontend.async_register_built_in_panel(
+            hass,
+            "iframe",
+            sidebar_title="Einkaufszettel",
+            sidebar_icon="mdi:cart-outline",
+            frontend_url_path=PANEL_PATH,
+            config={"url": f"/{DOMAIN}/app.html"},
+        )
+    panel_entries.add(entry.entry_id)
     return True
 
 
@@ -142,5 +147,8 @@ async def async_unload_entry(
     """Unload without deleting the local shopping list."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
-        frontend.async_remove_panel(hass, _panel_path(entry))
+        panel_entries = hass.data.get(PANEL_ENTRIES_KEY, set())
+        panel_entries.discard(entry.entry_id)
+        if not panel_entries:
+            frontend.async_remove_panel(hass, PANEL_PATH)
     return unloaded

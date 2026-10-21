@@ -190,6 +190,7 @@ def integration(monkeypatch):
     websocket = importlib.import_module(f"{spec.name}.websocket")
     config_flow = importlib.import_module(f"{spec.name}.config_flow")
     hass = SimpleNamespace(
+        data={},
         states=SimpleNamespace(get=lambda entity_id: SimpleNamespace(state="1")),
         services=SimpleNamespace(
             async_call=AsyncMock(
@@ -865,7 +866,207 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 8
+    assert env.websocket_api.async_register_command.call_count == 11
+
+
+async def test_supermarkets_shared_crud_and_restart(integration):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_get_supermarkets(
+        env.hass, connection, {"id": 1, "type": "einkaufszettel/get_supermarkets"}
+    )
+    connection.send_result.assert_called_with(1, [])
+    store = env.stores["einkaufszettel.supermarkets"]
+    persisted = None
+
+    async def save(data):
+        nonlocal persisted
+        persisted = data
+        store.async_load.return_value = data
+
+    store.async_save.side_effect = save
+    await env.websocket.websocket_save_supermarket(
+        env.hass,
+        connection,
+        {
+            "id": 2,
+            "type": "einkaufszettel/save_supermarket",
+            "market_id": "",
+            "name": " Edeka Nord ",
+        },
+    )
+    market = persisted["supermarkets"][0]
+    assert market["name"] == "Edeka Nord"
+    uid = market["id"]
+    await env.websocket.websocket_save_supermarket(
+        env.hass,
+        connection,
+        {
+            "id": 3,
+            "type": "einkaufszettel/save_supermarket",
+            "market_id": uid,
+            "name": "Edeka Süd",
+        },
+    )
+    assert persisted["supermarkets"] == [{"id": uid, "name": "Edeka Süd"}]
+    env.hass.data.clear()
+    await env.websocket.websocket_get_supermarkets(
+        env.hass, connection, {"id": 4, "type": "einkaufszettel/get_supermarkets"}
+    )
+    connection.send_result.assert_called_with(4, persisted["supermarkets"])
+    await env.websocket.websocket_delete_supermarket(
+        env.hass,
+        connection,
+        {"id": 5, "type": "einkaufszettel/delete_supermarket", "market_id": uid},
+    )
+    assert persisted == {"supermarkets": []}
+    env.store.async_save.assert_not_awaited()
+
+
+@pytest.mark.parametrize("action", ["save_supermarket", "delete_supermarket"])
+@pytest.mark.parametrize("user", [None, SimpleNamespace(is_admin=False)])
+async def test_supermarket_writes_require_admin(integration, action, user):
+    env = integration
+    connection = Mock(user=user)
+    await getattr(env.websocket, f"websocket_{action}")(
+        env.hass,
+        connection,
+        {"id": 1, "type": f"einkaufszettel/{action}", "market_id": "", "name": "Markt"},
+    )
+    assert connection.send_error.call_args.args[1] == "unauthorized"
+    connection.send_result.assert_not_called()
+    assert "einkaufszettel.supermarkets" not in env.stores
+
+
+@pytest.mark.parametrize(
+    ("uid", "name"),
+    [("", ""), ("", " " * 3), ("", "x" * 101), ("", "edeka"), ("missing", "Neu")],
+)
+async def test_supermarket_invalid_names_duplicates_and_stale_ids(
+    integration, uid, name
+):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_get_supermarkets(
+        env.hass, connection, {"id": 1, "type": "einkaufszettel/get_supermarkets"}
+    )
+    store = env.stores["einkaufszettel.supermarkets"]
+    store.async_load.return_value = {"supermarkets": [{"id": "a", "name": "Edeka"}]}
+    connection.reset_mock()
+    await env.websocket.websocket_save_supermarket(
+        env.hass,
+        connection,
+        {
+            "id": 2,
+            "type": "einkaufszettel/save_supermarket",
+            "market_id": uid,
+            "name": name,
+        },
+    )
+    connection.send_error.assert_called_once()
+    connection.send_result.assert_not_called()
+    store.async_save.assert_not_awaited()
+
+
+async def test_supermarket_persistence_failure_is_not_success(integration):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_get_supermarkets(
+        env.hass, connection, {"id": 1, "type": "einkaufszettel/get_supermarkets"}
+    )
+    store = env.stores["einkaufszettel.supermarkets"]
+    store.async_save.side_effect = OSError("Disk full")
+    connection.reset_mock()
+    await env.websocket.websocket_save_supermarket(
+        env.hass,
+        connection,
+        {
+            "id": 2,
+            "type": "einkaufszettel/save_supermarket",
+            "market_id": "",
+            "name": "Markt",
+        },
+    )
+    connection.send_error.assert_called_with(
+        2, "cannot_manage_supermarkets", "Disk full"
+    )
+    connection.send_result.assert_not_called()
+
+
+async def test_supermarket_read_allowed_without_admin_and_corruption_reported(
+    integration,
+):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=False))
+    await env.websocket.websocket_get_supermarkets(
+        env.hass, connection, {"id": 1, "type": "einkaufszettel/get_supermarkets"}
+    )
+    connection.send_result.assert_called_with(1, [])
+    env.stores["einkaufszettel.supermarkets"].async_load.return_value = {
+        "supermarkets": [None]
+    }
+    connection.reset_mock()
+    await env.websocket.websocket_get_supermarkets(
+        env.hass, connection, {"id": 2, "type": "einkaufszettel/get_supermarkets"}
+    )
+    connection.send_error.assert_called_once()
+    connection.send_result.assert_not_called()
+
+
+async def test_concurrent_supermarket_creates_keep_both_changes(integration):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_get_supermarkets(
+        env.hass, connection, {"id": 1, "type": "einkaufszettel/get_supermarkets"}
+    )
+    store = env.stores["einkaufszettel.supermarkets"]
+    persisted = {"supermarkets": []}
+
+    async def load():
+        await asyncio.sleep(0)
+        return persisted
+
+    async def save(data):
+        nonlocal persisted
+        await asyncio.sleep(0)
+        persisted = data
+
+    store.async_load.side_effect = load
+    store.async_save.side_effect = save
+    await asyncio.gather(
+        *(
+            env.websocket.websocket_save_supermarket(
+                env.hass,
+                connection,
+                {
+                    "id": index,
+                    "type": "einkaufszettel/save_supermarket",
+                    "market_id": "",
+                    "name": name,
+                },
+            )
+            for index, name in enumerate(("Kaufland", "Edeka"), start=2)
+        )
+    )
+    assert {market["name"] for market in persisted["supermarkets"]} == {
+        "Kaufland",
+        "Edeka",
+    }
+    assert len({market["id"] for market in persisted["supermarkets"]}) == 2
+
+
+@pytest.mark.parametrize("uid", ["", "missing"])
+async def test_supermarket_delete_rejects_missing_selection(integration, uid):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_delete_supermarket(
+        env.hass,
+        connection,
+        {"id": 1, "type": "einkaufszettel/delete_supermarket", "market_id": uid},
+    )
+    connection.send_error.assert_called_once()
+    connection.send_result.assert_not_called()
+    env.stores["einkaufszettel.supermarkets"].async_save.assert_not_awaited()
 
 
 async def test_entry_registers_sidebar_app_panel_and_removes_it_on_unload(integration):
@@ -877,14 +1078,34 @@ async def test_entry_registers_sidebar_app_panel_and_removes_it_on_unload(integr
         "iframe",
         sidebar_title="Einkaufszettel",
         sidebar_icon="mdi:cart-outline",
-        frontend_url_path="einkaufszettel_test-entry",
-        config={"url": "/einkaufszettel/app.html?entry_id=test-entry"},
+        frontend_url_path="einkaufszettel_app",
+        config={"url": "/einkaufszettel/app.html"},
     )
 
     assert await env.package.async_unload_entry(env.hass, env.entry)
     env.frontend.async_remove_panel.assert_called_once_with(
-        env.hass, "einkaufszettel_test-entry"
+        env.hass, "einkaufszettel_app"
     )
+
+
+async def test_multiple_lists_share_one_panel_until_last_unload(integration):
+    env = integration
+    other = SimpleNamespace(entry_id="other-list", data={"name": "Edeka"}, options={})
+    assert await env.package.async_setup_entry(env.hass, env.entry)
+    assert await env.package.async_setup_entry(env.hass, other)
+    env.frontend.async_register_built_in_panel.assert_called_once()
+    assert await env.package.async_unload_entry(env.hass, env.entry)
+    env.frontend.async_remove_panel.assert_not_called()
+    env.hass.config_entries.async_unload_platforms.return_value = False
+    assert not await env.package.async_unload_entry(env.hass, other)
+    env.frontend.async_remove_panel.assert_not_called()
+    env.hass.config_entries.async_unload_platforms.return_value = True
+    assert await env.package.async_unload_entry(env.hass, other)
+    env.frontend.async_remove_panel.assert_called_once_with(
+        env.hass, "einkaufszettel_app"
+    )
+    assert await env.package.async_setup_entry(env.hass, other)
+    assert env.frontend.async_register_built_in_panel.call_count == 2
 
 
 @pytest.mark.parametrize("failure", ["read", "save", "missing_uid"])

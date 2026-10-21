@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.3.0-alpha.9">
+    <link rel="stylesheet" href="./app.css?v=0.3.0-alpha.10">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -19,11 +19,8 @@
           <div>
             <p class="eyebrow">EINKAUFSZETTEL</p>
             <div class="list-title">
-              <h1 id="list-name">Liste auswählen</h1>
-              <span class="list-arrow" aria-hidden="true"></span>
-              <select id="list-select" aria-label="Einkaufsliste auswählen" disabled>
-                <option value="">Listen werden geladen</option>
-              </select>
+              <h1><button id="list-select" type="button" aria-label="Einkaufsliste auswählen" aria-expanded="false" aria-controls="list-flyout" disabled><span id="list-name">Liste auswählen</span><span class="list-arrow" aria-hidden="true"></span></button></h1>
+              <div id="list-flyout" aria-label="Einkaufsliste auswählen" hidden></div>
             </div>
           </div>
         </div>
@@ -64,6 +61,7 @@
               <button id="copy-source">Alexa-Liste kopieren</button>
               <p>HA-Listen auswählen, App-Namen vergeben und die Übernahme aus der Quellliste anstoßen.</p>
             </details>
+            <button id="manage-supermarkets">Supermärkte verwalten</button>
             <p>Offline gespeichert auf diesem Gerät</p>
           </div>
         </details>
@@ -86,12 +84,32 @@
 
       <div class="list-heading">
         <h2>Auf der Liste</h2>
+        <label class="market-picker">
+          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10M3 10l2-6h14l2 6M3 10c0 3 4 3 4 0 0 3 5 3 5 0 0 3 5 3 5 0 0 3 4 3 4 0M9 20v-6h6v6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+          <span id="market-name">Ohne Markt</span>
+          <span class="market-arrow" aria-hidden="true"></span>
+          <select id="market-select" aria-label="Supermarkt auswählen" title="Marktauswahl; Sortierung nach Marktstruktur folgt später">
+            <option value="">Ohne Markt</option>
+          </select>
+        </label>
       </div>
       <p id="message" class="message" role="status"></p>
       <ul id="items" class="items"></ul>
       <p id="empty" class="empty" hidden>Noch nichts auf der Liste.</p>
 
     </main>
+    <dialog id="supermarket-management" aria-labelledby="supermarket-management-title">
+      <h2 id="supermarket-management-title">Supermärkte verwalten</h2>
+      <p class="management-help">Gemeinsame Märkte und Filialen für alle Nutzer. Änderungen benötigen eine Verbindung und HA-Administratorrechte. Marktstruktur und Sortierung folgen später.</p>
+      <p id="supermarket-message" role="status"></p>
+      <div id="supermarket-list"></div>
+      <form id="add-supermarket-form">
+        <label for="supermarket-new-name">Neuer Supermarkt / Filiale</label>
+        <input id="supermarket-new-name" maxlength="100" required autocomplete="off" placeholder="z. B. Edeka Nord">
+        <button class="primary" type="submit">Anlegen</button>
+      </form>
+      <form method="dialog" class="management-close"><button class="secondary">Schließen</button></form>
+    </dialog>
     <dialog id="list-management" aria-labelledby="list-management-title">
       <h2 id="list-management-title">Listen verwalten</h2>
       <p class="management-help">HA-Listen für die App auswählen und kurz benennen. Alexa- und HA-Namen bleiben unverändert. Änderungen gelten für alle Nutzer und benötigen HA-Administratorrechte.</p>
@@ -119,6 +137,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.3.0-alpha.9" defer></script>
+    <script src="./app.js?v=0.3.0-alpha.10" defer></script>
   </body>
 </html>
