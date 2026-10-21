@@ -26,6 +26,8 @@ Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- u
 
 Die Installation benötigt HTTPS, beispielsweise über Nabu Casa. Die PWA muss mindestens einmal online geladen und synchronisiert worden sein, bevor sie offline verwendet werden kann. Im installierten Modus kann sie ohne normale Browser-Adressleiste starten. Der Installationsdialog wird abhängig vom Browser angeboten; auf iOS kann stattdessen die Browserfunktion **Teilen → Zum Home-Bildschirm** nötig sein.
 
+Nach einem Update die Web-App online neu laden. JavaScript und CSS tragen eine gemeinsame Versionskennung, damit eine neue HTML-Seite keine alten Dateien aus dem Offline-Cache verwendet. Nach dem Laden des aktualisierten Offline-Caches ist die neue Oberfläche auch ohne Netz verfügbar. Browserdaten müssen dafür nicht gelöscht werden.
+
 ## Wichtige Umstellung von Easy Shopping (`easy_shopping`)
 
 Diese Version ändert die technische HA-Domain von `easy_shopping` auf `einkaufszettel`. Home Assistant kann Config Entries nicht domainübergreifend migrieren. Deshalb wird eine neue Integrationseinrichtung benötigt. Der neue Konfigurationsflow kann jedoch vorhandene lokale Eintragsdaten aus einem passenden alten `easy_shopping`-Config-Entry übernehmen, wenn dieser noch in HA registriert ist und dieselbe Quell-Entity ausgewählt wird.

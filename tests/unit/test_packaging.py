@@ -1,6 +1,7 @@
 """Guard the metadata required by HACS commit downloads."""
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
@@ -67,3 +68,17 @@ def test_hacs_metadata_and_integration_layout():
     assert 'id="setup"' in app_html
     assert 'id="manage-lists"' in app_html
     assert 'id="list-management"' in app_html
+
+
+def test_web_app_assets_are_versioned_and_precached():
+    webapp = ROOT / "custom_components" / "einkaufszettel" / "www"
+    html = (webapp / "app.html").read_text(encoding="utf-8")
+    worker = (webapp / "service-worker.js").read_text(encoding="utf-8")
+    assets = re.findall(r'(?:href|src)="(\./app\.(?:css|js)\?v=[^"]+)"', html)
+    assert len(assets) == 2
+    version = json.loads((webapp.parent / "manifest.json").read_text(encoding="utf-8"))[
+        "version"
+    ]
+    assert {asset.split("?v=")[1] for asset in assets} == {version}
+    for asset in assets:
+        assert f'"{asset}"' in worker
