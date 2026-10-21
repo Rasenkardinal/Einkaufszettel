@@ -127,7 +127,11 @@ async def websocket_configure_list(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
     """Persist shared aliases and visibility without renaming Alexa lists."""
-    connection.require_admin()
+    if connection.user is None or not connection.user.is_admin:
+        connection.send_error(
+            msg["id"], "unauthorized", "HA-Administratorrechte erforderlich."
+        )
+        return
     source = msg["source_entity_id"]
     name = msg["name"].strip()
     candidates = {item["source_entity_id"] for item in _sources(hass)}

@@ -573,7 +573,8 @@ async def test_alias_and_visibility_update_shared_config_not_source(integration)
         ]
     )
     env.hass.config_entries.async_entries.return_value = [env.entry]
-    connection = Mock()
+    connection = Mock(spec=["user", "send_result", "send_error"])
+    connection.user = SimpleNamespace(is_admin=True)
     await env.websocket.websocket_configure_list(
         env.hass,
         connection,
@@ -584,7 +585,6 @@ async def test_alias_and_visibility_update_shared_config_not_source(integration)
             "enabled": False,
         },
     )
-    connection.require_admin.assert_called_once()
     env.hass.config_entries.async_update_entry.assert_called_once_with(
         env.entry,
         title="Kaufland",
@@ -715,23 +715,28 @@ async def test_import_flow_reports_unreadable_source(integration):
     assert result == {"type": "abort", "reason": "cannot_read_source"}
 
 
+@pytest.mark.parametrize("user", [None, SimpleNamespace(is_admin=False)])
 async def test_list_management_requires_admin_before_discovering_or_writing(
     integration,
+    user,
 ):
     env = integration
-    connection = Mock()
-    connection.require_admin.side_effect = env.error("Administrator required")
-    with pytest.raises(env.error, match="Administrator"):
-        await env.websocket.websocket_configure_list(
-            env.hass,
-            connection,
-            {
-                "id": 15,
-                "source_entity_id": "todo.alexa",
-                "name": "Market",
-                "enabled": True,
-            },
-        )
+    connection = Mock(spec=["user", "send_result", "send_error"])
+    connection.user = user
+    await env.websocket.websocket_configure_list(
+        env.hass,
+        connection,
+        {
+            "id": 15,
+            "source_entity_id": "todo.alexa",
+            "name": "Market",
+            "enabled": True,
+        },
+    )
+    connection.send_error.assert_called_once_with(
+        15, "unauthorized", "HA-Administratorrechte erforderlich."
+    )
+    connection.send_result.assert_not_called()
     env.hass.config_entries.async_update_entry.assert_not_called()
     env.hass.config_entries.flow.async_init.assert_not_awaited()
 

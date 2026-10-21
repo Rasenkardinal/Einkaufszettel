@@ -66,6 +66,8 @@ Das Dreipunkte-App-Menü ist in aufklappbare Bereiche gegliedert:
 
 Die nachfolgenden Verweise auf **Setup → Listen verwalten** meinen **App-Menü → Listenverwaltung → Listen verwalten**; Anmeldung und Installationslinks liegen unter **Installation**.
 
+Zum Übernehmen gemeinsamer Listeneinstellungen muss die App mit einem HA-Administrator angemeldet sein. Ohne diese Berechtigung wird eine ausdrückliche Fehlermeldung angezeigt; bestehende Einstellungen bleiben unverändert.
+
 Die Listenauswahl liegt direkt auf dem Listentitel mit dem gefüllten Dreieck rechts oben. Aktive Artikel haben hellere Flächen; erledigte Artikel werden ausgegraut und durchgestrichen, lassen sich aber weiterhin wieder öffnen, bearbeiten und löschen.
 
 1. In Home Assistant die neue **Einkaufszettel-Seite in der Seitenleiste** öffnen. Sie zeigt die Web-App direkt in Home Assistant; sie ist der normale Startweg.
