@@ -2,7 +2,7 @@
 
 Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- und Kategorienlogik sowie Alexa-Anbindung über eine vorhandene HA-To-do-Liste.
 
-> **Projektstatus:** Alpha `0.3.0-alpha.2`. Enthält Konfigurationsflow, initialen Import, Quelllisten-Kopierer, lokale HA-To-do-Liste und eine installierbare Offline-PWA. Produktkatalog und Kategorien sind noch nicht implementiert.
+> **Projektstatus:** Alpha `0.3.0-alpha.3`. Enthält Konfigurationsflow, initialen Import, Quelllisten-Kopierer, lokale HA-To-do-Liste und eine installierbare Offline-PWA. Produktkatalog und Kategorien sind noch nicht implementiert.
 
 ## Funktionsumfang
 
@@ -17,12 +17,12 @@ Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- u
 ## Installation mit HACS
 
 1. In HACS das Repository `https://github.com/Rasenkardinal/Einkaufszettel` als **Integration** hinzufügen oder den bereits vorhandenen Repository-Eintrag aktualisieren.
-2. Version `0.3.0-alpha.2` herunterladen.
+2. Version `0.3.0-alpha.3` herunterladen.
 3. Home Assistant neu starten.
 4. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Einkaufszettel** öffnen.
 5. Alexa-/Quell-To-do-Liste auswählen und eine lokale Listenbezeichnung festlegen.
 6. Danach die Liste im HA-Bereich **To-do-Listen** öffnen. Der erwartete Entity-ID-Slug ist nun `todo.einkaufszettel`.
-7. Unter den Integration-Entitäten den Button **„Web-App öffnen / installieren“** drücken, die verlinkte Seite online im Smartphone-Browser öffnen und **Installieren** beziehungsweise **Zum Startbildschirm hinzufügen** wählen.
+7. Die neue Einkaufszettel-Seite erscheint in der Home-Assistant-Seitenleiste. Dort die Liste öffnen. Der Button **„Web-App öffnen / installieren“** unter den Integration-Entitäten erzeugt zusätzlich eine Benachrichtigung mit dem direkten App-Link.
 
 Die Installation benötigt HTTPS, beispielsweise über Nabu Casa. Die PWA muss mindestens einmal online geladen und synchronisiert worden sein, bevor sie offline verwendet werden kann. Im installierten Modus kann sie ohne normale Browser-Adressleiste starten. Der Installationsdialog wird abhängig vom Browser angeboten; auf iOS kann stattdessen die Browserfunktion **Teilen → Zum Home-Bildschirm** nötig sein.
 
@@ -31,7 +31,7 @@ Die Installation benötigt HTTPS, beispielsweise über Nabu Casa. Die PWA muss m
 Diese Version ändert die technische HA-Domain von `easy_shopping` auf `einkaufszettel`. Home Assistant kann Config Entries nicht domainübergreifend migrieren. Deshalb wird eine neue Integrationseinrichtung benötigt. Der neue Konfigurationsflow kann jedoch vorhandene lokale Eintragsdaten aus einem passenden alten `easy_shopping`-Config-Entry übernehmen, wenn dieser noch in HA registriert ist und dieselbe Quell-Entity ausgewählt wird.
 
 1. Vor dem Update ein Home-Assistant-Backup erstellen, einschließlich `.storage`.
-2. HACS aktualisieren und **Einkaufszettel `0.3.0-alpha.2`** herunterladen. Home Assistant neu starten.
+2. HACS aktualisieren und **Einkaufszettel `0.3.0-alpha.3`** herunterladen. Home Assistant neu starten.
 3. Den bisherigen Easy-Shopping-Eintrag **nicht vorher löschen**. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen** die neue Integration **Einkaufszettel** hinzufügen.
 4. Im neuen Konfigurationsflow dieselbe Alexa-/Quell-To-do-Entity wie zuvor wählen. Dadurch kann die Integration den alten lokalen Snapshot anhand der Quell-Entity übernehmen, ohne die Alexa-Liste erneut zu importieren. Die alte Integration darf bis zur erfolgreichen Prüfung registriert bleiben.
 5. Prüfen, ob Einträge, Erledigt-Status, lokale Namen und Notizen in der neuen `todo.einkaufszettel`-Liste vorhanden sind. Dashboards, Automationen und Skripte mit `todo.easy_shopping` oder der alten Button-Entity anschließend auf die neuen Einkaufszettel-Entities umstellen.
@@ -42,6 +42,8 @@ Diese Version ändert die technische HA-Domain von `easy_shopping` auf `einkaufs
 ## Manuelle Installation
 
 Home Assistant mit To-do-Unterstützung und eine externe Quellliste als `todo`-Entity sind erforderlich. Den vollständigen Ordner [custom_components/einkaufszettel](custom_components/einkaufszettel) in den HA-Konfigurationsordner unter `custom_components/einkaufszettel` kopieren und Home Assistant neu starten. Die Integration verwaltet keine Alexa-Anmeldung und benötigt keine Amazon-Zugangsdaten.
+
+Das Integrationslogo wird von Home Assistant ab Version 2026.3 direkt aus `custom_components/einkaufszettel/brand` geladen. Ältere HA-Versionen zeigen bei Custom Integrations weiterhin kein lokales Markenlogo an.
 
 ## Quellliste erneut kopieren
 
@@ -54,9 +56,9 @@ Unter **Einstellungen → Geräte & Dienste → Einkaufszettel → Entitäten** 
 
 ## Offline-Web-App verwenden
 
-1. In Home Assistant **Einstellungen → Geräte & Dienste → Einkaufszettel → Entitäten** den Button **„Web-App öffnen / installieren“** drücken.
-2. Die Benachrichtigung öffnen und den Web-App-Link im Smartphone-Browser laden. Beim ersten Aufruf **Mit HA verbinden** wählen und Home Assistant den Zugriff erlauben. Die App-Shell und Anmeldung werden initialisiert.
-3. Die App über den Browser installieren oder zum Startbildschirm hinzufügen. Beim nächsten Einkauf direkt dieses Symbol öffnen; nicht erst in der Companion App zu einer nicht erreichbaren HA-Seite navigieren.
+1. In Home Assistant die neue **Einkaufszettel-Seite in der Seitenleiste** öffnen. Sie zeigt die Web-App direkt in Home Assistant; sie ist der normale Startweg.
+2. Falls gewünscht, in der App **„App in eigenem Browserfenster öffnen / installieren“** wählen. Im eigenen Browserfenster beim ersten Aufruf **Mit HA verbinden** wählen und Home Assistant den Zugriff erlauben; dann die App über den Browser installieren oder zum Startbildschirm hinzufügen.
+3. Beim nächsten Einkauf das Homescreen-Symbol direkt starten; ohne Installation die Einkaufszettel-Seite in der HA-Seitenleiste öffnen.
 4. Artikel hinzufügen, abhaken oder entfernen. Ohne Netz werden Änderungen in der lokalen Browser-Datenbank und einer dauerhaften Warteschlange gespeichert. Beim nächsten Start mit erreichbarem HA werden diese nacheinander übertragen.
 5. Der Sync-Status zeigt ausstehende Änderungen. Bei abgelaufener Anmeldung **Mit HA verbinden** wählen und die Anmeldung erneut erlauben. Das Kopieren neuer Alexa-/Quelllistenartikel benötigt eine Verbindung.
 

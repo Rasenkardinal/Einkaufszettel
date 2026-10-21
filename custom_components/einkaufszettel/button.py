@@ -83,9 +83,9 @@ class InstallWebAppButton(ButtonEntity):
                 f"[Web-App öffnen und installieren]({app_url})\n\n"
                 f"Falls sich der Link nicht öffnet, kopiere diese Adresse in "
                 f"deinen Browser:\n\n{app_url}\n\n"
-                "Öffne den Link online und wähle im Browser **Installieren** "
-                "oder **Zum Startbildschirm hinzufügen**. Danach lässt sich "
-                "die zuvor geladene Liste auch offline öffnen."
+                "Du kannst den Einkaufszettel auch direkt über den neuen "
+                "Eintrag in der Home-Assistant-Seitenleiste öffnen. Zum "
+                "Installieren öffne die App dort in einem eigenen Browserfenster."
             ),
             title="Einkaufszettel",
             notification_id=f"{DOMAIN}_{self._entry.entry_id}_install",

@@ -75,6 +75,12 @@ def integration(monkeypatch):
     module("homeassistant")
     module("homeassistant.config_entries", ConfigEntry=Generic)
     components = module("homeassistant.components")
+    frontend = module(
+        "homeassistant.components.frontend",
+        async_register_built_in_panel=Mock(),
+        async_remove_panel=Mock(),
+    )
+    components.frontend = frontend
     module(
         "homeassistant.components.http",
         StaticPathConfig=lambda *args, **kwargs: (args, kwargs),
@@ -181,6 +187,7 @@ def integration(monkeypatch):
         model=model,
         websocket=websocket,
         websocket_api=websocket_api,
+        frontend=frontend,
         persistent_notification=persistent_notification,
         network=network,
         hass=hass,
@@ -488,6 +495,25 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
     assert env.websocket_api.async_register_command.call_count == 5
+
+
+async def test_entry_registers_sidebar_app_panel_and_removes_it_on_unload(integration):
+    env = integration
+    assert await env.package.async_setup_entry(env.hass, env.entry)
+
+    env.frontend.async_register_built_in_panel.assert_called_once_with(
+        env.hass,
+        "iframe",
+        sidebar_title="Einkaufszettel",
+        sidebar_icon="mdi:cart-outline",
+        frontend_url_path="einkaufszettel_test-entry",
+        config={"url": "/einkaufszettel/app.html?entry_id=test-entry"},
+    )
+
+    assert await env.package.async_unload_entry(env.hass, env.entry)
+    env.frontend.async_remove_panel.assert_called_once_with(
+        env.hass, "einkaufszettel_test-entry"
+    )
 
 
 @pytest.mark.parametrize("failure", ["read", "save", "missing_uid"])

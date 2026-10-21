@@ -3,11 +3,11 @@
   "name": "Einkaufszettel",
   "codeowners": ["@Rasenkardinal"],
   "config_flow": true,
-  "dependencies": ["persistent_notification", "todo", "websocket_api"],
+  "dependencies": ["frontend", "persistent_notification", "todo", "websocket_api"],
   "documentation": "https://github.com/Rasenkardinal/Einkaufszettel",
   "integration_type": "service",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Rasenkardinal/Einkaufszettel/issues",
   "requirements": [],
-  "version": "0.3.0-alpha.2"
+  "version": "0.3.0-alpha.3"
 }

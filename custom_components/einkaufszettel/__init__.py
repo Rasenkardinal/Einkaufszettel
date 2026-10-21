@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from homeassistant.components import websocket_api
+from homeassistant.components import frontend, websocket_api
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -63,6 +63,10 @@ class EinkaufszettelData:
 type EinkaufszettelConfigEntry = ConfigEntry[EinkaufszettelData]
 
 
+def _panel_path(entry: EinkaufszettelConfigEntry) -> str:
+    return f"{DOMAIN}_{entry.entry_id}"
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: EinkaufszettelConfigEntry
 ) -> bool:
@@ -103,6 +107,16 @@ async def async_setup_entry(
 
     entry.runtime_data = EinkaufszettelData(store, items)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    frontend.async_register_built_in_panel(
+        hass,
+        "iframe",
+        sidebar_title=entry.data["name"],
+        sidebar_icon="mdi:cart-outline",
+        frontend_url_path=_panel_path(entry),
+        config={
+            "url": f"/{DOMAIN}/app.html?entry_id={entry.entry_id}",
+        },
+    )
     return True
 
 
@@ -110,4 +124,7 @@ async def async_unload_entry(
     hass: HomeAssistant, entry: EinkaufszettelConfigEntry
 ) -> bool:
     """Unload without deleting the local shopping list."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        frontend.async_remove_panel(hass, _panel_path(entry))
+    return unloaded

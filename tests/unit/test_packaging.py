@@ -24,6 +24,20 @@ def test_hacs_metadata_and_integration_layout():
     assert manifest["integration_type"] == "service"
     assert (components[0] / "__init__.py").is_file()
     assert (components[0] / "config_flow.py").is_file()
+    brand = components[0] / "brand"
+    assert {"icon.png", "icon@2x.png", "logo.png", "logo@2x.png"}.issubset(
+        {path.name for path in brand.iterdir()}
+    )
+    for name, size in (
+        ("icon.png", (256, 256)),
+        ("icon@2x.png", (512, 512)),
+        ("logo.png", (512, 180)),
+        ("logo@2x.png", (1024, 360)),
+    ):
+        image = (brand / name).read_bytes()
+        assert image[:8] == b"\x89PNG\r\n\x1a\n"
+        assert int.from_bytes(image[16:20], "big") == size[0]
+        assert int.from_bytes(image[20:24], "big") == size[1]
     webapp = components[0] / "www"
     assert {
         "app.html",
@@ -45,6 +59,6 @@ def test_hacs_metadata_and_integration_layout():
     assert 'circle cx="256" cy="256"' in (webapp / "icon.svg").read_text(
         encoding="utf-8"
     )
-    assert 'class="brand-icon" src="./icon.svg"' in (webapp / "app.html").read_text(
-        encoding="utf-8"
-    )
+    app_html = (webapp / "app.html").read_text(encoding="utf-8")
+    assert 'class="brand-icon" src="./icon.svg"' in app_html
+    assert "open-app-browser" in app_html

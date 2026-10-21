@@ -20,6 +20,7 @@ const elements = {
   install: document.querySelector("#install"),
   installHelp: document.querySelector("#install-help"),
   openHomeassistant: document.querySelector("#open-homeassistant"),
+  openAppBrowser: document.querySelector("#open-app-browser"),
 };
 
 const queryEntryId = new URLSearchParams(location.search).get("entry_id");
@@ -511,6 +512,8 @@ async function start() {
     return;
   }
   elements.openHomeassistant.href = "/";
+  elements.openAppBrowser.href = location.href;
+  elements.openAppBrowser.hidden = false;
   try {
     database = await openDatabase();
     const cached = await storeRequest("lists", "get");
