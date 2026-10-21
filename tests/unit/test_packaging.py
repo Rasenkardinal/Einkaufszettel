@@ -94,6 +94,27 @@ def test_list_selection_uses_custom_flyout_not_native_popup():
     assert 'id="list-flyout" aria-label="Einkaufsliste auswählen" hidden' in html
 
 
+def test_embedded_authentication_opens_standalone_app_before_oauth():
+    script = (
+        ROOT / "custom_components" / "einkaufszettel" / "www" / "app.js"
+    ).read_text(encoding="utf-8")
+    auth = script.split("async function connectHomeAssistant() {", 1)[1].split(
+        "async function completeAuthorization()", 1
+    )[0]
+    embedded, oauth = auth.split("  const hassUrl = location.origin;", 1)
+    assert "window.top !== window" in embedded
+    assert 'appUrl.searchParams.set("connect_ha", "1")' in embedded
+    assert 'window.open(appUrl.href, "_blank")' in embedded
+    assert "appWindow.opener = null;" in embedded
+    assert "if (!appWindow)" in embedded
+    assert "return;" in embedded
+    assert 'redirectUrl.searchParams.delete("connect_ha")' in oauth
+    startup = script.split("async function start() {", 1)[1]
+    assert 'appUrl.searchParams.delete("connect_ha")' in startup
+    assert "if (startAuthorization)" in startup
+    assert "await connectHomeAssistant().catch(showError)" in startup
+
+
 def test_app_menu_groups_existing_actions():
     html = (
         ROOT / "custom_components" / "einkaufszettel" / "www" / "app.html"

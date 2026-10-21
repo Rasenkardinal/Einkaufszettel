@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Connection regression tests</title>
+<pre id="results">Running...</pre>
+<script>
+// Serve the repository root over HTTP and open this page to run the tests.
+async function runTests() {
+  const source = await (await fetch("../../custom_components/einkaufszettel/www/app.js")).text();
+  const auth = source.slice(source.indexOf("function readTokens()"), source.indexOf("function base64UrlEncode"));
+  const connection = source.slice(source.indexOf("function scheduleReconnect()"), source.indexOf("const waiters = new Map();"));
+  const commands = source.slice(source.indexOf("function sendCommand("), source.indexOf("async function synchronize()"));
+  const lifecycle = source.slice(source.indexOf("function resumeConnection()"), source.indexOf('window.addEventListener("beforeinstallprompt"'));
+  function fixture() {
+    const timers = new Map();
+    let now = 0, timerId = 0;
+    const listeners = {};
+    const localStorage = {
+      value: JSON.stringify({ access_token: "test", refresh_token: "test-refresh", hassUrl: location.origin, clientId: `${location.origin}/`, expires: Date.now() + 3600000 }),
+      getItem() { return this.value; },
+      setItem(key, value) { this.value = value; }
+    };
+    const environment = {
+      window: {
+        setTimeout(fn, delay) { timers.set(++timerId, { fn, time: now + delay }); return timerId; },
+        clearTimeout(id) { timers.delete(id); },
+        addEventListener(name, fn) { listeners[name] = fn; }
+      },
+      document: { visibilityState: "visible", addEventListener(name, fn) { listeners[name] = fn; } },
+      navigator: { onLine: true },
+      localStorage, location, AbortController,
+      fetch: async () => {
+        environment.refreshes++;
+        if (environment.networkError) throw new TypeError("Network unavailable");
+        return { status: environment.status, ok: environment.status === 200, json: async () => ({ access_token: "renewed", expires_in: 1800 }) };
+      },
+      refreshes: 0, status: 200, loads: 0, sockets: []
+    };
+    class FakeSocket {
+      static CONNECTING = 0;
+      static OPEN = 1;
+      static CLOSING = 2;
+      constructor() { this.readyState = 0; this.listeners = {}; this.sent = []; environment.sockets.push(this); }
+      addEventListener(type, fn) { this.listeners[type] = fn; }
+      send(value) { this.sent.push(JSON.parse(value)); }
+      emit(message) { this.listeners.message({ data: JSON.stringify(message) }); }
+      close() { this.readyState = 3; this.listeners.close?.(); }
+      authorize() { this.readyState = 1; this.emit({ type: "auth_required" }); this.emit({ type: "auth_ok" }); }
+    }
+    const create = new Function("env", "WebSocket", `
+      const { window, document, navigator, localStorage, location, AbortController, fetch } = env;
+      const TOKEN_KEY = "test";
+      const elements = { connect: { hidden: false } };
+      let database = {}, socket, connecting = false, authenticated = false, authenticationBlocked = false,
+        refreshAfterRejection = false, reconnectTimer, reconnectAttempts = 0, connectionTimer,
+        heartbeatTimer, heartbeatId, connectionGeneration = 0, connectionSyncTimer,
+        nextMessageId = 1, pendingOperations = [], busy = false;
+      const waiters = new Map();
+      let detail = "";
+      function updateConnection(state, message) { detail = message; }
+      function showError(error) { throw error; }
+      async function loadRemoteLists() { env.loads++; }
+      ${auth}
+      ${connection}
+      ${commands}
+      ${lifecycle}
+      return { connect, sendCommand, checkConnection, resumeConnection, setBusy: value => { busy = value; },
+        state: () => ({ authenticated, authenticationBlocked, connecting, detail, login: !elements.connect.hidden, waiters: waiters.size }) };
+    `);
+    const api = create(environment, FakeSocket);
+    async function tick(milliseconds) {
+      const end = now + milliseconds;
+      for (;;) {
+        const next = [...timers].filter(([, timer]) => timer.time <= end).sort((a, b) => a[1].time - b[1].time)[0];
+        if (!next) break;
+        now = next[1].time; timers.delete(next[0]); next[1].fn();
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+      }
+      now = end;
+    }
+    return { api, env: environment, tick, event: (type, data) => listeners[type](data), socket: () => environment.sockets.at(-1) };
+  }
+  function assert(condition, message) { if (!condition) throw Error(message); }
+  const results = [];
+  async function test(name, fn) { await fn(fixture()); results.push(`PASS ${name}`); }
+  await test("First use without saved credentials requests login without retrying", async ({ api, env, tick }) => {
+    env.localStorage.value = null;
+    await api.connect(); await tick(60000);
+    assert(api.state().login && env.sockets.length === 0, "first login state");
+  });
+  await test("Only one connection attempt; commands require authentication", async ({ api, env, socket }) => {
+    await Promise.all([api.connect(), api.connect(), api.connect()]);
+    assert(env.sockets.length === 1, "duplicate sockets");
+    assert(await api.sendCommand("test", {}).then(() => false, () => true), "command sent before auth");
+    socket().authorize();
+    assert(api.state().authenticated && env.loads === 1, "initial sync");
+  });
+  await test("Reconnect automatically and ignore stale socket messages", async ({ api, env, socket, tick }) => {
+    await api.connect(); const old = socket(); old.authorize(); old.close();
+    assert(!api.state().authenticated, "stale online state");
+    await tick(999); assert(env.sockets.length === 1, "retry too early");
+    await tick(1); assert(env.sockets.length === 2, "missing retry");
+    old.emit({ type: "auth_ok" }); assert(!api.state().authenticated, "stale event accepted");
+    socket().authorize(); assert(env.loads === 2, "missing resync");
+  });
+  await test("Handshake timeout and bounded exponential backoff", async ({ api, env, tick }) => {
+    await api.connect(); await tick(15000); await tick(1000);
+    assert(env.sockets.length === 2, "handshake not retried");
+    await tick(15000); await tick(1999);
+    assert(env.sockets.length === 2, "backoff too early");
+    await tick(1); assert(env.sockets.length === 3, "second backoff");
+    await tick(300000); assert(env.sockets.length < 15, "unbounded retries");
+  });
+  await test("Heartbeat pong keeps socket; missing pong reconnects", async ({ api, env, socket, tick }) => {
+    await api.connect(); socket().authorize(); await tick(30000);
+    const ping = socket().sent.at(-1); assert(ping.type === "ping", "no ping");
+    socket().emit({ type: "pong", id: ping.id }); await tick(30000);
+    assert(env.sockets.length === 1, "healthy socket replaced");
+    await tick(15000); await tick(1000); assert(env.sockets.length === 2, "dead socket not replaced");
+  });
+  await test("Network refresh failure retries without requiring login", async ({ api, env, socket, tick }) => {
+    const tokens = JSON.parse(env.localStorage.value); tokens.expires = 0; env.localStorage.value = JSON.stringify(tokens);
+    env.networkError = true; await api.connect();
+    assert(!api.state().login && !api.state().authenticationBlocked, "network failure treated as invalid auth");
+    env.networkError = false; await tick(1000); socket().authorize();
+    assert(env.refreshes === 2 && api.state().authenticated, "refresh recovery");
+    assert(JSON.parse(env.localStorage.value).refresh_token === "test-refresh", "refresh token lost");
+  });
+  await test("HTTP 503 retries; rejected refresh requires login", async ({ api, env, tick }) => {
+    const tokens = JSON.parse(env.localStorage.value); tokens.expires = 0; env.localStorage.value = JSON.stringify(tokens);
+    env.status = 503; await api.connect(); assert(!api.state().authenticationBlocked, "503 blocked auth");
+    env.status = 400; await tick(1000);
+    assert(api.state().login && api.state().authenticationBlocked, "invalid refresh not reported");
+    const count = env.refreshes; await tick(120000); assert(env.refreshes === count, "invalid auth retry loop");
+  });
+  await test("Rejected access token gets one forced refresh", async ({ api, env, socket, tick }) => {
+    await api.connect(); socket().readyState = 1; socket().emit({ type: "auth_invalid" });
+    await tick(1000); assert(env.refreshes === 1, "no forced refresh");
+    socket().readyState = 1; socket().emit({ type: "auth_invalid" });
+    assert(api.state().authenticationBlocked, "repeated auth rejection loops");
+    await tick(60000); assert(env.sockets.length === 2, "unexpected retry");
+  });
+  await test("Disconnect rejects in-flight commands immediately", async ({ api, socket }) => {
+    await api.connect(); socket().authorize();
+    const rejected = api.sendCommand("test", {}).then(() => false, () => true);
+    socket().close(); assert(await rejected, "pending command not rejected");
+    assert(api.state().waiters === 0, "pending command leaked");
+  });
+  await test("Successful commands remove pending requests", async ({ api, socket }) => {
+    await api.connect(); socket().authorize();
+    const result = api.sendCommand("test", {});
+    socket().emit({ type: "result", id: socket().sent.at(-1).id, success: true, result: "ok" });
+    assert(await result === "ok" && api.state().waiters === 0, "result not delivered");
+  });
+  await test("Reconnect waits for a busy operation before synchronizing", async ({ api, env, socket, tick }) => {
+    await api.connect(); api.setBusy(true); socket().authorize();
+    assert(env.loads === 0, "synchronized while busy");
+    await tick(1000); api.setBusy(false); await tick(250);
+    assert(env.loads === 1, "synchronization lost after busy operation");
+  });
+  await test("Offline/online and wake events recover without duplicates", async ({ api, env, socket, event, tick }) => {
+    await api.connect(); socket().authorize(); env.navigator.onLine = false; event("offline");
+    await tick(60000); assert(env.sockets.length === 1, "retry while offline");
+    env.navigator.onLine = true; event("online"); event("pageshow"); event("visibilitychange");
+    await Promise.resolve(); await Promise.resolve();
+    assert(env.sockets.length === 2, "wake duplicate or missing connection");
+    socket().authorize(); event("visibilitychange");
+    assert(socket().sent.at(-1).type === "ping", "no wake health check");
+  });
+  await test("New login in another tab resumes blocked authentication", async ({ api, env, socket, event, tick }) => {
+    await api.connect(); socket().readyState = 1; socket().emit({ type: "auth_invalid" });
+    await tick(1000); socket().readyState = 1; socket().emit({ type: "auth_invalid" });
+    event("storage", { storageArea: env.localStorage, key: "test", newValue: env.localStorage.value });
+    await Promise.resolve(); await Promise.resolve();
+    socket().authorize(); assert(api.state().authenticated, "new login not picked up");
+  });
+  return results;
+}
+runTests().then(results => {
+  document.querySelector("#results").textContent = `${results.join("\n")}\n\n${results.length} tests passed`;
+  document.body.dataset.result = "passed";
+}).catch(error => {
+  document.querySelector("#results").textContent = error.stack;
+  document.body.dataset.result = "failed";
+});
+</script>
+</html>

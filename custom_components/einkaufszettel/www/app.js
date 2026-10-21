@@ -59,6 +59,17 @@ try {
 }
 let database;
 let socket;
+let connecting = false;
+let authenticated = false;
+let authenticationBlocked = false;
+let refreshAfterRejection = false;
+let reconnectTimer;
+let reconnectAttempts = 0;
+let connectionTimer;
+let connectionSyncTimer;
+let heartbeatTimer;
+let heartbeatId;
+let connectionGeneration = 0;
 let nextMessageId = 1;
 let pendingInstallPrompt;
 let currentItems = [];
@@ -336,7 +347,7 @@ async function enqueue(operation) {
   } finally {
     setBusy(false);
   }
-  if (socket?.readyState === WebSocket.OPEN) await synchronize();
+  if (authenticated) await synchronize();
 }
 
 function applyLocalOperation(operation) {
@@ -631,13 +642,28 @@ async function refreshTokenIfNeeded(tokens) {
   body.set("grant_type", "refresh_token");
   body.set("refresh_token", tokens.refresh_token);
   if (tokens.clientId) body.set("client_id", tokens.clientId);
-  const response = await fetch(`${tokens.hassUrl}/auth/token`, {
-    method: "POST",
-    credentials: "same-origin",
-    body,
-  });
-  if (!response.ok) throw new Error("Home Assistant-Anmeldung abgelaufen. Öffne HA erneut.");
+  const controller = new AbortController();
+  const generation = connectionGeneration;
+  const timeout = window.setTimeout(() => controller.abort(), 15000);
+  let response;
+  try {
+    response = await fetch(`${tokens.hassUrl}/auth/token`, {
+      method: "POST",
+      credentials: "same-origin",
+      body,
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+  if (generation !== connectionGeneration) throw new Error("Die Anmeldung wurde während der Verbindungsprüfung geändert.");
+  if (response.status === 400 || response.status === 401) {
+    authenticationBlocked = true;
+    throw new Error("Home Assistant hat die Anmeldung abgelehnt. Bitte erneut mit HA verbinden.");
+  }
+  if (!response.ok) throw new Error(`Home Assistant ist vorübergehend nicht erreichbar (HTTP ${response.status}).`);
   const refreshed = await response.json();
+  if (generation !== connectionGeneration) throw new Error("Die Anmeldung wurde während der Verbindungsprüfung geändert.");
   if (
     typeof refreshed.access_token !== "string" ||
     !Number.isFinite(refreshed.expires_in)
@@ -662,6 +688,22 @@ function base64UrlEncode(bytes) {
 }
 
 async function connectHomeAssistant() {
+  if (window.top !== window) {
+    const appUrl = new URL(location.href);
+    for (const key of ["code", "state", "error", "auth_callback"]) {
+      appUrl.searchParams.delete(key);
+    }
+    appUrl.hash = "";
+    appUrl.searchParams.set("connect_ha", "1");
+    // HA reads OAuth parameters from the top-level window; its sandbox allows popups.
+    const appWindow = window.open(appUrl.href, "_blank");
+    if (!appWindow) {
+      throw new Error("Bitte erlaube das Öffnen eines neuen Fensters für die HA-Anmeldung oder öffne die App über „App in eigenem Browserfenster öffnen / installieren“.");
+    }
+    appWindow.opener = null;
+    elements.syncDetail.textContent = "Die HA-Anmeldung wurde in einem eigenen Browserfenster geöffnet. Bitte dort fortfahren.";
+    return;
+  }
   const hassUrl = location.origin;
   const clientId = `${hassUrl}/`;
   const redirectUrl = new URL(
@@ -671,6 +713,7 @@ async function connectHomeAssistant() {
   redirectUrl.searchParams.delete("code");
   redirectUrl.searchParams.delete("state");
   redirectUrl.searchParams.delete("error");
+  redirectUrl.searchParams.delete("connect_ha");
 
   const nonce = base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)));
   const state = { hassUrl, clientId, nonce };
@@ -763,8 +806,48 @@ async function completeAuthorization() {
   localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
 }
 
+function scheduleReconnect() {
+  if (reconnectTimer || authenticationBlocked || !navigator.onLine) return;
+  const delay = Math.min(1000 * 2 ** Math.min(reconnectAttempts++, 5), 30000);
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = undefined;
+    connect();
+  }, delay);
+}
+
+function disconnect(detail) {
+  window.clearTimeout(connectionTimer);
+  window.clearTimeout(connectionSyncTimer);
+  window.clearTimeout(heartbeatTimer);
+  heartbeatId = undefined;
+  authenticated = false;
+  const previous = socket;
+  socket = undefined;
+  if (previous && previous.readyState < WebSocket.CLOSING) previous.close();
+  for (const waiter of waiters.values()) {
+    window.clearTimeout(waiter.timer);
+    waiter.reject(new Error("Die Verbindung zu Home Assistant wurde unterbrochen. Änderungen bleiben lokal vorgemerkt."));
+  }
+  waiters.clear();
+  updateConnection(pendingOperations.length ? "pending" : "offline", detail);
+}
+
+function checkConnection() {
+  if (!authenticated || socket?.readyState !== WebSocket.OPEN || heartbeatId !== undefined) return;
+  window.clearTimeout(heartbeatTimer);
+  heartbeatId = nextMessageId++;
+  socket.send(JSON.stringify({ id: heartbeatId, type: "ping" }));
+  heartbeatTimer = window.setTimeout(() => {
+    disconnect("Home Assistant antwortet nicht. Die Verbindung wird automatisch wiederhergestellt.");
+    scheduleReconnect();
+  }, 15000);
+}
+
 async function connect() {
-  if (!navigator.onLine || socket?.readyState === WebSocket.OPEN) return;
+  if (!database || !navigator.onLine || connecting || authenticationBlocked ||
+      (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING))) return;
+  window.clearTimeout(reconnectTimer);
+  reconnectTimer = undefined;
   let tokens = readTokens();
   if (!tokens) {
     updateConnection(
@@ -775,41 +858,84 @@ async function connect() {
     return;
   }
   elements.connect.hidden = true;
+  connecting = true;
+  const generation = connectionGeneration;
   try {
-    tokens = await refreshTokenIfNeeded(tokens);
+    tokens = await refreshTokenIfNeeded(refreshAfterRejection ? { ...tokens, expires: 0 } : tokens);
   } catch (error) {
-    updateConnection("pending", error.message);
-    elements.connect.hidden = false;
+    updateConnection(pendingOperations.length ? "pending" : "offline",
+      authenticationBlocked ? error.message : `Verbindung wird automatisch erneut versucht: ${error.message}`);
+    elements.connect.hidden = !authenticationBlocked;
+    scheduleReconnect();
+    return;
+  } finally {
+    connecting = false;
+  }
+  if (generation !== connectionGeneration || !navigator.onLine) {
+    scheduleReconnect();
     return;
   }
 
   const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-  socket = new WebSocket(`${scheme}//${location.host}/api/websocket`);
-  socket.addEventListener("message", (event) => {
+  const currentSocket = new WebSocket(`${scheme}//${location.host}/api/websocket`);
+  socket = currentSocket;
+  connectionTimer = window.setTimeout(() => {
+    if (socket !== currentSocket) return;
+    disconnect("Home Assistant ist nicht erreichbar. Die Verbindung wird automatisch erneut versucht.");
+    scheduleReconnect();
+  }, 15000);
+  currentSocket.addEventListener("message", (event) => {
+    if (socket !== currentSocket) return;
     const message = JSON.parse(event.data);
     if (message.type === "auth_required") {
-      socket.send(JSON.stringify({ type: "auth", access_token: tokens.access_token }));
+      currentSocket.send(JSON.stringify({ type: "auth", access_token: tokens.access_token }));
     } else if (message.type === "auth_ok") {
-      updateConnection("online");
-      loadRemoteLists().catch(showError);
+      window.clearTimeout(connectionTimer);
+      authenticated = true;
+      refreshAfterRejection = false;
+      reconnectAttempts = 0;
+      updateConnection("online", "Verbindung hergestellt. Listen werden synchronisiert.");
+      heartbeatTimer = window.setTimeout(checkConnection, 30000);
+      const synchronizeWhenIdle = () => {
+        if (socket !== currentSocket || !authenticated) return;
+        if (busy) {
+          connectionSyncTimer = window.setTimeout(synchronizeWhenIdle, 250);
+        } else {
+          loadRemoteLists().catch(showError);
+        }
+      };
+      synchronizeWhenIdle();
     } else if (message.type === "auth_invalid") {
-      updateConnection("pending", "Home Assistant-Anmeldung abgelaufen. Öffne HA erneut und synchronisiere.");
-      elements.connect.hidden = false;
-      socket.close();
+      authenticationBlocked = refreshAfterRejection;
+      refreshAfterRejection = true;
+      elements.connect.hidden = !authenticationBlocked;
+      disconnect(authenticationBlocked
+        ? "Home Assistant hat die Anmeldung abgelehnt. Bitte erneut mit HA verbinden."
+        : "Die Anmeldung wird automatisch erneuert.");
+      scheduleReconnect();
+    } else if (message.type === "pong" && message.id === heartbeatId) {
+      heartbeatId = undefined;
+      window.clearTimeout(heartbeatTimer);
+      heartbeatTimer = window.setTimeout(checkConnection, 30000);
     } else if (message.type === "result") {
       const waiter = waiters.get(message.id);
       if (waiter) {
         waiters.delete(message.id);
+        window.clearTimeout(waiter.timer);
         if (message.success) waiter.resolve(message.result);
         else waiter.reject(new Error(message.error?.message || "Synchronisierung fehlgeschlagen."));
       }
     }
   });
-  socket.addEventListener("close", () => {
-    if (pendingOperations.length) updateConnection("pending");
+  currentSocket.addEventListener("close", () => {
+    if (socket !== currentSocket) return;
+    disconnect("Verbindung unterbrochen. Die App verbindet sich automatisch erneut.");
+    scheduleReconnect();
   });
-  socket.addEventListener("error", () => {
-    updateConnection(pendingOperations.length ? "pending" : "offline");
+  currentSocket.addEventListener("error", () => {
+    if (socket !== currentSocket) return;
+    disconnect("Home Assistant ist nicht erreichbar. Die App verbindet sich automatisch erneut.");
+    scheduleReconnect();
   });
 }
 
@@ -843,25 +969,25 @@ elements.connect.addEventListener("click", () => {
 });
 
 function sendCommand(type, payload = {}) {
-  if (socket?.readyState !== WebSocket.OPEN) {
+  if (!authenticated || socket?.readyState !== WebSocket.OPEN) {
     return Promise.reject(new Error("Home Assistant ist gerade nicht erreichbar."));
   }
   const id = nextMessageId++;
   return new Promise((resolve, reject) => {
-    waiters.set(id, { resolve, reject });
-    socket.send(JSON.stringify({ id, type, ...payload }));
-    window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       const waiter = waiters.get(id);
       if (waiter) {
         waiters.delete(id);
         reject(new Error("Zeitüberschreitung bei der Synchronisierung."));
       }
     }, 15000);
+    waiters.set(id, { resolve, reject, timer });
+    socket.send(JSON.stringify({ id, type, ...payload }));
   });
 }
 
 async function synchronize() {
-  if (busy || socket?.readyState !== WebSocket.OPEN || !entryId) return;
+  if (busy || !authenticated || socket?.readyState !== WebSocket.OPEN || !entryId) return;
   setBusy(true);
   try {
     const ids = new Set([entryId, ...availableLists.map((list) => list.entry_id)]);
@@ -1032,7 +1158,7 @@ elements.addForm.addEventListener("submit", async (event) => {
 });
 
 elements.sync.addEventListener("click", () => {
-  if (socket?.readyState === WebSocket.OPEN) {
+  if (authenticated && socket?.readyState === WebSocket.OPEN) {
     loadRemoteLists().catch(showError);
   } else {
     connect();
@@ -1056,8 +1182,31 @@ elements.copySource.addEventListener("click", async () => {
   }
 });
 
-window.addEventListener("online", connect);
-window.addEventListener("offline", () => updateConnection(pendingOperations.length ? "pending" : "offline"));
+function resumeConnection() {
+  if (authenticated) checkConnection();
+  else connect();
+}
+
+window.addEventListener("online", resumeConnection);
+window.addEventListener("pageshow", resumeConnection);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") resumeConnection();
+});
+window.addEventListener("storage", (event) => {
+  if (event.storageArea !== localStorage || (event.key !== TOKEN_KEY && event.key !== null)) return;
+  connectionGeneration++;
+  authenticationBlocked = false;
+  refreshAfterRejection = false;
+  reconnectAttempts = 0;
+  disconnect("Die gespeicherte Anmeldung wurde geändert. Verbindung wird geprüft.");
+  connect();
+});
+window.addEventListener("offline", () => {
+  connectionGeneration++;
+  window.clearTimeout(reconnectTimer);
+  reconnectTimer = undefined;
+  disconnect("Keine Netzwerkverbindung. Änderungen werden lokal gespeichert und später synchronisiert.");
+});
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
   pendingInstallPrompt = event;
@@ -1076,6 +1225,12 @@ elements.install.addEventListener("click", async () => {
 });
 
 async function start() {
+  const appUrl = new URL(location.href);
+  const startAuthorization = appUrl.searchParams.get("connect_ha") === "1";
+  if (startAuthorization) {
+    appUrl.searchParams.delete("connect_ha");
+    history.replaceState(null, "", appUrl.href);
+  }
   setBusy(true);
   elements.openHomeassistant.href = "/";
   elements.openAppBrowser.href = location.href;
@@ -1101,6 +1256,10 @@ async function start() {
       showError(error);
     }
     setBusy(false);
+    if (startAuthorization) {
+      await connectHomeAssistant().catch(showError);
+      return;
+    }
     connect();
   } catch (error) {
     showError(error);
