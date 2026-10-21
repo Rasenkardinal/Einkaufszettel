@@ -13,12 +13,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "To-do-Liste kopieren",
-        "description": "Offene Eintraege in eine eigenstaendige lokale Liste kopieren. Die Quelle bleibt unveraendert. Diese Alpha synchronisiert keine spaeteren Aenderungen.",
-        "data": {
-          "source_entity_id": "Quell-To-do-Liste (z. B. Alexa)",
-          "name": "Name der lokalen Liste"
-        }
+        "title": "Einkaufszettel einrichten",
+        "description": "Nach der Einrichtung die Web-App oeffnen. Unter Setup > Listen verwalten vorhandene HA-Listen auswaehlen und kurze App-Namen vergeben. Es werden keine zusaetzlichen To-do-Listen angelegt."
       }
     },
     "error": {
@@ -26,7 +22,7 @@
       "empty_name": "Bitte einen Namen fuer die lokale Liste eingeben."
     },
     "abort": {
-      "already_configured": "Diese Quellliste ist bereits eingerichtet."
+      "already_configured": "Einkaufszettel ist bereits eingerichtet. HA-Listen in der Web-App verwalten."
     }
   }
 }

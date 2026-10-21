@@ -2,26 +2,26 @@
 
 Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- und Kategorienlogik sowie Alexa-Anbindung über eine vorhandene HA-To-do-Liste.
 
-> **Projektstatus:** Alpha `0.3.0-alpha.3`. Enthält Konfigurationsflow, initialen Import, Quelllisten-Kopierer, lokale HA-To-do-Liste und eine installierbare Offline-PWA. Produktkatalog und Kategorien sind noch nicht implementiert.
+> **Projektstatus:** Alpha. Enthält HA-Quelllistenverwaltung mit gemeinsamen App-Anzeigenamen, Quelllisten-Kopierer und eine installierbare Offline-PWA. Die Integration erzeugt keine zusätzlichen To-do-Listen. Produktkatalog und Kategorien sind noch nicht implementiert.
 
 ## Funktionsumfang
 
-- Eine externe HA-To-do-Liste – etwa die in HA verfügbare Alexa-Liste – wird im Konfigurationsflow ausgewählt.
-- Offene Einträge werden bei der ersten Einrichtung in die lokale Liste kopiert.
+- Vorhandene externe HA-To-do-Listen werden unter **Setup → Listen verwalten** in der App angeboten. Dort werden Listen aktiviert und kurze App-Anzeigenamen vergeben.
+- Offene Einträge werden beim ersten Aktivieren in einen internen HA-Speicher kopiert.
 - Ein Button ergänzt später neue, offene Quell-Einträge anhand ihrer Quell-IDs, ohne vorhandene lokale Änderungen zurückzusetzen.
-- Die eigene To-do-Liste erscheint in HA und unterstützt Abhaken/Wiederöffnen, Umbenennen, Beschreibung und Fälligkeit.
+- Die PWA unterstützt Hinzufügen, Abhaken/Wiederöffnen, Umbenennen und Löschen. Es erscheint keine doppelte Einkaufszettel-Liste in der HA-To-do-Ansicht.
 - Die Quelle wird nicht verändert; es gibt keinen automatischen oder bidirektionalen Sync.
-- Kategorien, Produktkatalog, strukturierte Mengen und eine eigene UI sind noch nicht implementiert.
+- Kategorien, Produktkatalog und strukturierte Mengen sind noch nicht implementiert.
 - Die Smartphone-Oberfläche wird als PWA von der Integration über Home Assistant ausgeliefert. App-Dateien und Listendaten werden lokal gespeichert; Hinzufügen, Abhaken und Löschen werden offline vorgemerkt und beim nächsten Verbinden synchronisiert.
 
 ## Installation mit HACS
 
 1. In HACS das Repository `https://github.com/Rasenkardinal/Einkaufszettel` als **Integration** hinzufügen oder den bereits vorhandenen Repository-Eintrag aktualisieren.
-2. Version `0.3.0-alpha.3` herunterladen.
+2. Die aktuelle Vorabversion herunterladen.
 3. Home Assistant neu starten.
 4. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Einkaufszettel** öffnen.
-5. Alexa-/Quell-To-do-Liste auswählen und eine lokale Listenbezeichnung festlegen.
-6. Danach die Liste im HA-Bereich **To-do-Listen** öffnen. Der erwartete Entity-ID-Slug ist nun `todo.einkaufszettel`.
+5. Einrichtung bestätigen. Die Quelllisten werden anschließend in der App verwaltet.
+6. In der Web-App **Setup → Listen verwalten** öffnen, gewünschte HA-Listen aktivieren und kurze Anzeigenamen vergeben. Diese Einstellungen benötigen HA-Administratorrechte und gelten für alle Haushaltsmitglieder.
 7. Die neue Einkaufszettel-Seite erscheint in der Home-Assistant-Seitenleiste. Dort die Liste öffnen. Der Button **„Web-App öffnen / installieren“** unter den Integration-Entitäten erzeugt zusätzlich eine Benachrichtigung mit dem direkten App-Link.
 
 Die Installation benötigt HTTPS, beispielsweise über Nabu Casa. Die PWA muss mindestens einmal online geladen und synchronisiert worden sein, bevor sie offline verwendet werden kann. Im installierten Modus kann sie ohne normale Browser-Adressleiste starten. Der Installationsdialog wird abhängig vom Browser angeboten; auf iOS kann stattdessen die Browserfunktion **Teilen → Zum Home-Bildschirm** nötig sein.
@@ -33,8 +33,8 @@ Diese Version ändert die technische HA-Domain von `easy_shopping` auf `einkaufs
 1. Vor dem Update ein Home-Assistant-Backup erstellen, einschließlich `.storage`.
 2. HACS aktualisieren und **Einkaufszettel `0.3.0-alpha.3`** herunterladen. Home Assistant neu starten.
 3. Den bisherigen Easy-Shopping-Eintrag **nicht vorher löschen**. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen** die neue Integration **Einkaufszettel** hinzufügen.
-4. Im neuen Konfigurationsflow dieselbe Alexa-/Quell-To-do-Entity wie zuvor wählen. Dadurch kann die Integration den alten lokalen Snapshot anhand der Quell-Entity übernehmen, ohne die Alexa-Liste erneut zu importieren. Die alte Integration darf bis zur erfolgreichen Prüfung registriert bleiben.
-5. Prüfen, ob Einträge, Erledigt-Status, lokale Namen und Notizen in der neuen `todo.einkaufszettel`-Liste vorhanden sind. Dashboards, Automationen und Skripte mit `todo.easy_shopping` oder der alten Button-Entity anschließend auf die neuen Einkaufszettel-Entities umstellen.
+4. In der neuen Web-App unter **Setup → Listen verwalten** dieselbe Alexa-/Quell-To-do-Entity aktivieren. Dadurch kann die Integration den alten lokalen Snapshot anhand der Quell-Entity übernehmen, ohne die Alexa-Liste erneut zu importieren. Die alte Integration darf bis zur erfolgreichen Prüfung registriert bleiben.
+5. Einträge und Erledigt-Status in der Web-App prüfen. Eigene Einkaufszettel-To-do-Entitäten werden nicht mehr bereitgestellt; darauf basierende Dashboards und Automationen müssen angepasst werden.
 6. Erst danach den alten **Easy Shopping**-Config-Entry löschen. Die alte `.storage/easy_shopping.<entry_id>`-Datei wird dadurch nicht automatisch gelöscht.
 
 **Nicht** den alten Config-Entry entfernen, bevor die neue Liste geprüft ist. Falls er bereits gelöscht wurde, kann die Integration den zugehörigen alten Store nicht sicher anhand der Quellliste identifizieren; dann ist ein Restore aus Backup oder ein neuer Import aus der Quellliste erforderlich. Ein neuer Eintrag wird für den Store-Pfad `.storage/einkaufszettel.<entry_id>` angelegt.
@@ -68,17 +68,20 @@ Die PWA speichert ein Home-Assistant-Refresh-Token lokal im Browserprofil, damit
 
 Die kleine Markenzeile bleibt **EINKAUFSZETTEL**; die große Überschrift zeigt den Namen der ausgewählten Liste. Direkt darunter lässt sich beispielsweise zwischen **Kaufland**, **Edeka** und **Baumarkt** wechseln.
 
-- Neue Quelllisten weiterhin über Alexa anlegen und in HA bereitstellen. Jede gewünschte Quellliste einmal als eigenen Einkaufszettel-Integrationseintrag konfigurieren und passend benennen. Die Web-App legt keine Alexa- oder HA-Quelllisten an.
+- Neue Quelllisten weiterhin über Alexa anlegen und in HA bereitstellen. Die App erkennt externe HA-To-do-Listen automatisch unter **Setup → Listen verwalten**; eigene Einkaufszettel-Entitäten werden ausgeschlossen. Die Web-App legt keine Alexa- oder HA-Quelllisten an.
+- Dort **In App anzeigen** über das Kontrollkästchen wählen, einen **App-Namen** vergeben und **Übernehmen** drücken. Der Alias wird zentral in HA gespeichert; Alexa- und HA-Quellnamen bleiben unverändert. Intern wird bei Bedarf automatisch ein quellgebundener Integrationseintrag mit eigenem Speicher angelegt; ein separater HA-Konfigurationsdurchlauf entfällt.
+- Bestehende zusätzliche `todo`-Entitäten der Einkaufszettel-Integration werden beim Laden entfernt. Die externen Alexa-/HA-Quelllisten werden nicht entfernt oder umbenannt.
 - Nach der Anmeldung werden alle geladenen Einkaufszettel-Listen angeboten und für den Offline-Zugriff zwischengespeichert. Bereits geladene Listen lassen sich auch ohne Netz wechseln.
 - Artikel hinzufügen, abhaken und entfernen wie bisher; zum Bearbeiten des Namens den Artikelnamen antippen. Jede Liste hat ihre eigenen Artikel und ihre eigene Offline-Warteschlange.
 - Beim Synchronisieren werden auch ausstehende Änderungen anderer verfügbarer Listen übertragen. Neue bzw. noch nicht zwischengespeicherte Listen benötigen zunächst eine Verbindung.
 - **Alexa-Liste kopieren** im Setup bezieht sich immer auf die ausgewählte Liste und deren konfigurierte Quelle. Der bisherige Kopiermechanismus bleibt unverändert; es entsteht keine neue bidirektionale Alexa-Synchronisation.
+- Ausgeblendete Listen verschwinden nach dem Online-Abgleich auch aus der Offline-Auswahl. Ihre internen Daten und ausstehenden Offline-Aktionen bleiben erhalten; ausstehende Aktionen werden nach erneutem Einblenden synchronisiert. Ohne Netz können Listen verwendet, aber keine gemeinsamen Einstellungen geändert werden.
 
 ## Daten und Grenzen
 
 - Die Config Entry speichert Quell-Entity-ID und Listenname, keine Zugangsdaten.
 - Die maßgebliche lokale Liste liegt dauerhaft im integrationsverwalteten HA-`Store` unter `.storage/einkaufszettel.<entry_id>`. Die PWA speichert den letzten Stand und ausstehende Aktionen zusätzlich gerätegebunden in IndexedDB.
-- HA `TodoItem` bildet die kompatible Listenansicht. Produktzuordnung, Kategorie, Menge und Einheit werden bei späterer Produktfunktion im eigenen Datenmodell geführt.
+- Die PWA greift direkt auf den integrationsverwalteten HA-Speicher zu. Eine zusätzliche `TodoListEntity` ist nicht erforderlich. Produktzuordnung, Kategorie, Menge und Einheit werden bei späterer Produktfunktion im eigenen Datenmodell geführt.
 - Änderungen werden vor Anzeige dauerhaft gespeichert. Fehler werden nicht als Erfolg oder leere Liste verschleiert.
 - Entfernen der Integration löscht weder den HA-Store noch Browserdaten automatisch. Backups verwenden und `.storage` nicht manuell bearbeiten.
 - Der HA-WebSocket-Zugang und damit die erste Anmeldung sowie Synchronisation benötigen eine Verbindung zu Home Assistant. Bereits installierte App-Shell und zwischengespeicherte Liste sind offline verfügbar.

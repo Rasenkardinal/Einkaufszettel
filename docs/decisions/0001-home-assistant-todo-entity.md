@@ -1,6 +1,6 @@
 # ADR 0001: Home Assistant und eine native To-do-Entität
 
-- **Status:** Angenommen
+- **Status:** Teilweise ersetzt durch [ADR 0008](0008-source-list-management.md): keine eigene sichtbare To-do-Entität mehr; Quelllistenverwaltung in der PWA.
 - **Datum:** 2026-10-18
 
 ## Kontext

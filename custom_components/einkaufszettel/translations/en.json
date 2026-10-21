@@ -13,12 +13,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Copy a To-do list",
-        "description": "Copy open items into an independent local list. The source is not changed. This alpha does not synchronize subsequent changes.",
-        "data": {
-          "source_entity_id": "Source To-do list (e.g. Alexa)",
-          "name": "Name of the local list"
-        }
+        "title": "Set up Einkaufszettel",
+        "description": "Open the web app after setup. Select existing HA lists under Setup > Manage lists and assign short app names. No additional To-do lists are created."
       }
     },
     "error": {
@@ -26,7 +22,7 @@
       "empty_name": "Enter a name for the local list."
     },
     "abort": {
-      "already_configured": "This source list has already been configured."
+      "already_configured": "Einkaufszettel is already configured. Manage HA lists in the web app."
     }
   }
 }

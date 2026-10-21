@@ -7,6 +7,7 @@ from homeassistant.components import websocket_api
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
 from .const import CONF_SOURCE, DOMAIN, update_signal
@@ -16,7 +17,12 @@ from .source import async_read_source
 
 def _get_entry(hass: HomeAssistant, connection, msg: dict[str, Any]):
     entry = hass.config_entries.async_get_entry(msg["entry_id"])
-    if entry is None or entry.domain != DOMAIN or entry.runtime_data is None:
+    if (
+        entry is None
+        or entry.domain != DOMAIN
+        or CONF_SOURCE not in entry.data
+        or getattr(entry, "runtime_data", None) is None
+    ):
         connection.send_error(msg["id"], "not_found", "Shopping list not found")
         return None
     return entry
@@ -56,8 +62,109 @@ async def websocket_get_lists(
             }
             for entry in hass.config_entries.async_entries(DOMAIN)
             if getattr(entry, "runtime_data", None) is not None
+            and CONF_SOURCE in entry.data
+            and entry.options.get("enabled", True)
         ],
     )
+
+
+def _sources(hass: HomeAssistant) -> list[dict[str, Any]]:
+    registry = er.async_get(hass)
+    entries = {
+        entry.data[CONF_SOURCE]: entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if CONF_SOURCE in entry.data
+    }
+    result = []
+    for state in hass.states.async_all("todo"):
+        registered = registry.async_get(state.entity_id)
+        if registered is not None and registered.platform == DOMAIN:
+            continue
+        entry = entries.get(state.entity_id)
+        result.append(
+            {
+                "source_entity_id": state.entity_id,
+                "source_name": state.name,
+                "name": entry.data[CONF_NAME] if entry else state.name,
+                "enabled": entry.options.get("enabled", True) if entry else False,
+                "available": state.state not in ("unavailable", "unknown"),
+            }
+        )
+    known = {source["source_entity_id"] for source in result}
+    for source, entry in entries.items():
+        if source not in known:
+            result.append(
+                {
+                    "source_entity_id": source,
+                    "source_name": source,
+                    "name": entry.data[CONF_NAME],
+                    "enabled": entry.options.get("enabled", True),
+                    "available": False,
+                }
+            )
+    return result
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_sources"})
+@websocket_api.async_response
+async def websocket_get_sources(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Discover external HA lists, including disabled and unavailable sources."""
+    connection.send_result(msg["id"], _sources(hass))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/configure_list",
+        vol.Required("source_entity_id"): str,
+        vol.Required("name"): str,
+        vol.Required("enabled"): bool,
+    }
+)
+@websocket_api.async_response
+async def websocket_configure_list(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Persist shared aliases and visibility without renaming Alexa lists."""
+    connection.require_admin()
+    source = msg["source_entity_id"]
+    name = msg["name"].strip()
+    candidates = {item["source_entity_id"] for item in _sources(hass)}
+    if not name or len(name) > 100 or source not in candidates:
+        connection.send_error(
+            msg["id"], "invalid_input", "Select a HA list and a name (1-100 characters)"
+        )
+        return
+    entry = next(
+        (
+            entry
+            for entry in hass.config_entries.async_entries(DOMAIN)
+            if entry.data.get(CONF_SOURCE) == source
+        ),
+        None,
+    )
+    if entry is None:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "import"},
+            data={CONF_SOURCE: source, CONF_NAME: name, "enabled": msg["enabled"]},
+        )
+        if result["type"] != "create_entry":
+            connection.send_error(
+                msg["id"],
+                "cannot_configure_list",
+                "Could not read or configure the selected HA source",
+            )
+            return
+        entry = result["result"]
+    hass.config_entries.async_update_entry(
+        entry,
+        title=name,
+        data={**entry.data, CONF_NAME: name},
+        options={**entry.options, "enabled": msg["enabled"]},
+    )
+    connection.send_result(msg["id"], {"entry_id": entry.entry_id})
 
 
 @websocket_api.websocket_command(

@@ -6,6 +6,10 @@ const DOMAIN = "einkaufszettel";
 
 const elements = {
   setup: document.querySelector("#setup"),
+  manageLists: document.querySelector("#manage-lists"),
+  listManagement: document.querySelector("#list-management"),
+  managementMessage: document.querySelector("#management-message"),
+  sourceLists: document.querySelector("#source-lists"),
   addForm: document.querySelector("#add-form"),
   newItem: document.querySelector("#new-item"),
   items: document.querySelector("#items"),
@@ -197,9 +201,10 @@ function setBusy(value) {
   busy = value;
   elements.listSelect.disabled = value || !availableLists.length;
   elements.addForm.inert = value || !entryId;
-  elements.sync.disabled = value || !entryId;
+  elements.sync.disabled = value;
   elements.copySource.disabled = value || !entryId;
   elements.items.inert = value;
+  elements.manageLists.disabled = value;
 }
 
 function renderListSelection() {
@@ -581,18 +586,120 @@ async function synchronize() {
 }
 
 async function loadRemoteLists() {
-  const lists = await sendCommand(`${DOMAIN}/get_lists`);
-  availableLists = lists;
-  if (!entryId && lists.length) {
-    entryId = lists[0].entry_id;
-    localStorage.setItem(ENTRY_KEY, entryId);
-  }
-  renderListSelection();
-  if (!lists.length) {
-    throw new Error("Keine Einkaufszettel-Liste verfügbar. Binde deine Alexa-/HA-Quellliste zuerst in der HA-Integration ein.");
+  if (busy) throw new Error("Bitte warte, bis die aktuelle Aktion abgeschlossen ist, und synchronisiere erneut.");
+  setBusy(true);
+  try {
+    const lists = await sendCommand(`${DOMAIN}/get_lists`);
+    for (const cached of await readCachedLists()) {
+      const listed = lists.find((list) => list.entry_id === cached.entry_id);
+      await saveList({ ...cached, enabled: !!listed, name: listed?.name || cached.name });
+    }
+    availableLists = lists;
+    if (!lists.some((list) => list.entry_id === entryId)) {
+      entryId = lists[0]?.entry_id || null;
+      if (entryId) localStorage.setItem(ENTRY_KEY, entryId);
+      else localStorage.removeItem(ENTRY_KEY);
+      const url = new URL(location.href);
+      if (entryId) url.searchParams.set("entry_id", entryId);
+      else url.searchParams.delete("entry_id");
+      history.replaceState(null, "", url);
+      elements.openAppBrowser.href = url.href;
+    }
+    renderListSelection();
+    if (!lists.length) {
+      currentItems = [];
+      pendingOperations = [];
+      elements.listName.textContent = "Liste auswählen";
+      render();
+      elements.message.textContent = "Wähle unter Setup → Listen verwalten eine HA-Liste aus.";
+      return;
+    }
+  } finally {
+    setBusy(false);
   }
   await synchronize();
 }
+
+elements.manageLists.addEventListener("click", async () => {
+  elements.listManagement.showModal();
+  elements.managementMessage.textContent = "HA-Listen werden geladen …";
+  elements.sourceLists.replaceChildren();
+  try {
+    const sources = await sendCommand(`${DOMAIN}/get_sources`);
+    elements.managementMessage.textContent = sources.length
+      ? "" : "Keine HA-To-do-Listen gefunden. Lege eine Liste über Alexa an und stelle sie in HA bereit.";
+    for (const source of sources) {
+      const form = document.createElement("form");
+      form.className = "source-list";
+      const label = document.createElement("label");
+      const enabled = document.createElement("input");
+      enabled.type = "checkbox";
+      enabled.checked = source.enabled;
+      label.append(enabled, document.createTextNode(source.source_name));
+      const details = document.createElement("small");
+      details.textContent = `${source.source_entity_id}${source.available ? "" : " – Quelle nicht verfügbar"}`;
+      const nameLabel = document.createElement("label");
+      const alias = document.createElement("input");
+      alias.type = "text";
+      alias.value = source.name;
+      alias.required = true;
+      alias.maxLength = 100;
+      alias.setAttribute("aria-label", `Anzeigename: ${source.source_name}`);
+      nameLabel.append(document.createTextNode("App-Name"), alias);
+      const save = document.createElement("button");
+      save.type = "submit";
+      save.className = "primary";
+      save.textContent = "Übernehmen";
+      form.append(label, details, nameLabel, save);
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!alias.value.trim()) {
+          alias.setCustomValidity("Bitte gib einen Anzeigenamen ein.");
+          alias.reportValidity();
+          return;
+        }
+        if (busy) {
+          elements.managementMessage.textContent = "Bitte warte, bis die aktuelle Aktion abgeschlossen ist.";
+          return;
+        }
+        elements.sourceLists.inert = true;
+        setBusy(true);
+        elements.managementMessage.textContent = "Wird gespeichert …";
+        try {
+          const result = await sendCommand(`${DOMAIN}/configure_list`, {
+            source_entity_id: source.source_entity_id,
+            name: alias.value.trim(),
+            enabled: enabled.checked,
+          });
+          if (enabled.checked && result.entry_id) {
+            let ready = false;
+            for (let attempt = 0; attempt < 10; attempt++) {
+              const lists = await sendCommand(`${DOMAIN}/get_lists`);
+              if (lists.some((list) => list.entry_id === result.entry_id)) {
+                ready = true;
+                break;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+            if (!ready) throw new Error("Liste gespeichert, aber noch nicht geladen. Prüfe die Integration in HA und synchronisiere erneut.");
+          }
+          setBusy(false);
+          await loadRemoteLists();
+          elements.managementMessage.textContent = "Gespeichert. Der App-Name gilt für alle Nutzer.";
+        } catch (error) {
+          elements.managementMessage.textContent = error.message;
+        } finally {
+          setBusy(false);
+          elements.sourceLists.inert = false;
+        }
+      });
+      alias.addEventListener("input", () => alias.setCustomValidity(""));
+      elements.sourceLists.append(form);
+    }
+  } catch (error) {
+    elements.managementMessage.textContent = error.message;
+  }
+});
 
 elements.addForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -608,7 +715,7 @@ elements.addForm.addEventListener("submit", async (event) => {
 
 elements.sync.addEventListener("click", () => {
   if (socket?.readyState === WebSocket.OPEN) {
-    synchronize().catch(showError);
+    loadRemoteLists().catch(showError);
   } else {
     connect();
   }
@@ -657,10 +764,15 @@ async function start() {
   elements.openAppBrowser.hidden = false;
   try {
     database = await openDatabase();
-    availableLists = (await readCachedLists()).map(({ entry_id, name }) => ({ entry_id, name }));
-    if (!entryId && availableLists.length) entryId = availableLists[0].entry_id;
+    availableLists = (await readCachedLists())
+      .filter((list) => list.enabled !== false)
+      .map(({ entry_id, name }) => ({ entry_id, name }));
+    if (!availableLists.some((list) => list.entry_id === entryId)) {
+      entryId = availableLists[0]?.entry_id || null;
+    }
     if (entryId) await loadSelectedList();
     else renderListSelection();
+    updateConnection(pendingOperations.length ? "pending" : "offline");
     if ("serviceWorker" in navigator) {
       await navigator.serviceWorker.register("./service-worker.js", { scope: "./" });
     }

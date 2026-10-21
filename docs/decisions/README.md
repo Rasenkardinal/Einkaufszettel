@@ -12,13 +12,14 @@ Diese Architecture Decision Records (ADRs) halten wichtige Architekturentscheidu
 
 | ADR | Titel | Status |
 | --- | --- | --- |
-| [0001](0001-home-assistant-todo-entity.md) | Home Assistant und To-do-Entität als Plattform | Angenommen |
+| [0001](0001-home-assistant-todo-entity.md) | Home Assistant und To-do-Entität als Plattform | Teilweise ersetzt durch ADR 0008 |
 | [0002](0002-owned-data-and-import.md) | Eigene Datenhaltung und einmaliger Listenimport | Angenommen |
 | [0003](0003-products-and-list-items.md) | Produktkatalog von konkreten Listeneinträgen trennen | Angenommen |
 | [0004](0004-alpha-scope.md) | Alpha-Umfang und Import-Lebenszyklus | Angenommen |
 | [0005](0005-manual-append-button.md) | Manueller Kopieren-Knopf zum Ergänzen neuer Artikel | Angenommen |
 | [0006](0006-project-rename-and-domain.md) | Marken- und technische Domain-Umbenennung | Angenommen |
 | [0007](0007-offline-first-pwa.md) | Offline-First-Web-App und Hosting über Home Assistant | Angenommen |
+| [0008](0008-source-list-management.md) | HA-Quelllistenverwaltung und gemeinsame App-Anzeigenamen | Angenommen; ersetzt Teile von ADR 0001 |
 
 ## Noch offene Architekturfragen
 

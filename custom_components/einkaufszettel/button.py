@@ -21,7 +21,10 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Expose one copy button per configured list."""
-    async_add_entities([CopySourceButton(entry), InstallWebAppButton(entry)])
+    entities: list[ButtonEntity] = [InstallWebAppButton(entry)]
+    if CONF_SOURCE in entry.data:
+        entities.append(CopySourceButton(entry))
+    async_add_entities(entities)
 
 
 class CopySourceButton(ButtonEntity):

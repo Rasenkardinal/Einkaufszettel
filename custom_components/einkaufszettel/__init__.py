@@ -11,13 +11,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 
 from .const import CONF_SOURCE, DOMAIN, LEGACY_DOMAIN, STORAGE_VERSION
 from .model import ShoppingItem, load_items
 from .source import async_read_source
 
-PLATFORMS = [Platform.TODO, Platform.BUTTON]
+PLATFORMS = [Platform.BUTTON]
 WEBAPP_PATH = Path(__file__).parent / "www"
 
 
@@ -34,16 +35,20 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     )
     from .websocket import (  # noqa: PLC0415
         websocket_add_item,
+        websocket_configure_list,
         websocket_copy_source,
         websocket_delete_item,
         websocket_get_list,
         websocket_get_lists,
+        websocket_get_sources,
         websocket_update_item,
     )
 
     for command in (
         websocket_get_list,
         websocket_get_lists,
+        websocket_get_sources,
+        websocket_configure_list,
         websocket_add_item,
         websocket_update_item,
         websocket_delete_item,
@@ -80,7 +85,8 @@ async def async_setup_entry(
             legacy_entries = [
                 old_entry
                 for old_entry in hass.config_entries.async_entries(LEGACY_DOMAIN)
-                if old_entry.data.get(CONF_SOURCE) == entry.data[CONF_SOURCE]
+                if CONF_SOURCE in entry.data
+                and old_entry.data.get(CONF_SOURCE) == entry.data[CONF_SOURCE]
             ]
             if len(legacy_entries) > 1:
                 raise ValueError(
@@ -100,7 +106,11 @@ async def async_setup_entry(
             if legacy_data is not None:
                 items = load_items(legacy_data)
             else:
-                items = await async_read_source(hass, entry.data[CONF_SOURCE])
+                items = (
+                    await async_read_source(hass, entry.data[CONF_SOURCE])
+                    if CONF_SOURCE in entry.data
+                    else []
+                )
             await store.async_save({"items": [item.to_dict() for item in items]})
         else:
             items = load_items(data)
@@ -108,6 +118,10 @@ async def async_setup_entry(
         raise ConfigEntryNotReady(f"Cannot load Einkaufszettel: {err}") from err
 
     entry.runtime_data = EinkaufszettelData(store, items)
+    registry = er.async_get(hass)
+    for entity in list(registry.entities.values()):
+        if entity.platform == DOMAIN and entity.entity_id.startswith("todo."):
+            registry.async_remove(entity.entity_id)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     frontend.async_register_built_in_panel(
         hass,

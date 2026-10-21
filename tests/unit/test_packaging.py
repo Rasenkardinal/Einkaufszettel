@@ -65,3 +65,5 @@ def test_hacs_metadata_and_integration_layout():
     assert 'id="list-select"' in app_html
     assert 'id="edit-item-form"' in app_html
     assert 'id="setup"' in app_html
+    assert 'id="manage-lists"' in app_html
+    assert 'id="list-management"' in app_html

@@ -35,6 +35,7 @@
           </summary>
           <div class="setup-actions">
             <h2>Setup</h2>
+            <button id="manage-lists">Listen verwalten</button>
             <button id="connect">Mit HA verbinden</button>
             <button id="install">App installieren</button>
             <a id="open-app-browser" href="#" target="_blank" rel="noopener" hidden>App in eigenem Browserfenster öffnen / installieren</a>
@@ -69,6 +70,15 @@
       <p id="empty" class="empty" hidden>Noch nichts auf der Liste.</p>
 
     </main>
+    <dialog id="list-management" aria-labelledby="list-management-title">
+      <h2 id="list-management-title">Listen verwalten</h2>
+      <p class="management-help">HA-Listen für die App auswählen und kurz benennen. Alexa- und HA-Namen bleiben unverändert. Änderungen gelten für alle Nutzer und benötigen HA-Administratorrechte.</p>
+      <p id="management-message" role="status"></p>
+      <div id="source-lists"></div>
+      <form method="dialog">
+        <button class="secondary">Schließen</button>
+      </form>
+    </dialog>
     <dialog id="edit-item" aria-labelledby="edit-item-title">
       <form id="edit-item-form">
         <h2 id="edit-item-title">Artikel bearbeiten</h2>

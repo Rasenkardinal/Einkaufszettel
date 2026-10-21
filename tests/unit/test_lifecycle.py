@@ -33,6 +33,28 @@ def integration(monkeypatch):
         def __class_getitem__(cls, key):
             return cls
 
+    class ConfigFlow:
+        def __init_subclass__(cls, **kwargs):
+            pass
+
+        def _async_current_entries(self):
+            return self.hass.config_entries.async_entries("einkaufszettel")
+
+        async def async_set_unique_id(self, unique_id):
+            self.unique_id = unique_id
+
+        def _abort_if_unique_id_configured(self):
+            pass
+
+        def async_abort(self, **kwargs):
+            return {"type": "abort", **kwargs}
+
+        def async_create_entry(self, **kwargs):
+            return {"type": "create_entry", **kwargs}
+
+        def async_show_form(self, **kwargs):
+            return {"type": "form", **kwargs}
+
     class Entity:
         def async_write_ha_state(self):
             self.writes = getattr(self, "writes", 0) + 1
@@ -73,7 +95,12 @@ def integration(monkeypatch):
             )
 
     module("homeassistant")
-    module("homeassistant.config_entries", ConfigEntry=Generic)
+    module(
+        "homeassistant.config_entries",
+        ConfigEntry=Generic,
+        ConfigFlow=ConfigFlow,
+        ConfigFlowResult=dict,
+    )
     components = module("homeassistant.components")
     frontend = module(
         "homeassistant.components.frontend",
@@ -102,6 +129,7 @@ def integration(monkeypatch):
         Required=lambda key: key,
         Optional=lambda key: key,
         In=lambda values: values,
+        Schema=lambda schema: schema,
     )
     module(
         "homeassistant.const",
@@ -130,7 +158,12 @@ def integration(monkeypatch):
     )
     module(
         "homeassistant.helpers.entity_registry",
-        async_get=lambda hass: SimpleNamespace(async_get=lambda entity_id: None),
+        async_get=lambda hass: registry,
+    )
+    registry = SimpleNamespace(
+        entities={},
+        async_get=Mock(return_value=None),
+        async_remove=Mock(),
     )
     module(
         "homeassistant.helpers.entity_platform", AddConfigEntryEntitiesCallback=object
@@ -155,6 +188,7 @@ def integration(monkeypatch):
     button = importlib.import_module(f"{spec.name}.button")
     model = importlib.import_module(f"{spec.name}.model")
     websocket = importlib.import_module(f"{spec.name}.websocket")
+    config_flow = importlib.import_module(f"{spec.name}.config_flow")
     hass = SimpleNamespace(
         states=SimpleNamespace(get=lambda entity_id: SimpleNamespace(state="1")),
         services=SimpleNamespace(
@@ -173,11 +207,14 @@ def integration(monkeypatch):
             async_unload_platforms=AsyncMock(return_value=True),
             async_entries=Mock(return_value=[]),
             async_get_entry=Mock(),
+            async_update_entry=Mock(),
+            flow=SimpleNamespace(async_init=AsyncMock()),
         ),
     )
     entry = SimpleNamespace(
         entry_id="test-entry",
         data={"source_entity_id": "todo.alexa", "name": "Einkaufszettel"},
+        options={},
     )
     yield SimpleNamespace(
         package=package,
@@ -186,6 +223,7 @@ def integration(monkeypatch):
         dispatcher=dispatcher,
         model=model,
         websocket=websocket,
+        config_flow=config_flow,
         websocket_api=websocket_api,
         frontend=frontend,
         persistent_notification=persistent_notification,
@@ -203,6 +241,7 @@ def integration(monkeypatch):
         not_ready=NotReady,
         Item=Item,
         Status=Status,
+        registry=registry,
     )
     for name in list(sys.modules):
         if name.startswith(f"{spec.name}."):
@@ -458,6 +497,7 @@ async def test_web_app_lists_loaded_entries_with_names_and_sources(integration):
         entry_id="edeka",
         data={"name": "Edeka", "source_entity_id": "todo.edeka"},
         runtime_data=SimpleNamespace(items=[]),
+        options={},
     )
     unloaded = SimpleNamespace(entry_id="unloaded", runtime_data=None)
     env.hass.config_entries.async_entries.return_value = [
@@ -492,6 +532,242 @@ async def test_web_app_lists_empty_when_no_lists_are_loaded(integration):
         integration.hass, connection, {"id": 8}
     )
     connection.send_result.assert_called_once_with(8, [])
+
+
+async def test_sources_discovered_without_extra_config_entries(integration):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    env.hass.states.async_all = Mock(
+        return_value=[
+            SimpleNamespace(entity_id="todo.alexa", name="Alexa Long Name", state="1"),
+            SimpleNamespace(entity_id="todo.edeka", name="Alexa Edeka List", state="0"),
+            SimpleNamespace(
+                entity_id="todo.einkaufszettel", name="Duplicate", state="1"
+            ),
+        ]
+    )
+    env.registry.async_get.side_effect = lambda entity_id: (
+        SimpleNamespace(platform="einkaufszettel")
+        if entity_id == "todo.einkaufszettel"
+        else None
+    )
+    env.hass.config_entries.async_entries.return_value = [env.entry]
+    connection = Mock()
+    await env.websocket.websocket_get_sources(env.hass, connection, {"id": 10})
+    sources = connection.send_result.call_args.args[1]
+    assert [source["source_entity_id"] for source in sources] == [
+        "todo.alexa",
+        "todo.edeka",
+    ]
+    assert sources[0]["name"] == "Einkaufszettel"
+    assert sources[0]["enabled"]
+    assert sources[1]["name"] == "Alexa Edeka List"
+    assert not sources[1]["enabled"]
+
+
+async def test_alias_and_visibility_update_shared_config_not_source(integration):
+    env = integration
+    env.hass.states.async_all = Mock(
+        return_value=[
+            SimpleNamespace(entity_id="todo.alexa", name="Alexa Long Name", state="1")
+        ]
+    )
+    env.hass.config_entries.async_entries.return_value = [env.entry]
+    connection = Mock()
+    await env.websocket.websocket_configure_list(
+        env.hass,
+        connection,
+        {
+            "id": 11,
+            "source_entity_id": "todo.alexa",
+            "name": " Kaufland ",
+            "enabled": False,
+        },
+    )
+    connection.require_admin.assert_called_once()
+    env.hass.config_entries.async_update_entry.assert_called_once_with(
+        env.entry,
+        title="Kaufland",
+        data={"name": "Kaufland", "source_entity_id": "todo.alexa"},
+        options={"enabled": False},
+    )
+    env.hass.services.async_call.assert_not_awaited()
+    connection.send_result.assert_called_once_with(11, {"entry_id": "test-entry"})
+
+
+async def test_enabling_discovered_source_imports_it_without_user_config_flow(
+    integration,
+):
+    env = integration
+    env.hass.states.async_all = Mock(
+        return_value=[
+            SimpleNamespace(entity_id="todo.edeka", name="Alexa Edeka", state="1")
+        ]
+    )
+    created = SimpleNamespace(
+        entry_id="new",
+        data={"name": "Edeka", "source_entity_id": "todo.edeka"},
+        options={},
+    )
+    env.hass.config_entries.flow.async_init.return_value = {
+        "type": "create_entry",
+        "result": created,
+    }
+    connection = Mock()
+    await env.websocket.websocket_configure_list(
+        env.hass,
+        connection,
+        {"id": 12, "source_entity_id": "todo.edeka", "name": "Edeka", "enabled": True},
+    )
+    env.hass.config_entries.flow.async_init.assert_awaited_once_with(
+        "einkaufszettel",
+        context={"source": "import"},
+        data={"source_entity_id": "todo.edeka", "name": "Edeka", "enabled": True},
+    )
+    connection.send_result.assert_called_once_with(12, {"entry_id": "new"})
+
+
+@pytest.mark.parametrize(
+    "name, source", [(" ", "todo.alexa"), ("x" * 101, "todo.alexa"), ("K", "todo.fake")]
+)
+async def test_manage_lists_rejects_invalid_input(integration, name, source):
+    env = integration
+    env.hass.states.async_all = Mock(
+        return_value=[SimpleNamespace(entity_id="todo.alexa", name="Alexa", state="1")]
+    )
+    connection = Mock()
+    await env.websocket.websocket_configure_list(
+        env.hass,
+        connection,
+        {"id": 13, "source_entity_id": source, "name": name, "enabled": True},
+    )
+    connection.send_error.assert_called_once()
+    env.hass.config_entries.async_update_entry.assert_not_called()
+    env.hass.config_entries.flow.async_init.assert_not_awaited()
+
+
+async def test_disabled_lists_not_offered_but_data_is_not_deleted(integration):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    env.entry.options = {"enabled": False}
+    env.hass.config_entries.async_entries.return_value = [env.entry]
+    connection = Mock()
+    await env.websocket.websocket_get_lists(env.hass, connection, {"id": 14})
+    connection.send_result.assert_called_once_with(14, [])
+    assert env.entry.runtime_data.items[0].summary == "Milch"
+
+
+async def test_setup_removes_only_own_todo_entities(integration):
+    env = integration
+    env.registry.entities = {
+        "own": SimpleNamespace(
+            platform="einkaufszettel", entity_id="todo.einkaufszettel"
+        ),
+        "source": SimpleNamespace(platform="alexa", entity_id="todo.alexa"),
+        "button": SimpleNamespace(
+            platform="einkaufszettel", entity_id="button.install"
+        ),
+    }
+    await env.package.async_setup_entry(env.hass, env.entry)
+    env.registry.async_remove.assert_called_once_with("todo.einkaufszettel")
+    env.hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
+        env.entry, ["button"]
+    )
+
+
+async def test_hub_setup_does_not_require_a_source(integration):
+    env = integration
+    env.entry.data = {"name": "Einkaufszettel"}
+    await env.package.async_setup_entry(env.hass, env.entry)
+    env.hass.services.async_call.assert_not_awaited()
+    assert env.entry.runtime_data.items == []
+
+
+async def test_hub_flow_has_no_source_selector(integration):
+    flow = integration.config_flow.EinkaufszettelConfigFlow()
+    flow.hass = integration.hass
+    result = await flow.async_step_user()
+    assert result == {"type": "form", "step_id": "user", "data_schema": {}}
+    result = await flow.async_step_user({})
+    assert result["data"] == {"name": "Einkaufszettel"}
+    assert result["type"] == "create_entry"
+
+
+async def test_import_flow_reads_source_and_preserves_disabled_setting(integration):
+    flow = integration.config_flow.EinkaufszettelConfigFlow()
+    flow.hass = integration.hass
+    result = await flow.async_step_import(
+        {"source_entity_id": "todo.alexa", "name": " Kaufland ", "enabled": False}
+    )
+    assert result["type"] == "create_entry"
+    assert result["data"] == {"source_entity_id": "todo.alexa", "name": "Kaufland"}
+    assert result["options"] == {"enabled": False}
+    assert flow.unique_id == "todo.alexa"
+
+
+async def test_import_flow_reports_unreadable_source(integration):
+    flow = integration.config_flow.EinkaufszettelConfigFlow()
+    flow.hass = integration.hass
+    integration.hass.services.async_call.side_effect = integration.error("Unavailable")
+    result = await flow.async_step_import(
+        {"source_entity_id": "todo.alexa", "name": "Kaufland", "enabled": True}
+    )
+    assert result == {"type": "abort", "reason": "cannot_read_source"}
+
+
+async def test_list_management_requires_admin_before_discovering_or_writing(
+    integration,
+):
+    env = integration
+    connection = Mock()
+    connection.require_admin.side_effect = env.error("Administrator required")
+    with pytest.raises(env.error, match="Administrator"):
+        await env.websocket.websocket_configure_list(
+            env.hass,
+            connection,
+            {
+                "id": 15,
+                "source_entity_id": "todo.alexa",
+                "name": "Market",
+                "enabled": True,
+            },
+        )
+    env.hass.config_entries.async_update_entry.assert_not_called()
+    env.hass.config_entries.flow.async_init.assert_not_awaited()
+
+
+async def test_import_failure_is_reported_without_success(integration):
+    env = integration
+    env.hass.states.async_all = Mock(
+        return_value=[
+            SimpleNamespace(entity_id="todo.edeka", name="Edeka", state="unavailable")
+        ]
+    )
+    env.hass.config_entries.flow.async_init.return_value = {
+        "type": "form",
+        "errors": {"base": "cannot_read_source"},
+    }
+    connection = Mock()
+    await env.websocket.websocket_configure_list(
+        env.hass,
+        connection,
+        {"id": 16, "source_entity_id": "todo.edeka", "name": "Edeka", "enabled": True},
+    )
+    connection.send_error.assert_called_once()
+    connection.send_result.assert_not_called()
+    env.hass.config_entries.async_update_entry.assert_not_called()
+
+
+async def test_missing_configured_source_stays_manageable(integration):
+    env = integration
+    env.hass.states.async_all = Mock(return_value=[])
+    env.hass.config_entries.async_entries.return_value = [env.entry]
+    connection = Mock()
+    await env.websocket.websocket_get_sources(env.hass, connection, {"id": 17})
+    source = connection.send_result.call_args.args[1][0]
+    assert source["source_entity_id"] == "todo.alexa"
+    assert source["enabled"]
+    assert not source["available"]
 
 
 async def test_web_app_item_edits_stay_in_the_requested_list(integration):
@@ -584,7 +860,7 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 6
+    assert env.websocket_api.async_register_command.call_count == 8
 
 
 async def test_entry_registers_sidebar_app_panel_and_removes_it_on_unload(integration):
