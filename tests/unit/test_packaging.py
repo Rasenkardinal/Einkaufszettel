@@ -62,3 +62,6 @@ def test_hacs_metadata_and_integration_layout():
     app_html = (webapp / "app.html").read_text(encoding="utf-8")
     assert 'class="brand-icon" src="./icon.svg"' in app_html
     assert "open-app-browser" in app_html
+    assert 'id="list-select"' in app_html
+    assert 'id="edit-item-form"' in app_html
+    assert 'id="setup"' in app_html

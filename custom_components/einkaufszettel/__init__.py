@@ -37,11 +37,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_copy_source,
         websocket_delete_item,
         websocket_get_list,
+        websocket_get_lists,
         websocket_update_item,
     )
 
     for command in (
         websocket_get_list,
+        websocket_get_lists,
         websocket_add_item,
         websocket_update_item,
         websocket_delete_item,

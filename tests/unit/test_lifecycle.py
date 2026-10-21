@@ -430,12 +430,102 @@ async def test_web_app_api_supports_offline_retryable_mutations(integration):
     )
     assert env.entry.runtime_data.items[-1].status == "completed"
 
+    await env.websocket.websocket_update_item(
+        env.hass,
+        connection,
+        {
+            "id": 4,
+            "entry_id": env.entry.entry_id,
+            "uid": "offline-id",
+            "summary": "Vollkornbrot",
+        },
+    )
+    assert env.entry.runtime_data.items[-1].summary == "Vollkornbrot"
+    assert env.entry.runtime_data.items[-1].status == "completed"
+
     await env.websocket.websocket_delete_item(
         env.hass,
         connection,
         {"id": 4, "entry_id": env.entry.entry_id, "uid": "offline-id"},
     )
     assert all(item.uid != "offline-id" for item in env.entry.runtime_data.items)
+
+
+async def test_web_app_lists_loaded_entries_with_names_and_sources(integration):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    second = SimpleNamespace(
+        entry_id="edeka",
+        data={"name": "Edeka", "source_entity_id": "todo.edeka"},
+        runtime_data=SimpleNamespace(items=[]),
+    )
+    unloaded = SimpleNamespace(entry_id="unloaded", runtime_data=None)
+    env.hass.config_entries.async_entries.return_value = [
+        env.entry,
+        second,
+        unloaded,
+    ]
+    env.hass.config_entries.async_entries.reset_mock()
+    connection = Mock()
+    await env.websocket.websocket_get_lists(env.hass, connection, {"id": 7})
+    env.hass.config_entries.async_entries.assert_called_once_with("einkaufszettel")
+    connection.send_result.assert_called_once_with(
+        7,
+        [
+            {
+                "entry_id": "test-entry",
+                "name": "Einkaufszettel",
+                "source_entity_id": "todo.alexa",
+            },
+            {
+                "entry_id": "edeka",
+                "name": "Edeka",
+                "source_entity_id": "todo.edeka",
+            },
+        ],
+    )
+
+
+async def test_web_app_lists_empty_when_no_lists_are_loaded(integration):
+    connection = Mock()
+    await integration.websocket.websocket_get_lists(
+        integration.hass, connection, {"id": 8}
+    )
+    connection.send_result.assert_called_once_with(8, [])
+
+
+async def test_web_app_item_edits_stay_in_the_requested_list(integration):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    env.entry.domain = "einkaufszettel"
+    second = SimpleNamespace(
+        entry_id="edeka",
+        domain="einkaufszettel",
+        data={"name": "Edeka", "source_entity_id": "todo.edeka"},
+        runtime_data=env.package.EinkaufszettelData(
+            store=SimpleNamespace(async_save=AsyncMock()),
+            items=[env.model.ShoppingItem(uid="edeka-bread", summary="Brot")],
+        ),
+    )
+    entries = {env.entry.entry_id: env.entry, second.entry_id: second}
+    env.hass.config_entries.async_get_entry.side_effect = entries.get
+    original_items = list(env.entry.runtime_data.items)
+    connection = Mock()
+    await env.websocket.websocket_update_item(
+        env.hass,
+        connection,
+        {
+            "id": 9,
+            "entry_id": "edeka",
+            "uid": "edeka-bread",
+            "summary": "Vollkornbrot",
+        },
+    )
+    assert env.entry.runtime_data.items == original_items
+    assert second.runtime_data.items[0].summary == "Vollkornbrot"
+    assert second.runtime_data.items[0].status == "needs_action"
+    second.runtime_data.store.async_save.assert_awaited_once()
+    assert connection.send_result.call_args.args[1]["entry_id"] == "edeka"
 
 
 async def test_todo_entity_can_add_and_delete_items(integration):
@@ -494,7 +584,7 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 5
+    assert env.websocket_api.async_register_command.call_count == 6
 
 
 async def test_entry_registers_sidebar_app_panel_and_removes_it_on_unload(integration):

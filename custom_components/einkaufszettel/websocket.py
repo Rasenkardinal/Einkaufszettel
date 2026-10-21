@@ -40,6 +40,26 @@ async def _save_items(entry, items: list[ShoppingItem]) -> None:
     entry.runtime_data.items = items
 
 
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_lists"})
+@websocket_api.async_response
+async def websocket_get_lists(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """List configured, loaded shopping lists without creating new sources."""
+    connection.send_result(
+        msg["id"],
+        [
+            {
+                "entry_id": entry.entry_id,
+                "name": entry.data[CONF_NAME],
+                "source_entity_id": entry.data[CONF_SOURCE],
+            }
+            for entry in hass.config_entries.async_entries(DOMAIN)
+            if getattr(entry, "runtime_data", None) is not None
+        ],
+    )
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/get_list",

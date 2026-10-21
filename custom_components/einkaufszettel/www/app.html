@@ -18,13 +18,32 @@
           <img class="brand-icon" src="./icon.svg" alt="">
           <div>
             <p class="eyebrow">EINKAUFSZETTEL</p>
-            <h1 id="list-name">Einkaufszettel</h1>
+            <h1 id="list-name">Liste auswählen</h1>
+            <label class="visually-hidden" for="list-select">Einkaufsliste auswählen</label>
+            <select id="list-select" aria-label="Einkaufsliste auswählen" disabled>
+              <option value="">Listen werden geladen</option>
+            </select>
           </div>
         </div>
-        <div class="top-actions">
-          <button id="connect" class="secondary install">Mit HA verbinden</button>
-          <button id="install" class="secondary install">App installieren</button>
-        </div>
+        <details id="setup" class="setup">
+          <summary aria-label="Setup und weitere Aktionen" title="Setup und weitere Aktionen">
+            <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="5" r="2" fill="currentColor"/>
+              <circle cx="12" cy="12" r="2" fill="currentColor"/>
+              <circle cx="12" cy="19" r="2" fill="currentColor"/>
+            </svg>
+          </summary>
+          <div class="setup-actions">
+            <h2>Setup</h2>
+            <button id="connect">Mit HA verbinden</button>
+            <button id="install">App installieren</button>
+            <a id="open-app-browser" href="#" target="_blank" rel="noopener" hidden>App in eigenem Browserfenster öffnen / installieren</a>
+            <a id="open-homeassistant" href="/">Home Assistant öffnen</a>
+            <hr>
+            <button id="copy-source">Alexa-Liste kopieren</button>
+            <p>Offline gespeichert auf diesem Gerät</p>
+          </div>
+        </details>
       </header>
 
       <section class="sync-card" aria-live="polite">
@@ -44,18 +63,23 @@
 
       <div class="list-heading">
         <h2>Auf der Liste</h2>
-        <button id="copy-source" class="text-button">Alexa-Liste kopieren</button>
       </div>
       <p id="message" class="message" role="status"></p>
       <ul id="items" class="items"></ul>
       <p id="empty" class="empty" hidden>Noch nichts auf der Liste.</p>
 
-      <footer>
-        <a id="open-app-browser" href="#" target="_blank" rel="noopener" hidden>App in eigenem Browserfenster öffnen / installieren</a>
-        <a id="open-homeassistant" href="/">Home Assistant öffnen</a>
-        <span>Offline gespeichert auf diesem Gerät</span>
-      </footer>
     </main>
+    <dialog id="edit-item" aria-labelledby="edit-item-title">
+      <form id="edit-item-form">
+        <h2 id="edit-item-title">Artikel bearbeiten</h2>
+        <label for="edit-summary">Artikelname</label>
+        <input id="edit-summary" maxlength="200" required autocomplete="off">
+        <div class="dialog-actions">
+          <button id="cancel-edit" type="button" class="secondary">Abbrechen</button>
+          <button type="submit" class="primary">Speichern</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="install-help">
       <form method="dialog">
         <h2>Zum Startbildschirm hinzufügen</h2>

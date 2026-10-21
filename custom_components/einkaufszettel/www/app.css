@@ -9,6 +9,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -17,7 +18,7 @@ body {
   padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
 }
 
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { cursor: pointer; }
 
 .app {
@@ -40,7 +41,64 @@ button { cursor: pointer; }
 .brand { justify-content: flex-start; gap: 12px; min-width: 0; }
 .brand-icon { width: 48px; height: 48px; flex: none; border-radius: 13px; }
 .eyebrow { margin: 0 0 4px; color: #567063; font-size: 11px; font-weight: 800; letter-spacing: .13em; }
-.top-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.brand h1 { overflow-wrap: anywhere; }
+.brand > div { min-width: 0; }
+#list-select {
+  max-width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 6px 28px 6px 8px;
+  border: 1px solid #cdd8ce;
+  border-radius: 8px;
+  background: #fff;
+  color: #146b50;
+}
+.setup { position: relative; flex: none; align-self: flex-start; }
+.setup summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: #146b50;
+  cursor: pointer;
+  list-style: none;
+}
+.setup summary::-webkit-details-marker { display: none; }
+.setup summary:hover, .setup[open] summary { background: #e2eee6; }
+.setup-actions {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 10;
+  width: min(300px, calc(100vw - 32px));
+  max-height: 70dvh;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid #dce4dd;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 8px 30px #18352626;
+}
+.setup-actions h2 { padding: 10px 12px; font-size: 15px; }
+.setup-actions button, .setup-actions a {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #146b50;
+  text-align: left;
+  text-decoration: none;
+  font: inherit;
+}
+.setup-actions button:hover, .setup-actions a:hover { background: #edf3ee; }
+.setup-actions button:disabled { opacity: .45; cursor: default; }
+.setup-actions hr { border: 0; border-top: 1px solid #dce4dd; }
+.setup-actions p { margin: 8px 12px; color: #718077; font-size: 11px; }
 h1 { margin: 0; font-size: clamp(25px, 7vw, 34px); line-height: 1.1; }
 h2 { margin: 0; font-size: 19px; }
 
@@ -91,9 +149,7 @@ h2 { margin: 0; font-size: 19px; }
 }
 .primary { background: #146b50; color: white; }
 .secondary { background: #e2eee6; color: #145b44; }
-.install { min-height: 38px; padding: 0 12px; font-size: 13px; }
 .list-heading { margin-bottom: 10px; }
-.text-button { padding: 8px 0; border: 0; background: transparent; color: #146b50; font-weight: 700; }
 .message { min-height: 20px; margin: 0; color: #8a3c28; font-size: 13px; }
 .items { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .item {
@@ -105,16 +161,16 @@ h2 { margin: 0; font-size: 19px; }
 }
 .item-main { min-width: 0; display: flex; align-items: center; gap: 12px; }
 .item input[type="checkbox"] { width: 22px; height: 22px; flex: none; accent-color: #146b50; }
-.item-name { overflow-wrap: anywhere; }
+.item-name { overflow-wrap: anywhere; border: 0; padding: 8px 0; background: transparent; color: inherit; text-align: left; }
 .item.completed .item-name { color: #818b83; text-decoration: line-through; }
 .delete { border: 0; background: transparent; color: #748078; font-size: 21px; }
 .empty { padding: 30px 10px; color: #6c786f; text-align: center; }
-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 36px; color: #718077; font-size: 11px; }
-footer a { color: #146b50; }
 dialog { max-width: min(92vw, 420px); border: 0; border-radius: 16px; box-shadow: 0 10px 50px #0004; }
 dialog::backdrop { background: #14251bcc; }
 dialog form { display: grid; gap: 12px; }
 dialog h2, dialog p { margin: 0; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+#edit-summary { min-width: 0; width: 100%; padding: 12px; border: 1px solid #cdd8ce; border-radius: 8px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 @media (display-mode: standalone) {

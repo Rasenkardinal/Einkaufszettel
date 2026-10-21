@@ -5,12 +5,18 @@ const OAUTH_STATE_PREFIX = "einkaufszettel.oauth.";
 const DOMAIN = "einkaufszettel";
 
 const elements = {
+  setup: document.querySelector("#setup"),
   addForm: document.querySelector("#add-form"),
   newItem: document.querySelector("#new-item"),
   items: document.querySelector("#items"),
   empty: document.querySelector("#empty"),
   message: document.querySelector("#message"),
   listName: document.querySelector("#list-name"),
+  listSelect: document.querySelector("#list-select"),
+  editItem: document.querySelector("#edit-item"),
+  editItemForm: document.querySelector("#edit-item-form"),
+  editSummary: document.querySelector("#edit-summary"),
+  cancelEdit: document.querySelector("#cancel-edit"),
   connectionDot: document.querySelector("#connection-dot"),
   connectionLabel: document.querySelector("#connection-label"),
   syncDetail: document.querySelector("#sync-detail"),
@@ -39,6 +45,8 @@ let currentItems = [];
 let pendingOperations = [];
 let busy = false;
 let lastOperationTime = 0;
+let availableLists = [];
+let editingUid;
 
 function openDatabase() {
   return new Promise((resolve, reject) => {
@@ -58,13 +66,16 @@ function storeRequest(storeName, method, value) {
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
     const request = value === undefined ? store[method](entryId) : store[method](value);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => resolve(request.result);
+    transaction.onabort = () => reject(transaction.error || request.error ||
+      new Error("Die lokale Änderung konnte nicht gespeichert werden."));
+    transaction.onerror = () => reject(transaction.error || request.error ||
+      new Error("Der lokale Speicher ist nicht verfügbar."));
   });
 }
 
-async function saveList() {
-  await storeRequest("lists", "put", {
+async function saveList(snapshot) {
+  await storeRequest("lists", "put", snapshot || {
     entry_id: entryId,
     name: elements.listName.textContent,
     items: currentItems,
@@ -72,13 +83,13 @@ async function saveList() {
   });
 }
 
-async function readQueue() {
+async function readQueue(listId = entryId) {
   return new Promise((resolve, reject) => {
     const request = database.transaction("operations").objectStore("operations").getAll();
     request.onsuccess = () => {
       resolve(
         request.result
-          .filter((operation) => operation.entry_id === entryId)
+          .filter((operation) => operation.entry_id === listId)
           .sort((a, b) => a.created_at - b.created_at || a.id.localeCompare(b.id)),
       );
     };
@@ -87,18 +98,24 @@ async function readQueue() {
 }
 
 async function enqueue(operation) {
-  const queued = {
-    ...operation,
-    id: crypto.randomUUID(),
-    entry_id: entryId,
-    created_at: (lastOperationTime = Math.max(Date.now(), lastOperationTime + 1)),
-  };
-  await storeRequest("operations", "put", queued);
-  pendingOperations.push(queued);
-  applyLocalOperation(queued);
-  await saveList();
-  render();
-  updateConnection("offline");
+  if (busy) throw new Error("Bitte warte, bis die aktuelle Aktion abgeschlossen ist.");
+  setBusy(true);
+  try {
+    const queued = {
+      ...operation,
+      id: crypto.randomUUID(),
+      entry_id: entryId,
+      created_at: (lastOperationTime = Math.max(Date.now(), lastOperationTime + 1)),
+    };
+    await storeRequest("operations", "put", queued);
+    pendingOperations.push(queued);
+    applyLocalOperation(queued);
+    await saveList();
+    render();
+    updateConnection("offline");
+  } finally {
+    setBusy(false);
+  }
   if (socket?.readyState === WebSocket.OPEN) await synchronize();
 }
 
@@ -112,8 +129,11 @@ function applyLocalOperation(operation) {
       });
     }
   } else if (operation.type === "update_item") {
+    const changes = {};
+    if (operation.status !== undefined) changes.status = operation.status;
+    if (operation.summary !== undefined) changes.summary = operation.summary;
     currentItems = currentItems.map((item) =>
-      item.uid === operation.uid ? { ...item, status: operation.status } : item,
+      item.uid === operation.uid ? { ...item, ...changes } : item,
     );
   } else if (operation.type === "delete_item") {
     currentItems = currentItems.filter((item) => item.uid !== operation.uid);
@@ -143,9 +163,16 @@ function render() {
         status: checkbox.checked ? "completed" : "needs_action",
       }).catch(showError);
     });
-    const label = document.createElement("span");
+    const label = document.createElement("button");
+    label.type = "button";
     label.className = "item-name";
     label.textContent = item.summary;
+    label.setAttribute("aria-label", `Bearbeiten: ${item.summary}`);
+    label.addEventListener("click", () => {
+      editingUid = item.uid;
+      elements.editSummary.value = item.summary;
+      elements.editItem.showModal();
+    });
     if (pendingIds.has(item.uid)) label.title = "Wird beim nächsten Verbinden übertragen";
     main.append(checkbox, label);
     const remove = document.createElement("button");
@@ -163,7 +190,98 @@ function render() {
   elements.syncDetail.textContent = pendingOperations.length
     ? `${pendingOperations.length} Änderung${pendingOperations.length === 1 ? "" : "en"} ausstehend`
     : "Liste ist auf diesem Gerät gespeichert.";
+  setBusy(busy);
 }
+
+function setBusy(value) {
+  busy = value;
+  elements.listSelect.disabled = value || !availableLists.length;
+  elements.addForm.inert = value || !entryId;
+  elements.sync.disabled = value || !entryId;
+  elements.copySource.disabled = value || !entryId;
+  elements.items.inert = value;
+}
+
+function renderListSelection() {
+  elements.listSelect.replaceChildren();
+  const lists = [...availableLists];
+  if (entryId && !lists.some((list) => list.entry_id === entryId)) {
+    lists.unshift({ entry_id: entryId, name: elements.listName.textContent });
+  }
+  for (const list of lists) {
+    const option = document.createElement("option");
+    option.value = list.entry_id;
+    option.textContent = list.name;
+    elements.listSelect.append(option);
+  }
+  elements.listSelect.value = entryId || "";
+  setBusy(busy);
+}
+
+async function readCachedLists() {
+  return new Promise((resolve, reject) => {
+    const request = database.transaction("lists").objectStore("lists").getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function loadSelectedList() {
+  const cached = await storeRequest("lists", "get");
+  elements.listName.textContent = cached?.name ||
+    availableLists.find((list) => list.entry_id === entryId)?.name || "Liste laden";
+  currentItems = cached?.items || [];
+  pendingOperations = await readQueue();
+  for (const operation of pendingOperations) applyLocalOperation(operation);
+  lastOperationTime = pendingOperations.reduce(
+    (latest, operation) => Math.max(latest, operation.created_at), 0,
+  );
+  render();
+  renderListSelection();
+}
+
+elements.listSelect.addEventListener("change", async () => {
+  if (busy) return;
+  const previousEntry = entryId;
+  setBusy(true);
+  try {
+    entryId = elements.listSelect.value;
+    await loadSelectedList();
+    localStorage.setItem(ENTRY_KEY, entryId);
+    const url = new URL(location.href);
+    url.searchParams.set("entry_id", entryId);
+    history.replaceState(null, "", url);
+    elements.openAppBrowser.href = url.href;
+    elements.message.textContent = "";
+    updateConnection(pendingOperations.length ? "pending" : "offline");
+  } catch (error) {
+    entryId = previousEntry;
+    await loadSelectedList();
+    showError(error);
+  } finally {
+    setBusy(false);
+  }
+  synchronize().catch(showError);
+});
+
+elements.cancelEdit.addEventListener("click", () => elements.editItem.close());
+elements.editItemForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const summary = elements.editSummary.value.trim();
+  if (!summary) {
+    elements.editSummary.setCustomValidity("Bitte gib einen Artikelnamen ein.");
+    elements.editSummary.reportValidity();
+    return;
+  }
+  try {
+    await enqueue({ type: "update_item", uid: editingUid, summary });
+    elements.editItem.close();
+  } catch (error) {
+    showError(error);
+    elements.editItem.close();
+  }
+});
+elements.editSummary.addEventListener("input", () => elements.editSummary.setCustomValidity(""));
 
 function updateConnection(state, detail) {
   elements.connectionDot.className = `dot ${state === "online" ? "online" : state === "pending" ? "pending" : ""}`;
@@ -369,7 +487,7 @@ async function connect() {
       socket.send(JSON.stringify({ type: "auth", access_token: tokens.access_token }));
     } else if (message.type === "auth_ok") {
       updateConnection("online");
-      synchronize().catch(showError);
+      loadRemoteLists().catch(showError);
     } else if (message.type === "auth_invalid") {
       updateConnection("pending", "Home Assistant-Anmeldung abgelaufen. Öffne HA erneut und synchronisiere.");
       elements.connect.hidden = false;
@@ -392,6 +510,22 @@ async function connect() {
 }
 
 const waiters = new Map();
+
+document.addEventListener("click", (event) => {
+  if (!elements.setup.contains(event.target)) elements.setup.open = false;
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && elements.setup.open) {
+    elements.setup.open = false;
+    elements.setup.querySelector("summary").focus();
+  }
+});
+elements.setup.addEventListener("click", (event) => {
+  if (event.target.closest("button, a")) {
+    elements.setup.open = false;
+    elements.setup.querySelector("summary").focus();
+  }
+});
 
 elements.connect.addEventListener("click", () => {
   connectHomeAssistant().catch(showError);
@@ -417,41 +551,47 @@ function sendCommand(type, payload = {}) {
 
 async function synchronize() {
   if (busy || socket?.readyState !== WebSocket.OPEN || !entryId) return;
-  busy = true;
-  elements.sync.disabled = true;
-  elements.copySource.disabled = true;
+  setBusy(true);
   try {
-    const snapshot = await sendCommand(`${DOMAIN}/get_list`, { entry_id: entryId });
-    elements.listName.textContent = snapshot.name;
-    currentItems = snapshot.items;
-    await saveList();
-    pendingOperations = await readQueue();
-    for (const operation of pendingOperations) {
-      const payload = { entry_id: entryId, ...operation };
-      delete payload.id;
-      delete payload.created_at;
-      delete payload.entry_id;
-      delete payload.type;
-      const result = await sendCommand(`${DOMAIN}/${operation.type}`, {
-        ...payload,
-        entry_id: entryId,
-      });
-      currentItems = result.items;
-      elements.listName.textContent = result.name;
-      await storeRequest("operations", "delete", operation.id);
-      pendingOperations = pendingOperations.filter((item) => item.id !== operation.id);
-      await saveList();
-      render();
+    const ids = new Set([entryId, ...availableLists.map((list) => list.entry_id)]);
+    for (const listId of ids) {
+      let snapshot = await sendCommand(`${DOMAIN}/get_list`, { entry_id: listId });
+      await saveList(snapshot);
+      const operations = await readQueue(listId);
+      for (const operation of operations) {
+        const payload = { ...operation };
+        delete payload.id;
+        delete payload.created_at;
+        delete payload.type;
+        snapshot = await sendCommand(`${DOMAIN}/${operation.type}`, payload);
+        await saveList(snapshot);
+        await storeRequest("operations", "delete", operation.id);
+      }
     }
+    await loadSelectedList();
     updateConnection("online", "Alle Änderungen wurden synchronisiert.");
     elements.message.textContent = "";
   } finally {
-    for (const operation of pendingOperations) applyLocalOperation(operation);
-    busy = false;
-    elements.sync.disabled = false;
-    elements.copySource.disabled = false;
-    render();
+    try {
+      await loadSelectedList();
+    } finally {
+      setBusy(false);
+    }
   }
+}
+
+async function loadRemoteLists() {
+  const lists = await sendCommand(`${DOMAIN}/get_lists`);
+  availableLists = lists;
+  if (!entryId && lists.length) {
+    entryId = lists[0].entry_id;
+    localStorage.setItem(ENTRY_KEY, entryId);
+  }
+  renderListSelection();
+  if (!lists.length) {
+    throw new Error("Keine Einkaufszettel-Liste verfügbar. Binde deine Alexa-/HA-Quellliste zuerst in der HA-Integration ein.");
+  }
+  await synchronize();
 }
 
 elements.addForm.addEventListener("submit", async (event) => {
@@ -475,14 +615,19 @@ elements.sync.addEventListener("click", () => {
 });
 
 elements.copySource.addEventListener("click", async () => {
+  if (busy) return;
+  setBusy(true);
   try {
     const result = await sendCommand(`${DOMAIN}/copy_source`, { entry_id: entryId });
     currentItems = result.items;
     await saveList();
+    for (const operation of pendingOperations) applyLocalOperation(operation);
     render();
     elements.message.textContent = "Neue Artikel aus der Quellliste übernommen.";
   } catch (error) {
     showError(error);
+  } finally {
+    setBusy(false);
   }
 });
 
@@ -506,30 +651,16 @@ elements.install.addEventListener("click", async () => {
 });
 
 async function start() {
-  if (!entryId) {
-    elements.message.textContent = "Öffne diese App über den Button „Web-App installieren“ bei deiner Einkaufszettel-Liste.";
-    elements.addForm.hidden = true;
-    elements.sync.disabled = true;
-    elements.copySource.disabled = true;
-    return;
-  }
+  setBusy(true);
   elements.openHomeassistant.href = "/";
   elements.openAppBrowser.href = location.href;
   elements.openAppBrowser.hidden = false;
   try {
     database = await openDatabase();
-    const cached = await storeRequest("lists", "get");
-    if (cached) {
-      elements.listName.textContent = cached.name;
-      currentItems = cached.items;
-    }
-    pendingOperations = await readQueue();
-    lastOperationTime = pendingOperations.reduce(
-      (latest, operation) => Math.max(latest, operation.created_at),
-      0,
-    );
-    for (const operation of pendingOperations) applyLocalOperation(operation);
-    render();
+    availableLists = (await readCachedLists()).map(({ entry_id, name }) => ({ entry_id, name }));
+    if (!entryId && availableLists.length) entryId = availableLists[0].entry_id;
+    if (entryId) await loadSelectedList();
+    else renderListSelection();
     if ("serviceWorker" in navigator) {
       await navigator.serviceWorker.register("./service-worker.js", { scope: "./" });
     }
@@ -538,6 +669,7 @@ async function start() {
     } catch (error) {
       showError(error);
     }
+    setBusy(false);
     connect();
   } catch (error) {
     showError(error);

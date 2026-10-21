@@ -57,12 +57,22 @@ Unter **Einstellungen → Geräte & Dienste → Einkaufszettel → Entitäten** 
 ## Offline-Web-App verwenden
 
 1. In Home Assistant die neue **Einkaufszettel-Seite in der Seitenleiste** öffnen. Sie zeigt die Web-App direkt in Home Assistant; sie ist der normale Startweg.
-2. Falls gewünscht, in der App **„App in eigenem Browserfenster öffnen / installieren“** wählen. Im eigenen Browserfenster beim ersten Aufruf **Mit HA verbinden** wählen und Home Assistant den Zugriff erlauben; dann die App über den Browser installieren oder zum Startbildschirm hinzufügen.
+2. Oben rechts das **Dreipunkte-Menü (Setup)** öffnen und **„App in eigenem Browserfenster öffnen / installieren“** wählen. Für Installation und Offline-Betrieb die HTTPS-Adresse verwenden, zum Beispiel über Nabu Casa. Im eigenen Browserfenster beim ersten Aufruf im Setup **Mit HA verbinden** wählen und Home Assistant den Zugriff erlauben; dann über **App installieren** oder das Browsermenü zum Startbildschirm hinzufügen.
 3. Beim nächsten Einkauf das Homescreen-Symbol direkt starten; ohne Installation die Einkaufszettel-Seite in der HA-Seitenleiste öffnen.
 4. Artikel hinzufügen, abhaken oder entfernen. Ohne Netz werden Änderungen in der lokalen Browser-Datenbank und einer dauerhaften Warteschlange gespeichert. Beim nächsten Start mit erreichbarem HA werden diese nacheinander übertragen.
-5. Der Sync-Status zeigt ausstehende Änderungen. Bei abgelaufener Anmeldung **Mit HA verbinden** wählen und die Anmeldung erneut erlauben. Das Kopieren neuer Alexa-/Quelllistenartikel benötigt eine Verbindung.
+5. Der Sync-Status zeigt ausstehende Änderungen. Bei abgelaufener Anmeldung im **Setup** **Mit HA verbinden** wählen und die Anmeldung erneut erlauben. Dort liegen auch **Alexa-Liste kopieren** und **Home Assistant öffnen**. Das Kopieren neuer Alexa-/Quelllistenartikel benötigt eine Verbindung.
 
 Die PWA speichert ein Home-Assistant-Refresh-Token lokal im Browserprofil, damit sie unabhängig von der HA-Companion-App synchronisieren kann. Die Anmeldung wird über den offiziellen Home-Assistant-Autorisierungsdialog erteilt. Browserdaten nicht löschen, solange lokale Änderungen ausstehen; danach muss die App erneut verbunden werden. Der erste Offline-Sync verwendet stabile Aktions-IDs, damit ein nach Verbindungsabbruch wiederholter Artikel nicht doppelt angelegt wird. Bei gleichzeitigen Offline-Änderungen derselben Eigenschaft gilt die zuletzt synchronisierte Aktion; andere Eigenschaften desselben Eintrags bleiben davon unberührt.
+
+### Mehrere Einkaufslisten
+
+Die kleine Markenzeile bleibt **EINKAUFSZETTEL**; die große Überschrift zeigt den Namen der ausgewählten Liste. Direkt darunter lässt sich beispielsweise zwischen **Kaufland**, **Edeka** und **Baumarkt** wechseln.
+
+- Neue Quelllisten weiterhin über Alexa anlegen und in HA bereitstellen. Jede gewünschte Quellliste einmal als eigenen Einkaufszettel-Integrationseintrag konfigurieren und passend benennen. Die Web-App legt keine Alexa- oder HA-Quelllisten an.
+- Nach der Anmeldung werden alle geladenen Einkaufszettel-Listen angeboten und für den Offline-Zugriff zwischengespeichert. Bereits geladene Listen lassen sich auch ohne Netz wechseln.
+- Artikel hinzufügen, abhaken und entfernen wie bisher; zum Bearbeiten des Namens den Artikelnamen antippen. Jede Liste hat ihre eigenen Artikel und ihre eigene Offline-Warteschlange.
+- Beim Synchronisieren werden auch ausstehende Änderungen anderer verfügbarer Listen übertragen. Neue bzw. noch nicht zwischengespeicherte Listen benötigen zunächst eine Verbindung.
+- **Alexa-Liste kopieren** im Setup bezieht sich immer auf die ausgewählte Liste und deren konfigurierte Quelle. Der bisherige Kopiermechanismus bleibt unverändert; es entsteht keine neue bidirektionale Alexa-Synchronisation.
 
 ## Daten und Grenzen
 
