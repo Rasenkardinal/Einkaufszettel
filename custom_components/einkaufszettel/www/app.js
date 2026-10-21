@@ -242,7 +242,9 @@ function base64UrlEncode(bytes) {
 async function connectHomeAssistant() {
   const hassUrl = location.origin;
   const clientId = `${hassUrl}/`;
-  const redirectUrl = new URL(location.href);
+  const redirectUrl = new URL(
+    `${location.protocol}//${location.host}${location.pathname}${location.search}`,
+  );
   redirectUrl.searchParams.set("auth_callback", "1");
   redirectUrl.searchParams.delete("code");
   redirectUrl.searchParams.delete("state");
