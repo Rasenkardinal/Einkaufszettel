@@ -7,8 +7,8 @@ from uuid import UUID
 
 import pytest
 
-MODEL = Path(__file__).parents[2] / "custom_components" / "easy_shopping" / "model.py"
-SPEC = importlib.util.spec_from_file_location("easy_shopping_model", MODEL)
+MODEL = Path(__file__).parents[2] / "custom_components" / "einkaufszettel" / "model.py"
+SPEC = importlib.util.spec_from_file_location("einkaufszettel_model", MODEL)
 assert SPEC is not None and SPEC.loader is not None
 model = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = model

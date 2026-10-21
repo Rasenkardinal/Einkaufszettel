@@ -1,0 +1,13 @@
+{
+  "domain": "einkaufszettel",
+  "name": "Einkaufszettel",
+  "codeowners": ["@Rasenkardinal"],
+  "config_flow": true,
+  "dependencies": ["todo"],
+  "documentation": "https://github.com/Rasenkardinal/Einkaufszettel",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/Rasenkardinal/Einkaufszettel/issues",
+  "requirements": [],
+  "version": "0.2.0-alpha.1"
+}

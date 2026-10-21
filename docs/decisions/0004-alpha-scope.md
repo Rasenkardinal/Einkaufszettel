@@ -9,7 +9,7 @@ Die erste Implementierung soll Konfigurationsflow, Kopie der Quellliste und Anze
 
 ## Entscheidung
 
-- Die Quellliste wird mit einem auf die HA-Domäne `todo` beschränkten Entity-Selector ausgewählt. Eigene Easy-Shopping-Listen sind ausgeschlossen. Der Flow prüft die Lesbarkeit und verhindert eine zweite Konfiguration derselben Quell-Entitäts-ID.
+- Die Quellliste wird mit einem auf die HA-Domäne `todo` beschränkten Entity-Selector ausgewählt. Eigene Einkaufszettel-Listen sind ausgeschlossen. Der Flow prüft die Lesbarkeit und verhindert eine zweite Konfiguration derselben Quell-Entitäts-ID.
 - Beim erstmaligen Setup ohne vorhandenen Store werden offene Einträge übernommen. Die Prüfung im Flow ist kein dauerhaft gespeicherter Import; für das Setup wird die Quelle nochmals gelesen.
 - Nur das Fehlen des Stores löst den Erstimport aus. Eine erfolgreich gespeicherte leere Liste ist gültig und wird nicht erneut importiert.
 - Einträge erhalten neue lokale UUIDs. Quell-UIDs werden nur als Herkunftsreferenz gespeichert. Gleichnamige Einträge bleiben getrennt; es wird nicht automatisch addiert oder zusammengeführt.

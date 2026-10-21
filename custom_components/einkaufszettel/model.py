@@ -80,7 +80,7 @@ def import_items(raw_items: object) -> list[ShoppingItem]:
 def load_items(data: object) -> list[ShoppingItem]:
     """Validate persisted data; corrupt data must never trigger a new import."""
     if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-        raise ValueError("Invalid Easy Shopping storage")
+        raise ValueError("Invalid Einkaufszettel storage")
     items = []
     seen = set()
     for raw in data["items"]:

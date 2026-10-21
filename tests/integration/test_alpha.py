@@ -17,7 +17,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.easy_shopping.const import DOMAIN
+from custom_components.einkaufszettel.const import DOMAIN
 
 SOURCE = "todo.alexa"
 
@@ -52,9 +52,9 @@ async def source(hass: HomeAssistant):
 async def setup_copy(hass: HomeAssistant):
     entry = MockConfigEntry(
         domain=DOMAIN,
-        title="Easy Shopping",
+        title="Einkaufszettel",
         unique_id=SOURCE,
-        data={"source_entity_id": SOURCE, "name": "Easy Shopping"},
+        data={"source_entity_id": SOURCE, "name": "Einkaufszettel"},
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -67,13 +67,13 @@ async def read_items(hass: HomeAssistant):
         "todo",
         "get_items",
         {
-            "entity_id": "todo.easy_shopping",
+            "entity_id": "todo.einkaufszettel",
             "status": ["needs_action", "completed"],
         },
         blocking=True,
         return_response=True,
     )
-    return result["todo.easy_shopping"]["items"]
+    return result["todo.einkaufszettel"]["items"]
 
 
 async def test_flow_uses_todo_selector_and_creates_entry(hass, source):
@@ -86,12 +86,12 @@ async def test_flow_uses_todo_selector_and_creates_entry(hass, source):
     assert selector.config["domain"] == "todo"
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {"source_entity_id": SOURCE, "name": "Easy Shopping"},
+        {"source_entity_id": SOURCE, "name": "Einkaufszettel"},
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {"source_entity_id": SOURCE, "name": "Easy Shopping"}
+    assert result["data"] == {"source_entity_id": SOURCE, "name": "Einkaufszettel"}
     await hass.async_block_till_done()
-    assert hass.states.get("todo.easy_shopping").state == "2"
+    assert hass.states.get("todo.einkaufszettel").state == "2"
 
 
 async def test_flow_reports_unavailable_source(hass, source):
@@ -99,7 +99,7 @@ async def test_flow_reports_unavailable_source(hass, source):
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_USER},
-        data={"source_entity_id": SOURCE, "name": "Easy Shopping"},
+        data={"source_entity_id": SOURCE, "name": "Einkaufszettel"},
     )
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_read_source"}
@@ -127,7 +127,7 @@ async def test_flow_prevents_duplicate_source(hass, source):
 
 async def test_copy_display_check_uncheck_and_reload_without_source(hass, source):
     entry = await setup_copy(hass)
-    assert hass.states.get("todo.easy_shopping").state == "2"
+    assert hass.states.get("todo.einkaufszettel").state == "2"
     items = await read_items(hass)
     assert [item["summary"] for item in items] == ["Milch", "Brot"]
     assert items[1]["description"] == "Vom Baecker"
@@ -141,16 +141,16 @@ async def test_copy_display_check_uncheck_and_reload_without_source(hass, source
         await hass.services.async_call(
             "todo",
             "update_item",
-            {"entity_id": "todo.easy_shopping", "item": uid, "status": status},
+            {"entity_id": "todo.einkaufszettel", "item": uid, "status": status},
             blocking=True,
         )
-        assert hass.states.get("todo.easy_shopping").state == count
+        assert hass.states.get("todo.einkaufszettel").state == count
     assert source.todo_items[0].status == TodoItemStatus.NEEDS_ACTION
     await hass.config_entries.async_unload(entry.entry_id)
     hass.states.async_set(SOURCE, "unavailable")
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    assert hass.states.get("todo.easy_shopping").state == "1"
+    assert hass.states.get("todo.einkaufszettel").state == "1"
     assert (await read_items(hass))[0]["uid"] == uid
     assert (await read_items(hass))[0]["status"] == "completed"
 
@@ -165,11 +165,15 @@ async def test_failed_save_does_not_publish_or_mutate(hass, source):
             await hass.services.async_call(
                 "todo",
                 "update_item",
-                {"entity_id": "todo.easy_shopping", "item": uid, "status": "completed"},
+                {
+                    "entity_id": "todo.einkaufszettel",
+                    "item": uid,
+                    "status": "completed",
+                },
                 blocking=True,
             )
     assert entry.runtime_data.items[0].status == "needs_action"
-    assert hass.states.get("todo.easy_shopping").state == "2"
+    assert hass.states.get("todo.einkaufszettel").state == "2"
 
 
 async def test_concurrent_checks_on_different_items(hass, source):
@@ -180,7 +184,7 @@ async def test_concurrent_checks_on_different_items(hass, source):
                 "todo",
                 "update_item",
                 {
-                    "entity_id": "todo.easy_shopping",
+                    "entity_id": "todo.einkaufszettel",
                     "item": item.uid,
                     "status": "completed",
                 },
@@ -189,7 +193,7 @@ async def test_concurrent_checks_on_different_items(hass, source):
             for item in entry.runtime_data.items
         )
     )
-    assert hass.states.get("todo.easy_shopping").state == "0"
+    assert hass.states.get("todo.einkaufszettel").state == "0"
     assert all(item.status == "completed" for item in entry.runtime_data.items)
 
 
@@ -213,14 +217,14 @@ async def test_corrupt_storage_does_not_overwrite_or_reimport(hass, source):
     await hass.config_entries.async_unload(entry.entry_id)
     with (
         patch(
-            "custom_components.easy_shopping.Store.async_load",
+            "custom_components.einkaufszettel.Store.async_load",
             return_value={"items": [{"summary": "broken"}]},
         ),
         patch(
-            "custom_components.easy_shopping.Store.async_save", new_callable=AsyncMock
+            "custom_components.einkaufszettel.Store.async_save", new_callable=AsyncMock
         ) as save,
         patch(
-            "custom_components.easy_shopping.async_read_source", new_callable=AsyncMock
+            "custom_components.einkaufszettel.async_read_source", new_callable=AsyncMock
         ) as read,
     ):
         assert not await hass.config_entries.async_setup(entry.entry_id)
@@ -235,7 +239,7 @@ async def test_button_appends_and_refreshes_todo_state(hass, source):
         "todo",
         "update_item",
         {
-            "entity_id": "todo.easy_shopping",
+            "entity_id": "todo.einkaufszettel",
             "item": original_uid,
             "status": "completed",
         },
@@ -260,7 +264,7 @@ async def test_button_appends_and_refreshes_todo_state(hass, source):
             "button", "press", {"entity_id": button_id}, blocking=True
         )
         await hass.async_block_till_done()
-        assert hass.states.get("todo.easy_shopping").state == "2"
+        assert hass.states.get("todo.einkaufszettel").state == "2"
         assert len(await read_items(hass)) == 3
     assert entry.runtime_data.items[0].uid == original_uid
     assert entry.runtime_data.items[0].status == "completed"

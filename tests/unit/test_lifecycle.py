@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-ROOT = Path(__file__).parents[2] / "custom_components" / "easy_shopping"
+ROOT = Path(__file__).parents[2] / "custom_components" / "einkaufszettel"
 
 
 @pytest.fixture
@@ -58,14 +58,17 @@ def integration(monkeypatch):
         description: str | None = None
         due: object = None
 
-    store = SimpleNamespace(
-        async_load=AsyncMock(return_value=None),
-        async_save=AsyncMock(),
-    )
+    stores = {}
 
     class Store(Generic):
-        def __new__(cls, *args):
-            return store
+        def __new__(cls, _hass, _version, key):
+            return stores.setdefault(
+                key,
+                SimpleNamespace(
+                    async_load=AsyncMock(return_value=None),
+                    async_save=AsyncMock(),
+                ),
+            )
 
     module("homeassistant")
     module("homeassistant.config_entries", ConfigEntry=Generic)
@@ -106,7 +109,7 @@ def integration(monkeypatch):
         TodoListEntityFeature=Features,
     )
     spec = importlib.util.spec_from_file_location(
-        "easy_shopping_boundary_test",
+        "einkaufszettel_boundary_test",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
@@ -132,11 +135,12 @@ def integration(monkeypatch):
         config_entries=SimpleNamespace(
             async_forward_entry_setups=AsyncMock(),
             async_unload_platforms=AsyncMock(return_value=True),
+            async_entries=Mock(return_value=[]),
         ),
     )
     entry = SimpleNamespace(
         entry_id="test-entry",
-        data={"source_entity_id": "todo.alexa", "name": "Easy Shopping"},
+        data={"source_entity_id": "todo.alexa", "name": "Einkaufszettel"},
     )
     yield SimpleNamespace(
         package=package,
@@ -146,7 +150,13 @@ def integration(monkeypatch):
         model=model,
         hass=hass,
         entry=entry,
-        store=store,
+        store=stores.setdefault(
+            "einkaufszettel.test-entry",
+            SimpleNamespace(
+                async_load=AsyncMock(return_value=None), async_save=AsyncMock()
+            ),
+        ),
+        stores=stores,
         error=HAError,
         not_ready=NotReady,
         Item=Item,
@@ -199,6 +209,55 @@ async def test_corrupt_storage_does_not_reimport(integration):
     env.store.async_save.assert_not_awaited()
 
 
+async def test_migrates_matching_legacy_store_and_preserves_local_edits(integration):
+    env = integration
+    old_entry = SimpleNamespace(
+        entry_id="old-entry",
+        data={"source_entity_id": "todo.alexa", "name": "Einkaufszettel"},
+    )
+    env.hass.config_entries.async_entries.return_value = [old_entry]
+    old_store = env.stores.setdefault(
+        "easy_shopping.old-entry",
+        SimpleNamespace(async_load=AsyncMock(), async_save=AsyncMock()),
+    )
+    snapshot = {
+        "items": [
+            {
+                "uid": "local-id",
+                "summary": "Meine Milch",
+                "status": "completed",
+                "description": "3 Flaschen",
+                "due": None,
+                "source_uid": "alexa-id",
+            }
+        ]
+    }
+    old_store.async_load.return_value = snapshot
+    assert await env.package.async_setup_entry(env.hass, env.entry)
+    env.hass.services.async_call.assert_not_awaited()
+    old_store.async_save.assert_not_awaited()
+    assert env.entry.runtime_data.items[0].to_dict() == snapshot["items"][0]
+    env.store.async_save.assert_awaited_once_with(snapshot)
+
+
+async def test_ambiguous_legacy_stores_do_not_import_or_overwrite(integration):
+    env = integration
+    env.hass.config_entries.async_entries.return_value = [
+        SimpleNamespace(
+            entry_id="old-one",
+            data={"source_entity_id": "todo.alexa"},
+        ),
+        SimpleNamespace(
+            entry_id="old-two",
+            data={"source_entity_id": "todo.alexa"},
+        ),
+    ]
+    with pytest.raises(env.not_ready, match="More than one legacy entry"):
+        await env.package.async_setup_entry(env.hass, env.entry)
+    env.hass.services.async_call.assert_not_awaited()
+    env.store.async_save.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "response", [None, {}, {"todo.alexa": {}}, {"todo.alexa": {"items": None}}]
 )
@@ -224,7 +283,7 @@ async def test_check_persistence_error_and_concurrent_updates(integration):
     await env.package.async_setup_entry(env.hass, env.entry)
     data = env.entry.runtime_data
     data.items.append(env.model.ShoppingItem("second", "Brot"))
-    entity = env.todo.EasyShoppingTodo(data, "entry-id", "Easy Shopping")
+    entity = env.todo.EinkaufszettelTodo(data, "entry-id", "Einkaufszettel")
     entity.async_write_ha_state = Mock()
     items = entity.todo_items
     items[0].status = env.Status.COMPLETED
@@ -247,8 +306,8 @@ async def test_check_persistence_error_and_concurrent_updates(integration):
 async def test_service_can_supply_status_as_string(integration):
     env = integration
     await env.package.async_setup_entry(env.hass, env.entry)
-    entity = env.todo.EasyShoppingTodo(
-        env.entry.runtime_data, "entry-id", "Easy Shopping"
+    entity = env.todo.EinkaufszettelTodo(
+        env.entry.runtime_data, "entry-id", "Einkaufszettel"
     )
     item = entity.todo_items[0]
     item.status = "completed"
@@ -283,7 +342,7 @@ async def test_copy_button_appends_once_and_keeps_local_edits(integration):
     assert data.items[0].description == "3 Flaschen"
     assert data.items[1].source_uid == "b"
     env.dispatcher.async_dispatcher_send.assert_called_once_with(
-        env.hass, "easy_shopping_test-entry_updated"
+        env.hass, "einkaufszettel_test-entry_updated"
     )
     saved = env.store.async_save.await_count
     await button.async_press()

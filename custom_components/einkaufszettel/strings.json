@@ -1,9 +1,9 @@
 {
-  "title": "Easy Shopping",
+  "title": "Einkaufszettel",
   "entity": {
     "button": {
       "copy_source": {
-        "name": "{list_name}: Copy source list"
+        "name": "{list_name}: Quellliste kopieren"
       }
     }
   },

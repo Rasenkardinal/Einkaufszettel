@@ -7,7 +7,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from . import EasyShoppingConfigEntry
+from . import EinkaufszettelConfigEntry
 from .const import CONF_SOURCE, update_signal
 from .model import append_new_items
 from .source import async_read_source
@@ -15,7 +15,7 @@ from .source import async_read_source
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: EasyShoppingConfigEntry,
+    entry: EinkaufszettelConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Expose one copy button per configured list."""
@@ -29,7 +29,7 @@ class CopySourceButton(ButtonEntity):
     _attr_translation_key = "copy_source"
     _attr_icon = "mdi:content-copy"
 
-    def __init__(self, entry: EasyShoppingConfigEntry) -> None:
+    def __init__(self, entry: EinkaufszettelConfigEntry) -> None:
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_copy_source"
         self._attr_translation_placeholders = {"list_name": entry.data[CONF_NAME]}

@@ -16,7 +16,7 @@ Das HA-To-do-Modell eignet sich zur Darstellung einfacher Einträge und ihres of
 3. Ein Einkaufs-Listeneintrag hat eine eigene stabile ID, einen Status und optional eine Produktreferenz. Ein Eintrag ohne passende Produktreferenz bleibt gültig und kann später zugeordnet werden.
 4. Temporäre Angaben gehören zum Listeneintrag: Menge, Einheit und Notiz. Beispiel: Produkt „Milch“ in „Molkereiprodukte“ plus Einkaufsposition `quantity: 3`, `unit: Flasche`. Eine lesbare Notiz wie „3x in Flaschen“ kann angezeigt werden; strukturierte Menge/Einheit ist vorzuziehen, sobald sie separat bearbeitet oder verarbeitet werden soll.
 5. Der `TodoItem`-Datensatz ist die HA-kompatible Projektion der Einkaufsposition (z. B. Zusammenfassung, Status und gegebenenfalls Beschreibung). Produkt-ID, Kategorie sowie strukturierte Menge/Einheit verbleiben in den integrationsverwalteten Daten und werden über die stabile Eintrags-ID zugeordnet. Kategorien werden nicht in das To-do-Textfeld hineinkodiert.
-6. Die Sortierung nach Kategorie und individuelle Kategorie-/Produktverwaltung gehören zur Easy-Shopping-Fachlogik und nicht zur To-do-Grundschnittstelle.
+6. Die Sortierung nach Kategorie und individuelle Kategorie-/Produktverwaltung gehören zur Einkaufszettel-Fachlogik und nicht zur To-do-Grundschnittstelle.
 
 ## Folgen
 

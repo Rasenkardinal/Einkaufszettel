@@ -11,10 +11,10 @@ Eine eigene Smartphone-Oberfläche ist erwünscht, aber der erste Schritt soll d
 
 ## Entscheidung
 
-1. Easy Shopping wird als Home-Assistant-Integration umgesetzt.
+1. Einkaufszettel wird als Home-Assistant-Integration umgesetzt.
 2. Beim Einrichten wählt der Nutzer eine vorhandene `todo`-Entität als Quellliste aus. Erwartet wird die in HA verfügbare Alexa-Einkaufsliste.
-3. Easy Shopping stellt eine eigene To-do-Listen-Entität über HA's `TodoListEntity`-Schnittstelle bereit. Sie ist damit in der HA-To-do-Listenverwaltung sichtbar und kann dort grundsätzlich über standardisierte To-do-Funktionen angesprochen werden.
-4. Der erste Funktionsumfang ist eine lokale Kopie der offenen Quelllisteneinträge, die in Easy Shopping abgehakt werden können. Es gibt in dieser Version keinen Rückkanal zur Quellliste und keine laufende Synchronisierung.
+3. Einkaufszettel stellt eine eigene To-do-Listen-Entität über HA's `TodoListEntity`-Schnittstelle bereit. Sie ist damit in der HA-To-do-Listenverwaltung sichtbar und kann dort grundsätzlich über standardisierte To-do-Funktionen angesprochen werden.
+4. Der erste Funktionsumfang ist eine lokale Kopie der offenen Quelllisteneinträge, die in Einkaufszettel abgehakt werden können. Es gibt in dieser Version keinen Rückkanal zur Quellliste und keine laufende Synchronisierung.
 5. Die eigene mobile UI bleibt eine spätere, separate Entscheidung. Zunächst verwenden wir die native HA-Listenansicht als Basis; Lovelace-Karte oder Custom Panel sind noch nicht festgelegt.
 
 ## Folgen

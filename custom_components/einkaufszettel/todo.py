@@ -12,23 +12,23 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from . import EasyShoppingConfigEntry, EasyShoppingData
+from . import EinkaufszettelConfigEntry, EinkaufszettelData
 from .const import update_signal
 from .model import parse_due, update_item
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: EasyShoppingConfigEntry,
+    entry: EinkaufszettelConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Add the independent To-do list."""
     async_add_entities(
-        [EasyShoppingTodo(entry.runtime_data, entry.entry_id, entry.data[CONF_NAME])]
+        [EinkaufszettelTodo(entry.runtime_data, entry.entry_id, entry.data[CONF_NAME])]
     )
 
 
-class EasyShoppingTodo(TodoListEntity):
+class EinkaufszettelTodo(TodoListEntity):
     """A locally persisted list, with check/uncheck and editing support."""
 
     _attr_should_poll = False
@@ -41,7 +41,7 @@ class EasyShoppingTodo(TodoListEntity):
         | TodoListEntityFeature.SET_DUE_DATETIME_ON_ITEM
     )
 
-    def __init__(self, data: EasyShoppingData, unique_id: str, name: str) -> None:
+    def __init__(self, data: EinkaufszettelData, unique_id: str, name: str) -> None:
         self._data = data
         self._attr_unique_id = unique_id
         self._update_signal = update_signal(unique_id)

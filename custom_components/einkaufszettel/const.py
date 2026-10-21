@@ -1,6 +1,7 @@
-"""Constants for Easy Shopping."""
+"""Constants for Einkaufszettel."""
 
-DOMAIN = "easy_shopping"
+DOMAIN = "einkaufszettel"
+LEGACY_DOMAIN = "easy_shopping"
 CONF_SOURCE = "source_entity_id"
 STORAGE_VERSION = 1
 

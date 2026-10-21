@@ -16,7 +16,7 @@ from .source import async_read_source
 _LOGGER = logging.getLogger(__name__)
 
 
-class EasyShoppingConfigFlow(ConfigFlow, domain=DOMAIN):
+class EinkaufszettelConfigFlow(ConfigFlow, domain=DOMAIN):
     """Configure one local shopping list per source."""
 
     VERSION = 1
@@ -66,7 +66,7 @@ class EasyShoppingConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_NAME,
                         default=user_input[CONF_NAME]
                         if user_input
-                        else "Easy Shopping",
+                        else "Einkaufszettel",
                     ): selector.TextSelector(),
                 }
             ),
