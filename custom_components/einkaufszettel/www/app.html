@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.3.0-alpha.10">
+    <link rel="stylesheet" href="./app.css?v=0.3.0-alpha.11">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -41,20 +41,7 @@
               <a id="open-app-browser" href="#" target="_blank" rel="noopener" hidden>App in eigenem Browserfenster öffnen / installieren</a>
               <a id="open-homeassistant" href="/">Home Assistant öffnen</a>
             </details>
-            <details id="menu-design" class="setup-section">
-              <summary>Design</summary>
-              <label class="design-label" for="design-select">Farbschema</label>
-              <select id="design-select">
-                <option value="botanical">Botanical</option>
-                <option value="midnight-plum">Midnight Plum</option>
-                <option value="market-journal">Market Journal</option>
-                <option value="fresh-signal">Fresh Signal</option>
-                <option value="mono" selected>Mono</option>
-                <option value="tomato">Tomato</option>
-                <option value="lime-focus">Lime Focus</option>
-                <option value="indigo-pocket">Indigo Pocket</option>
-              </select>
-            </details>
+            <button id="menu-design" type="button" aria-haspopup="dialog" aria-controls="design-dialog">Design <span class="current-design"><span class="design-swatch" aria-hidden="true"></span><span id="design-name">Mono</span></span><span aria-hidden="true">›</span></button>
             <details id="menu-lists" class="setup-section">
               <summary>Listenverwaltung</summary>
               <button id="manage-lists">Listen verwalten</button>
@@ -84,20 +71,38 @@
 
       <div class="list-heading">
         <h2>Auf der Liste</h2>
-        <label class="market-picker">
+        <div class="market-picker">
+          <button id="market-select" type="button" aria-label="Supermarkt auswählen" aria-expanded="false" aria-controls="market-flyout" title="Marktauswahl; Sortierung nach Marktstruktur folgt später" disabled>
           <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10M3 10l2-6h14l2 6M3 10c0 3 4 3 4 0 0 3 5 3 5 0 0 3 5 3 5 0 0 3 4 3 4 0M9 20v-6h6v6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
           <span id="market-name">Ohne Markt</span>
           <span class="market-arrow" aria-hidden="true"></span>
-          <select id="market-select" aria-label="Supermarkt auswählen" title="Marktauswahl; Sortierung nach Marktstruktur folgt später">
-            <option value="">Ohne Markt</option>
-          </select>
-        </label>
+          </button>
+          <div id="market-flyout" aria-label="Supermarkt auswählen" hidden></div>
+        </div>
       </div>
       <p id="message" class="message" role="status"></p>
       <ul id="items" class="items"></ul>
       <p id="empty" class="empty" hidden>Noch nichts auf der Liste.</p>
 
     </main>
+    <dialog id="design-dialog" aria-labelledby="design-title" aria-describedby="design-help">
+      <div class="design-heading">
+        <h2 id="design-title">Design</h2>
+        <form method="dialog"><button class="secondary" aria-label="Designauswahl schließen">×</button></form>
+      </div>
+      <p id="design-help">Farbschema auswählen</p>
+      <fieldset id="design-options" aria-label="Farbschema">
+        <label class="design-row"><input type="radio" name="design" value="mono" checked><span class="design-swatch" style="--swatch:#f5f5f5" aria-hidden="true"></span><span>Mono</span><span class="design-check" aria-hidden="true">✓</span></label>
+        <label class="design-row"><input type="radio" name="design" value="botanical"><span class="design-swatch" style="--swatch:#a3e635" aria-hidden="true"></span><span>Botanical</span><span class="design-check" aria-hidden="true">✓</span></label>
+        <label class="design-row"><input type="radio" name="design" value="midnight-plum"><span class="design-swatch" style="--swatch:#c4a7ff" aria-hidden="true"></span><span>Midnight Plum</span><span class="design-check" aria-hidden="true">✓</span></label>
+        <label class="design-row"><input type="radio" name="design" value="market-journal"><span class="design-swatch" style="--swatch:#ffb454" aria-hidden="true"></span><span>Market Journal</span><span class="design-check" aria-hidden="true">✓</span></label>
+        <label class="design-row"><input type="radio" name="design" value="fresh-signal"><span class="design-swatch" style="--swatch:#55e0d0" aria-hidden="true"></span><span>Fresh Signal</span><span class="design-check" aria-hidden="true">✓</span></label>
+        <label class="design-row"><input type="radio" name="design" value="tomato"><span class="design-swatch" style="--swatch:#ff8977" aria-hidden="true"></span><span>Tomato</span><span class="design-check" aria-hidden="true">✓</span></label>
+        <label class="design-row"><input type="radio" name="design" value="lime-focus"><span class="design-swatch" style="--swatch:#d4ff00" aria-hidden="true"></span><span>Lime Focus</span><span class="design-check" aria-hidden="true">✓</span></label>
+        <label class="design-row"><input type="radio" name="design" value="indigo-pocket"><span class="design-swatch" style="--swatch:#83a7ff" aria-hidden="true"></span><span>Indigo Pocket</span><span class="design-check" aria-hidden="true">✓</span></label>
+      </fieldset>
+      <p id="design-message" role="status"></p>
+    </dialog>
     <dialog id="supermarket-management" aria-labelledby="supermarket-management-title">
       <h2 id="supermarket-management-title">Supermärkte verwalten</h2>
       <p class="management-help">Gemeinsame Märkte und Filialen für alle Nutzer. Änderungen benötigen eine Verbindung und HA-Administratorrechte. Marktstruktur und Sortierung folgen später.</p>
@@ -137,6 +142,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.3.0-alpha.10" defer></script>
+    <script src="./app.js?v=0.3.0-alpha.11" defer></script>
   </body>
 </html>

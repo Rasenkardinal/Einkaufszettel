@@ -10,6 +10,7 @@ const MARKET_SELECTION_PREFIX = "einkaufszettel.supermarket.";
 const elements = {
   setup: document.querySelector("#setup"),
   marketSelect: document.querySelector("#market-select"),
+  marketFlyout: document.querySelector("#market-flyout"),
   marketName: document.querySelector("#market-name"),
   manageSupermarkets: document.querySelector("#manage-supermarkets"),
   supermarketManagement: document.querySelector("#supermarket-management"),
@@ -17,7 +18,11 @@ const elements = {
   supermarketList: document.querySelector("#supermarket-list"),
   addSupermarketForm: document.querySelector("#add-supermarket-form"),
   supermarketNewName: document.querySelector("#supermarket-new-name"),
-  designSelect: document.querySelector("#design-select"),
+  menuDesign: document.querySelector("#menu-design"),
+  designDialog: document.querySelector("#design-dialog"),
+  designOptions: document.querySelector("#design-options"),
+  designName: document.querySelector("#design-name"),
+  designMessage: document.querySelector("#design-message"),
   manageLists: document.querySelector("#manage-lists"),
   listManagement: document.querySelector("#list-management"),
   managementMessage: document.querySelector("#management-message"),
@@ -79,14 +84,23 @@ function validateSupermarkets(value) {
 }
 
 function renderMarketSelection() {
-  elements.marketSelect.replaceChildren(new Option("Ohne Markt", ""));
-  for (const market of supermarkets) {
-    elements.marketSelect.add(new Option(market.name, market.id));
+  elements.marketFlyout.replaceChildren();
+  for (const market of [{ id: "", name: "Ohne Markt" }, ...supermarkets]) {
+    elements.marketFlyout.append(createPickerOption(market.name, market.id === selectedMarket, () => {
+      closeFlyout(elements.marketSelect, elements.marketFlyout, true);
+      selectedMarket = market.id;
+      renderMarketSelection();
+      try {
+        localStorage.setItem(MARKET_SELECTION_PREFIX + entryId, selectedMarket);
+      } catch (error) {
+        showError(new Error(`Die Marktauswahl konnte nicht gespeichert werden: ${error.message}`));
+      }
+    }));
   }
   const market = supermarkets.find(market => market.id === selectedMarket);
-  elements.marketSelect.value = market?.id || "";
   elements.marketName.textContent = market?.name || "Ohne Markt";
-  elements.marketSelect.disabled = !entryId;
+  elements.marketSelect.setAttribute("aria-label", `Supermarkt auswählen, aktuell ${elements.marketName.textContent}`);
+  elements.marketSelect.disabled = busy || !entryId;
 }
 
 function loadMarketSelection() {
@@ -126,16 +140,6 @@ async function refreshSupermarkets() {
   renderSupermarketManagement();
   if (cacheError) throw cacheError;
 }
-
-elements.marketSelect.addEventListener("change", () => {
-  selectedMarket = elements.marketSelect.value;
-  renderMarketSelection();
-  try {
-    localStorage.setItem(MARKET_SELECTION_PREFIX + entryId, selectedMarket);
-  } catch (error) {
-    showError(new Error(`Die Marktauswahl konnte nicht gespeichert werden: ${error.message}`));
-  }
-});
 
 async function changeSupermarket(command, payload) {
   if (managingSupermarkets) return;
@@ -233,7 +237,10 @@ elements.supermarketNewName.addEventListener("input", () => elements.supermarket
 
 function applyDesign(theme) {
   document.body.dataset.theme = theme;
-  elements.designSelect.value = theme;
+  for (const option of elements.designOptions.querySelectorAll("input")) {
+    option.checked = option.value === theme;
+    if (option.checked) elements.designName.textContent = option.parentElement.querySelector("span:not([aria-hidden])").textContent;
+  }
   document.querySelector('meta[name="theme-color"]').content =
     getComputedStyle(document.body).getPropertyValue("--bg").trim();
 }
@@ -241,7 +248,7 @@ function applyDesign(theme) {
 function initializeDesign() {
   try {
     const theme = localStorage.getItem(DESIGN_KEY) || "mono";
-    if (![...elements.designSelect.options].some((option) => option.value === theme)) {
+    if (![...elements.designOptions.querySelectorAll("input")].some((option) => option.value === theme)) {
       throw new Error("Das gespeicherte Farbschema ist unbekannt. Bitte wähle unter Menü → Design ein neues aus.");
     }
     applyDesign(theme);
@@ -250,12 +257,22 @@ function initializeDesign() {
   }
 }
 
-elements.designSelect.addEventListener("change", () => {
-  applyDesign(elements.designSelect.value);
+elements.menuDesign.addEventListener("click", () => {
+  elements.designMessage.textContent = "";
+  elements.designDialog.showModal();
+  elements.designOptions.querySelector("input:checked").focus();
+});
+elements.designDialog.addEventListener("close", () => elements.menuDesign.focus());
+elements.designOptions.addEventListener("change", (event) => {
+  const theme = event.target.value;
+  applyDesign(theme);
+  elements.designMessage.textContent = "";
   try {
-    localStorage.setItem(DESIGN_KEY, elements.designSelect.value);
+    localStorage.setItem(DESIGN_KEY, theme);
   } catch (error) {
-    showError(new Error(`Das Farbschema konnte nicht auf diesem Gerät gespeichert werden: ${error.message}`));
+    const message = `Das Farbschema konnte nicht auf diesem Gerät gespeichert werden: ${error.message}`;
+    elements.designMessage.textContent = message;
+    showError(new Error(message));
   }
 });
 
@@ -407,8 +424,9 @@ function render() {
 function setBusy(value) {
   busy = value;
   elements.listSelect.disabled = value || !availableLists.length;
-  if (elements.listSelect.disabled) closeListFlyout();
+  if (elements.listSelect.disabled) closeFlyout(elements.listSelect, elements.listFlyout);
   elements.marketSelect.disabled = value || !entryId;
+  if (elements.marketSelect.disabled) closeFlyout(elements.marketSelect, elements.marketFlyout);
   elements.addForm.inert = value || !entryId;
   elements.sync.disabled = value;
   elements.copySource.disabled = value || !entryId;
@@ -423,76 +441,93 @@ function renderListSelection() {
     lists.unshift({ entry_id: entryId, name: elements.listName.textContent });
   }
   for (const list of lists) {
-    const option = document.createElement("button");
-    option.type = "button";
-    option.className = "list-option";
-    option.setAttribute("aria-pressed", String(list.entry_id === entryId));
-    const name = document.createElement("span");
-    name.className = "list-option-name";
-    name.textContent = list.name;
-    const check = document.createElement("span");
-    check.className = "list-option-check";
-    check.textContent = "✓";
-    check.setAttribute("aria-hidden", "true");
-    option.append(name, check);
-    option.addEventListener("click", () => {
-      closeListFlyout(true);
+    elements.listFlyout.append(createPickerOption(list.name, list.entry_id === entryId, () => {
+      closeFlyout(elements.listSelect, elements.listFlyout, true);
       if (list.entry_id !== entryId) selectList(list.entry_id).catch(showError);
-    });
-    elements.listFlyout.append(option);
+    }));
   }
   elements.listSelect.setAttribute("aria-label", `Einkaufsliste auswählen, aktuell ${elements.listName.textContent}`);
   setBusy(busy);
 }
 
-function closeListFlyout(focus = false) {
-  elements.listFlyout.hidden = true;
-  elements.listSelect.setAttribute("aria-expanded", "false");
-  if (focus) elements.listSelect.focus();
+function createPickerOption(label, selected, onSelect) {
+  const option = document.createElement("button");
+  option.type = "button";
+  option.className = "list-option";
+  option.setAttribute("aria-pressed", String(selected));
+  const name = document.createElement("span");
+  name.className = "list-option-name";
+  name.textContent = label;
+  const check = document.createElement("span");
+  check.className = "list-option-check";
+  check.textContent = "✓";
+  check.setAttribute("aria-hidden", "true");
+  option.append(name, check);
+  option.addEventListener("click", onSelect);
+  return option;
 }
 
-function openListFlyout(focus = false) {
-  if (elements.listSelect.disabled) return;
-  elements.setup.open = false;
-  elements.listFlyout.hidden = false;
-  elements.listSelect.setAttribute("aria-expanded", "true");
-  if (focus) {
-    (elements.listFlyout.querySelector('[aria-pressed="true"]') ||
-      elements.listFlyout.querySelector("button"))?.focus();
-  }
+function closeFlyout(trigger, flyout, focus = false) {
+  flyout.hidden = true;
+  trigger.setAttribute("aria-expanded", "false");
+  if (focus) trigger.focus();
 }
 
-elements.listSelect.addEventListener("click", () => {
-  if (elements.listFlyout.hidden) openListFlyout();
-  else closeListFlyout();
-});
-elements.listSelect.addEventListener("keydown", (event) => {
-  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-    event.preventDefault();
-    openListFlyout(true);
+function initializePicker(trigger, flyout) {
+  const container = trigger.parentElement.closest(".list-title, .market-picker");
+  const close = (focus = false) => closeFlyout(trigger, flyout, focus);
+  function open(focus = false) {
+    if (trigger.disabled) return;
+    for (const [otherTrigger, otherFlyout] of [
+      [elements.listSelect, elements.listFlyout],
+      [elements.marketSelect, elements.marketFlyout],
+    ]) {
+      if (otherFlyout !== flyout) closeFlyout(otherTrigger, otherFlyout);
+    }
+    elements.setup.open = false;
+    flyout.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    if (focus) {
+      (flyout.querySelector('[aria-pressed="true"]') ||
+        flyout.querySelector("button"))?.focus();
+    }
   }
-});
-elements.listFlyout.addEventListener("keydown", (event) => {
-  const options = [...elements.listFlyout.querySelectorAll("button")];
-  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || !options.length) return;
-  event.preventDefault();
-  const current = options.indexOf(document.activeElement);
-  const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 :
-    (current + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
-  options[next].focus();
-});
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !elements.listFlyout.hidden) {
+
+  trigger.addEventListener("click", () => {
+    if (flyout.hidden) open();
+    else close();
+  });
+  trigger.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      open(true);
+    }
+  });
+  flyout.addEventListener("keydown", (event) => {
+    const options = [...flyout.querySelectorAll("button")];
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || !options.length) return;
     event.preventDefault();
-    closeListFlyout(true);
-  }
-});
-document.addEventListener("click", (event) => {
-  if (!elements.listSelect.closest(".list-title").contains(event.target)) closeListFlyout();
-});
-elements.listSelect.closest(".list-title").addEventListener("focusout", (event) => {
-  if (event.relatedTarget && !elements.listSelect.closest(".list-title").contains(event.relatedTarget)) closeListFlyout();
-});
+    const current = options.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 :
+      (current + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+    options[next].focus();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !flyout.hidden) {
+      event.preventDefault();
+      close(true);
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (!container.contains(event.target)) close();
+  });
+  container.addEventListener("focusout", (event) => {
+    if (!container.contains(event.relatedTarget)) close();
+  });
+}
+
+initializePicker(elements.listSelect, elements.listFlyout);
+initializePicker(elements.marketSelect, elements.marketFlyout);
 
 async function readCachedLists() {
   return new Promise((resolve, reject) => {
@@ -789,16 +824,19 @@ async function connect() {
 const waiters = new Map();
 
 document.addEventListener("click", (event) => {
-  if (!elements.setup.contains(event.target)) elements.setup.open = false;
+  if (!elements.designDialog.open && !elements.setup.contains(event.target)) elements.setup.open = false;
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && elements.setup.open) {
+  if (event.key === "Escape" && elements.designDialog.open) {
+    event.preventDefault();
+    elements.designDialog.close();
+  } else if (event.key === "Escape" && elements.setup.open) {
     elements.setup.open = false;
     elements.setup.querySelector("summary").focus();
   }
 });
 elements.setup.addEventListener("click", (event) => {
-  if (event.target.closest("button, a")) {
+  if (event.target.closest("button, a") && !event.target.closest("#menu-design")) {
     elements.setup.open = false;
     elements.setup.querySelector("summary").focus();
   }

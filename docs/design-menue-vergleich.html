@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Design-Gruppe – zwei Menüvarianten</title>
+  <link rel="stylesheet" href="../custom_components/einkaufszettel/www/app.css">
+  <style>
+    body { background: #0c0c0c; }
+    main { max-width: 1080px; margin: auto; padding: 36px 24px 50px; }
+    header p { color: #aaa; line-height: 1.6; font-size: 14px; max-width: 800px; }
+    header .eyebrow { margin: 0 0 12px; }
+    header h1 { font-size: clamp(26px, 4vw, 36px); }
+    .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 28px; }
+    article { min-width: 0; }
+    article > h2 { font-size: 17px; margin-bottom: 10px; }
+    .description { font-size: 13px; color: #aaa; line-height: 1.5; }
+    .phone { --bg:#141414; --surface:#202020; --surface2:#2b2b2b; --line:#383838; --accent:#f5f5f5; --accent-text:#171717; --muted:#aaa; height: 860px; position: relative; border: 1px solid var(--line); border-radius: 24px; background: var(--bg); padding: 22px 18px; overflow: hidden; }
+    .mock-brand { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; letter-spacing: .15em; }
+    .mock-brand img { width: 23px; height: 23px; }
+    .dots { margin-left: auto; font-size: 18px; letter-spacing: .1em; }
+    .phone h3 { margin: 24px 0 20px; font-size: 27px; letter-spacing: -.04em; }
+    .mock-card { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); margin: 10px 0; font-size: 13px; }
+    .shade { position: absolute; inset: 53px 0 0; background: #0006; pointer-events: none; }
+    .menu { position: absolute; top: 58px; left: 24px; right: 14px; max-height: calc(100% - 80px); overflow-y: auto; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: 0 12px 40px #0007; scrollbar-width: thin; }
+    .menu h4 { margin: 3px 8px 14px; font-size: 16px; }
+    .group { border-top: 1px solid var(--line); }
+    .group > summary, .group-title { margin: 0; padding: 15px 8px; min-height: 48px; font-size: 13px; font-weight: 650; }
+    summary { cursor: pointer; }
+    .group-title { display: flex; justify-content: space-between; }
+    .group-title small { font-size: 10px; color: var(--muted); font-weight: 400; }
+    .action { display: block; width: 100%; min-height: 44px; padding: 10px 14px; border: 0; background: transparent; border-radius: 8px; text-align: left; color: #eee; font-size: 12px; }
+    .action:hover, .theme-row:hover { background: var(--surface2); }
+    .theme-list { border: 0; margin: 0 0 10px; padding: 0; display: grid; gap: 2px; min-width: 0; }
+    .theme-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 42px; border-radius: 8px; color: #ddd; font-size: 12px; cursor: pointer; }
+    .theme-row:has(input:checked) { background: var(--surface2); color: #fff; }
+    .theme-row input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    .theme-row:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .swatch { width: 14px; height: 14px; border-radius: 50%; background: var(--swatch); border: 1px solid #ffffff30; flex: none; }
+    .tick { margin-left: auto; color: var(--accent); font-size: 15px; visibility: hidden; }
+    input:checked ~ .tick { visibility: visible; }
+    .note { color: var(--muted); font-size: 10px; margin: 10px 8px 3px; }
+    .feedback { margin: 12px 0 0; min-height: 20px; font-size: 12px; color: #ccc; }
+    @media(max-width: 740px) { .comparison { grid-template-columns: 1fr; } main { padding: 28px 16px; } }
+  </style>
+</head>
+<body data-theme="mono">
+  <main>
+    <header>
+      <p class="eyebrow">Einkaufszettel · Menüvariante 3</p>
+      <h1>Design direkt im Menü auswählen</h1>
+      <p>Zwei Möglichkeiten für dieselbe Farbschema-Liste. Zum Vergleichen ist Gruppe A zunächst aufgeklappt. Du kannst sie schließen und öffnen; Gruppe B bleibt immer sichtbar. Ein Tipp auf ein Farbschema färbt nur die jeweilige Vorschau um.</p>
+      <p>Keine Dropdowns, keine Flyouts. Alle acht Designs haben ein Auswahlhäkchen. Die echte App und gespeicherte Einstellungen werden nicht verändert.</p>
+    </header>
+    <section class="comparison" aria-label="Zwei Design-Gruppen zur Auswahl"></section>
+  </main>
+  <script>
+    const themes = [
+      ["botanical", "Botanical", "#111813", "#1b251e", "#26362a", "#304035", "#a3e635", "#17220d", "#aab7ac"],
+      ["midnight-plum", "Midnight Plum", "#15121c", "#211b2b", "#30243e", "#3b3148", "#c4a7ff", "#20152f", "#b9adc8"],
+      ["market-journal", "Market Journal", "#1a1411", "#271d18", "#38281d", "#49382e", "#ffb454", "#38200b", "#c7b3a5"],
+      ["fresh-signal", "Fresh Signal", "#0d171b", "#13242a", "#19343b", "#24444c", "#55e0d0", "#06201d", "#9db8ba"],
+      ["mono", "Mono", "#141414", "#202020", "#2b2b2b", "#383838", "#f5f5f5", "#171717", "#aaaaaa"],
+      ["tomato", "Tomato", "#1b1315", "#281c1f", "#382327", "#493137", "#ff8977", "#351512", "#c2a7a6"],
+      ["lime-focus", "Lime Focus", "#0c0f0c", "#171c16", "#222b1e", "#343e2d", "#d4ff00", "#161b00", "#a9b197"],
+      ["indigo-pocket", "Indigo Pocket", "#101522", "#192033", "#222d49", "#303b56", "#83a7ff", "#111b34", "#aab5ca"]
+    ];
+    const actions = titles => titles.map(title => `<button class="action">${title}</button>`).join("");
+    for (const variant of ["A", "B"]) {
+      const article = document.createElement("article");
+      const themeList = `<fieldset class="theme-list" aria-label="Farbschema – Variante ${variant}">${themes.map(([id, name, , , , , accent]) => `<label class="theme-row"><input type="radio" name="theme-${variant}" value="${id}" ${id === "mono" ? "checked" : ""}><span class="swatch" style="--swatch:${accent}" aria-hidden="true"></span><span>${name}</span><span class="tick" aria-hidden="true">✓</span></label>`).join("")}</fieldset>`;
+      const design = variant === "A"
+        ? `<details class="group design-group" open><summary>Design</summary>${themeList}</details>`
+        : `<section class="group design-group" aria-label="Design"><h5 class="group-title">Design <small>Farbschema</small></h5>${themeList}</section>`;
+      article.innerHTML = `<h2>${variant} · ${variant === "A" ? "Design aufklappbar" : "Design immer sichtbar"}</h2>
+        <div class="phone">
+          <div class="mock-brand"><img src="../custom_components/einkaufszettel/www/icon.svg" alt="">EINKAUFSZETTEL <span class="dots" aria-hidden="true">•••</span></div>
+          <h3>Wocheneinkauf ▾</h3><div class="mock-card">Offline – lokale Liste</div><div class="mock-card">Milch</div><div class="mock-card">Haferflocken</div>
+          <div class="shade"></div>
+          <nav class="menu" aria-label="App-Menü – Variante ${variant}">
+            <h4>App-Menü</h4>
+            <details class="group" open><summary>Listen &amp; Supermärkte</summary>${actions(["Listen verwalten", "Supermärkte verwalten", "Alexa-Liste kopieren"])}</details>
+            ${design}
+            <details class="group"><summary>Installation &amp; Verbindung</summary>${actions(["Mit HA verbinden", "App installieren", "Im Browser öffnen", "Home Assistant öffnen"])}</details>
+            <p class="note">Offline gespeichert auf diesem Gerät</p>
+          </nav>
+        </div>
+        <p class="description">${variant === "A" ? "Kompakter im Alltag: Design lässt sich wie die anderen Gruppen einklappen. Alle acht Farbschemata stehen nach dem Öffnen direkt im Menü." : "Sofortiger Zugriff: Die Farbschemata bleiben sichtbar. Kein zusätzlicher Klick, dafür benötigt das Menü dauerhaft mehr Platz."}</p>
+        <p class="feedback" role="status"></p>`;
+      article.querySelectorAll('input[type="radio"]').forEach(input => input.addEventListener("change", () => {
+        const theme = themes.find(theme => theme[0] === input.value);
+        ["bg", "surface", "surface2", "line", "accent", "accent-text", "muted"].forEach((key, index) => article.querySelector(".phone").style.setProperty(`--${key}`, theme[index + 2]));
+        article.querySelector(".feedback").textContent = `Vorschau ${variant}: ${theme[1]} ausgewählt.`;
+      }));
+      article.querySelectorAll(".action").forEach(button => button.addEventListener("click", () => {
+        article.querySelector(".feedback").textContent = `${button.textContent} – nur Vorschau, keine Aktion ausgeführt.`;
+      }));
+      document.querySelector(".comparison").append(article);
+    }
+  </script>
+</body>
+</html>

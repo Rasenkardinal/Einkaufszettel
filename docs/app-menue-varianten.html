@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Einkaufszettel – acht Menü-Layouts</title>
+  <link rel="stylesheet" href="../custom_components/einkaufszettel/www/app.css">
+  <style>
+    body { background: #0c0c0c; }
+    .gallery { max-width: 1640px; margin: auto; padding: 40px 28px 60px; }
+    .intro { max-width: 900px; margin-bottom: 32px; }
+    .intro .eyebrow { margin: 0 0 12px; }
+    .intro h1 { font-size: clamp(26px, 4vw, 40px); }
+    .intro p { color: #aaa; font-size: 14px; line-height: 1.6; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px 22px; }
+    article { min-width: 0; }
+    article > h2 { font-size: 15px; margin-bottom: 10px; }
+    .description { color: #aaa; font-size: 12px; line-height: 1.5; margin: 12px 2px 0; }
+    .phone { position: relative; height: 650px; overflow: hidden; border: 1px solid #333; border-radius: 24px; background: #141414; isolation: isolate; }
+    .app-background { padding: 22px 18px; }
+    .app-background .eyebrow { font-size: 9px; margin: 0 0 25px; display: flex; align-items: center; gap: 7px; }
+    .app-background img { width: 22px; height: 22px; }
+    .app-background h3 { margin: 0 0 20px; font-size: 25px; letter-spacing: -.04em; }
+    .dots { position: absolute; right: 17px; top: 21px; color: #aaa; }
+    .mock-sync, .mock-input { border: 1px solid #383838; border-radius: 10px; padding: 12px; font-size: 11px; color: #aaa; background: #202020; margin-bottom: 16px; }
+    .mock-sync { color: #ccc; }
+    .mock-heading { font-size: 10px; letter-spacing: .06em; margin: 22px 0 12px; font-weight: 700; }
+    .mock-item { padding: 15px 12px; margin-bottom: 8px; border: 1px solid #383838; border-radius: 10px; background: #2b2b2b; font-size: 12px; }
+    .scrim { position: absolute; inset: 0; background: #0007; z-index: 1; pointer-events: none; }
+    .menu-panel { position: absolute; z-index: 2; background: #202020; color: #f4f4f4; border: 1px solid #3b3b3b; border-radius: 14px; box-shadow: 0 12px 40px #0007; padding: 10px; overflow-y: auto; scrollbar-width: thin; }
+    .menu-title { margin: 3px 8px 12px; font-size: 15px; }
+    .menu-subtitle { color: #aaa; font-size: 10px; margin: -5px 8px 14px; }
+    .group-label { margin: 15px 9px 5px; font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: .14em; }
+    .row { width: 100%; min-height: 43px; display: flex; align-items: center; gap: 9px; padding: 9px; border: 0; border-radius: 8px; background: transparent; color: inherit; text-align: left; font-size: 12px; text-decoration: none; }
+    .row:hover, .row:focus-visible { background: #303030; }
+    .row .text { flex: 1; min-width: 0; }
+    .row small { display: block; color: #aaa; font-size: 10px; margin-top: 4px; line-height: 1.4; font-weight: 400; }
+    .symbol { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; color: #bbb; }
+    .chevron { font-size: 16px; color: #888; }
+    .rule { height: 1px; background: #383838; margin: 7px 0; }
+    .badge { font-size: 9px; color: #aaa; padding: 3px 5px; border: 1px solid #444; border-radius: 5px; }
+    .preview-feedback { position: absolute; z-index: 4; bottom: 12px; left: 14px; right: 14px; padding: 10px; background: #f4f4f4; color: #171717; border-radius: 8px; font-size: 11px; box-shadow: 0 4px 18px #0009; pointer-events: none; }
+    .preview-feedback:empty { display: none; }
+    .v1 .menu-panel { top: 55px; left: 24px; right: 14px; max-height: 565px; }
+    .v1 .row .symbol { display: none; }
+    .v2 .menu-panel { top: 55px; left: 18px; right: 14px; max-height: 565px; }
+    .v2 .row { min-height: 47px; }
+    .v3 .menu-panel { top: 55px; left: 18px; right: 14px; max-height: 565px; }
+    .v3 details { border-top: 1px solid #383838; }
+    .v3 details > summary { cursor: pointer; min-height: 48px; padding: 15px 9px; font-size: 12px; font-weight: 650; }
+    .v3 details .row { padding-left: 17px; }
+    .v3 label { display: block; font-size: 11px; color: #aaa; margin: 8px 10px; }
+    .v3 select { width: calc(100% - 20px); margin: 0 10px 12px; padding: 9px; background: #2b2b2b; color: #fff; border: 1px solid #444; border-radius: 8px; }
+    .v4 .menu-panel { bottom: 0; left: 0; right: 0; max-height: 580px; border-radius: 22px 22px 0 0; padding: 10px 14px 20px; }
+    .handle { width: 34px; height: 4px; border-radius: 9px; background: #666; margin: 0 auto 19px; }
+    .v4 .row { min-height: 48px; }
+    .v5 .menu-panel { top: 12px; right: 0; bottom: 12px; width: 87%; border-radius: 18px 0 0 18px; padding: 20px 12px; }
+    .v5 .menu-title { margin-bottom: 22px; }
+    .v5 .row { min-height: 47px; }
+    .v6 .menu-panel { inset: 78px 14px auto; max-height: 550px; padding: 17px 12px; }
+    .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .tile { min-height: 94px; border: 1px solid #414141; border-radius: 12px; background: #292929; color: #eee; padding: 12px 9px; text-align: left; font-size: 11px; }
+    .tile .symbol { display: block; width: 21px; height: 21px; margin-bottom: 12px; }
+    .tile small { display: block; color: #aaa; font-size: 9px; margin-top: 5px; }
+    .tile:hover { background: #353535; }
+    .v7 .menu-panel { top: 55px; left: 14px; right: 14px; max-height: 565px; padding: 14px 10px; }
+    .v7 .row { border: 1px solid #3c3c3c; background: #272727; margin: 6px 0; min-height: 57px; }
+    .v7 .secondary-row { border: 0; background: transparent; min-height: 38px; margin: 0; }
+    .v7 .secondary-row .symbol { width: 14px; height: 14px; }
+    .v8 .menu-panel { inset: 0; border: 0; border-radius: 0; padding: 22px 17px; background: #191919; box-shadow: none; }
+    .v8 .menu-title { font-size: 23px; margin: 5px 0 8px; }
+    .v8 .menu-subtitle { margin: 0 0 20px; }
+    .search-label { display: block; font-size: 10px; color: #aaa; margin-bottom: 6px; }
+    .menu-search { width: 100%; border: 1px solid #444; border-radius: 9px; padding: 11px; background: #252525; color: #fff; margin-bottom: 10px; font-size: 12px; }
+    .v8 .row { min-height: 49px; border-bottom: 1px solid #303030; border-radius: 0; }
+    .no-results { color: #aaa; font-size: 12px; }
+    @media(max-width: 1200px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media(max-width: 650px) { .grid { grid-template-columns: 1fr; } .gallery { padding: 28px 16px; } }
+  </style>
+</head>
+<body data-theme="mono">
+  <main class="gallery">
+    <header class="intro">
+      <p class="eyebrow">Einkaufszettel · Menü-Exploration</p>
+      <h1>Acht Layouts für das geöffnete App-Menü</h1>
+      <p>Gleiche Schrift, gleiches Mono-Farbschema und dieselben Funktionen. Der Unterschied liegt in der Darstellung der Auswahl: kompakte Liste, Symbole, aufklappbare Gruppen, Bottom-Sheet, Seitenleiste, Kacheln, Karten oder eine eigene Menüseite.</p>
+      <p><strong>Nur Vorschau:</strong> Menüpunkte zeigen beim Antippen eine kurze Rückmeldung, führen aber keine Installation, Anmeldung oder Datenänderung aus. Bei Nr. 3 lassen sich Gruppen aufklappen, bei Nr. 8 Einträge filtern. Meine Favoriten: <strong>02 für ein kompaktes Menü</strong> und <strong>04 für die Bedienung auf dem Smartphone</strong>.</p>
+    </header>
+    <section class="grid" aria-label="Acht Layoutvorschläge für das App-Menü"></section>
+  </main>
+  <script>
+    const paths = {
+      connect: "M8 12h8M9 7l-5 5 5 5M15 7l5 5-5 5",
+      install: "M12 3v12M7 10l5 5 5-5M5 16v5h14v-5",
+      browser: "M3 5h18v15H3zM3 9h18M6 7h.1M9 7h.1",
+      home: "M3 11l9-8 9 8M6 9v12h12V9M10 21v-7h4v7",
+      design: "M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h3a5 5 0 0 0 0-10zM7 10h.1M10 6h.1M16 7h.1",
+      lists: "M8 6h12M8 12h12M8 18h12M3 6h.1M3 12h.1M3 18h.1",
+      copy: "M8 8h12v13H8zM16 8V3H3v13h5",
+      markets: "M4 10v10h16V10M3 10l2-6h14l2 6M3 10h18M9 20v-6h6v6"
+    };
+    const actions = [
+      { id: "lists", title: "Listen verwalten", subtitle: "Quellen, Namen und Sichtbarkeit" },
+      { id: "markets", title: "Supermärkte verwalten", subtitle: "Märkte und Filialen bearbeiten" },
+      { id: "copy", title: "Alexa-Liste kopieren", subtitle: "Neue Artikel aus der Quelle übernehmen" },
+      { id: "design", title: "Design", subtitle: "Farbschema auswählen", badge: "Mono" },
+      { id: "connect", title: "Mit HA verbinden", subtitle: "Bei Home Assistant anmelden" },
+      { id: "install", title: "App installieren", subtitle: "Zum Startbildschirm hinzufügen" },
+      { id: "browser", title: "Im Browser öffnen", subtitle: "App in eigenem Fenster öffnen / installieren" },
+      { id: "home", title: "Home Assistant öffnen", subtitle: "Zurück zur HA-Oberfläche" }
+    ];
+    const icon = id => `<svg class="symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[id]}"/></svg>`;
+    const row = (id, subtitles = false, extra = "") => {
+      const action = actions.find(action => action.id === id);
+      return `<button class="row ${extra}" data-action="${id}">${icon(id)}<span class="text">${action.title}${subtitles ? `<small>${action.subtitle}</small>` : ""}</span>${action.badge ? `<span class="badge">${action.badge}</span>` : ""}<span class="chevron" aria-hidden="true">›</span></button>`;
+    };
+    const group = (label, ids, subtitles = false) => `<p class="group-label">${label}</p>${ids.map(id => row(id, subtitles)).join("")}`;
+    const names = [
+      ["01 · Kompakte Textliste", "Die ruhigste Variante: klare Gruppentitel und alle Aktionen direkt sichtbar, ohne Symbole."],
+      ["02 · Icon-Liste", "Symbole unterstützen die Orientierung; Trennlinien teilen Alltag, Darstellung und Einrichtung."],
+      ["03 · Aufklappbare Gruppen", "Nah am bestehenden Menü. Wenige sichtbare Hauptpunkte; Unteraktionen werden bei Bedarf ausgeklappt."],
+      ["04 · Bottom-Sheet", "Große, gut erreichbare Zeilen in einem von unten geöffneten Menü. Besonders für Smartphones geeignet."],
+      ["05 · Rechte Menüleiste", "Ein seitliches Panel schafft Platz für alle Aktionen und lässt die Liste links noch erkennen."],
+      ["06 · Kachelmenü", "Vier Hauptfunktionen als Kacheln, Installation und Verbindungen darunter als schlanke Liste."],
+      ["07 · Funktionskarten", "Wichtige Funktionen erhalten kurze Erklärungen. Selten benötigte Aktionen stehen kompakt darunter."],
+      ["08 · Eigene Menüseite", "Maximaler Platz und filterbare Einträge. Für eine später umfangreichere App-Verwaltung."]
+    ];
+    const heading = '<h4 class="menu-title">App-Menü</h4>';
+    const installation = ["connect", "install", "browser", "home"];
+    const layouts = [
+      heading + group("Verwalten", ["lists", "markets", "copy"]) + group("Darstellung", ["design"]) + group("Installation & Verbindung", installation),
+      heading + ["lists", "markets", "copy"].map(id => row(id)).join("") + '<div class="rule"></div>' + row("design") + '<div class="rule"></div>' + installation.map(id => row(id)).join(""),
+      heading + `<details open><summary>Listen & Supermärkte</summary>${["lists", "markets", "copy"].map(id => row(id)).join("")}</details><details><summary>Design</summary><label>Farbschema<select aria-label="Farbschema (Vorschau)">${["Mono", "Botanical", "Midnight Plum", "Market Journal", "Fresh Signal", "Tomato", "Lime Focus", "Indigo Pocket"].map(name => `<option>${name}</option>`).join("")}</select></label></details><details><summary>Installation & Verbindung</summary>${installation.map(id => row(id)).join("")}</details>`,
+      '<div class="handle"></div>' + heading + ["lists", "markets", "copy", "design"].map(id => row(id)).join("") + '<div class="rule"></div>' + installation.map(id => row(id)).join(""),
+      heading + '<p class="menu-subtitle">Alles für deinen Einkaufszettel</p>' + group("Organisation", ["lists", "markets", "copy"]) + group("Darstellung", ["design"]) + group("Einrichtung", installation),
+      heading + `<div class="tile-grid">${["lists", "markets", "design", "copy"].map(id => { const action = actions.find(a => a.id === id); return `<button class="tile" data-action="${id}">${icon(id)}${action.title}${id === "design" ? "<small>Aktuell: Mono</small>" : ""}</button>`; }).join("")}</div>` + group("Installation & Verbindung", installation),
+      heading + ["lists", "markets", "design", "copy"].map(id => row(id, true)).join("") + '<p class="group-label">Installation & Verbindung</p>' + installation.map(id => row(id, false, "secondary-row")).join(""),
+      heading + '<p class="menu-subtitle">Verwalten, anpassen und verbinden</p><label class="search-label">Menüpunkte filtern<input class="menu-search" type="search" placeholder="z. B. Design oder Supermarkt"></label>' + actions.map(id => row(id.id)).join("") + '<p class="no-results" hidden>Keine passenden Menüpunkte.</p>'
+    ];
+    const background = `<div class="app-background"><p class="eyebrow"><img src="../custom_components/einkaufszettel/www/icon.svg" alt="">EINKAUFSZETTEL</p><span class="dots" aria-hidden="true">•••</span><h3>Wocheneinkauf ▾</h3><div class="mock-sync">● &nbsp; Offline – lokale Liste</div><div class="mock-input">Was fehlt noch?</div><p class="mock-heading">AUF DER LISTE</p>${["Milch", "Haferflocken", "Äpfel"].map(name => `<div class="mock-item">□ &nbsp; ${name}</div>`).join("")}</div>`;
+    const grid = document.querySelector(".grid");
+    names.forEach(([title, description], index) => {
+      const article = document.createElement("article");
+      article.innerHTML = `<h2>${title}</h2><div class="phone v${index + 1}">${background}<div class="scrim"></div><nav class="menu-panel" aria-label="App-Menü – Variante ${index + 1}">${layouts[index]}</nav><p class="preview-feedback" role="status"></p></div><p class="description">${description}</p>`;
+      article.querySelectorAll("[data-action]").forEach(button => button.addEventListener("click", () => {
+        const action = actions.find(action => action.id === button.dataset.action);
+        article.querySelector(".preview-feedback").textContent = `${action.title} – nur Vorschau, keine Aktion ausgeführt.`;
+      }));
+      const search = article.querySelector(".menu-search");
+      if (search) search.addEventListener("input", () => {
+        let visible = 0;
+        article.querySelectorAll("[data-action]").forEach(button => {
+          button.hidden = !button.textContent.toLocaleLowerCase("de").includes(search.value.trim().toLocaleLowerCase("de"));
+          if (!button.hidden) visible++;
+        });
+        article.querySelector(".no-results").hidden = visible > 0;
+      });
+      grid.append(article);
+    });
+  </script>
+</body>
+</html>

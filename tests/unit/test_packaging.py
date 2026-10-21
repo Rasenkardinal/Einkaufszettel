@@ -104,7 +104,6 @@ def test_app_menu_groups_existing_actions():
             "Installation",
             ("connect", "install", "open-app-browser", "open-homeassistant"),
         ),
-        ("menu-design", "Design", ("design-select",)),
         ("menu-lists", "Listenverwaltung", ("manage-lists", "copy-source")),
     ):
         match = re.search(
@@ -132,19 +131,28 @@ def test_named_dark_designs_share_layout_and_storage():
         "lime-focus": "Lime Focus",
         "indigo-pocket": "Indigo Pocket",
     }
-    select = re.search(r'<select id="design-select">(.*?)</select>', html, re.DOTALL)
-    assert select is not None
+    dialog = re.search(
+        r'<dialog id="design-dialog"[^>]*>(.*?)</dialog>', html, re.DOTALL
+    )
+    assert dialog is not None
     assert (
         dict(
             re.findall(
-                r'<option value="([^"]+)"(?: selected)?>([^<]+)</option>',
-                select.group(1),
+                r'value="([^"]+)"(?: checked)?><span[^>]+></span><span>([^<]+)</span>',
+                dialog.group(1),
             )
         )
         == designs
     )
     assert '<body data-theme="mono">' in html
-    assert 'value="mono" selected' in select.group(1)
+    assert 'value="mono" checked' in dialog.group(1)
+    assert (
+        'id="menu-design" type="button" aria-haspopup="dialog" aria-controls="design-dialog"'
+        in html
+    )
+    assert 'id="design-select"' not in html
+    assert ".design-row:has(input:checked)" in css
+    assert "elements.designDialog.showModal()" in script
     for theme in designs.keys() - {"mono"}:
         block = re.search(rf'body\[data-theme="{theme}"\]\s*\{{([^}}]+)\}}', css)
         assert block is not None
@@ -167,7 +175,11 @@ def test_supermarket_picker_and_management_are_separate_from_lists():
     assert heading is not None
     assert 'id="market-select"' in heading.group(1)
     assert 'aria-label="Supermarkt auswählen"' in heading.group(1)
-    assert '<option value="">Ohne Markt</option>' in heading.group(1)
+    assert '<select id="market-select"' not in html
+    assert '<button id="market-select"' in heading.group(1)
+    assert 'aria-controls="market-flyout"' in heading.group(1)
+    assert 'id="market-flyout" aria-label="Supermarkt auswählen" hidden' in html
+    assert '<span id="market-name">Ohne Markt</span>' in heading.group(1)
     assert 'id="manage-supermarkets">Supermärkte verwalten</button>' in html
     assert 'id="supermarket-management"' in html
     assert 'id="add-supermarket-form"' in html

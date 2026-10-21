@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design – vier Untermenüs</title>
+<link rel="stylesheet" href="../custom_components/einkaufszettel/www/app.css">
+<style>
+body { background:#0c0c0c; }
+main { max-width:1600px; margin:auto; padding:38px 26px; }
+header { max-width:900px; margin-bottom:28px; }
+header .eyebrow { margin:0 0 12px; }
+header h1 { font-size:clamp(26px,4vw,38px); }
+header p, .description { color:#aaa; font-size:13px; line-height:1.6; }
+.grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:22px; }
+article { min-width:0; }
+article > h2 { font-size:15px; margin-bottom:12px; }
+.phone { --bg:#141414; --surface:#202020; --surface2:#2b2b2b; --line:#383838; --accent:#f5f5f5; --muted:#aaa; position:relative; height:700px; overflow:hidden; border:1px solid var(--line); border-radius:24px; background:var(--bg); padding:20px 15px; isolation:isolate; }
+.brandline { display:flex; align-items:center; gap:7px; font-size:9px; color:var(--muted); letter-spacing:.13em; }
+.brandline img { width:22px; height:22px; }
+.brandline span { margin-left:auto; font-size:18px; }
+.phone h3 { font-size:25px; margin:24px 0 18px; letter-spacing:-.04em; }
+.mock { background:var(--surface2); border:1px solid var(--line); padding:15px; border-radius:10px; margin:10px 0; font-size:12px; }
+.panel { position:absolute; z-index:1; top:58px; left:15px; right:12px; max-height:calc(100% - 80px); overflow:auto; border:1px solid var(--line); border-radius:14px; padding:12px 10px; background:var(--surface); box-shadow:0 12px 40px #0008; scrollbar-width:thin; }
+h4 { margin:4px 8px 16px; font-size:15px; }
+.group { border-top:1px solid var(--line); }
+summary, .design-open { min-height:47px; padding:13px 8px; cursor:pointer; font-weight:650; font-size:12px; }
+.design-open { display:flex; align-items:center; gap:9px; width:100%; background:transparent; border:0; color:#f4f4f4; text-align:left; }
+.current { margin-left:auto; display:flex; align-items:center; gap:6px; color:var(--muted); font-size:10px; font-weight:400; }
+.arrow { color:var(--muted); font-size:17px; }
+.action { width:100%; display:block; padding:12px; min-height:42px; border:0; border-radius:8px; background:transparent; color:#ddd; font-size:11px; text-align:left; }
+.action:hover, .design-open:hover, .theme-row:hover { background:var(--surface2); }
+.note { color:var(--muted); font-size:9px; margin:13px 8px 2px; line-height:1.5; }
+.swatch { width:12px; height:12px; border-radius:50%; background:var(--swatch,#f5f5f5); flex:none; }
+.themes { border:0; padding:0; margin:0; min-width:0; display:grid; gap:4px; }
+.theme-row { display:flex; align-items:center; gap:9px; min-height:40px; padding:9px; border:1px solid transparent; border-radius:8px; font-size:11px; cursor:pointer; }
+.theme-row:has(input:checked) { border-color:var(--accent); background:var(--surface2); }
+.theme-row:focus-within { outline:2px solid var(--accent); outline-offset:1px; }
+.theme-row input { position:absolute; opacity:0; width:1px; height:1px; }
+.tick { margin-left:auto; visibility:hidden; color:var(--accent); }
+input:checked ~ .tick { visibility:visible; }
+.subheading { display:flex; align-items:center; gap:9px; margin-bottom:12px; }
+.subheading h4 { margin:0; }
+.back, .close { border:0; min-width:36px; min-height:36px; background:var(--surface2); color:#fff; border-radius:8px; font-size:18px; }
+.close { margin-left:auto; }
+.subhelp { color:var(--muted); font-size:10px; margin:0 5px 12px; }
+.inline-sub { padding:5px 4px 12px 12px; border-left:1px solid var(--line); margin-left:8px; }
+.layer { position:absolute; inset:0; z-index:3; background:#0009; display:grid; align-items:center; padding:16px; }
+.subcard { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:14px 10px; max-height:100%; overflow:auto; }
+.sheet-layer { align-items:end; padding:0; }
+.sheet-layer .subcard { border-radius:20px 20px 0 0; max-height:90%; padding:12px 14px 20px; }
+.handle { height:4px; width:32px; border-radius:8px; background:#666; margin:0 auto 13px; }
+.feedback { min-height:20px; color:#aaa; font-size:11px; line-height:1.5; }
+@media(max-width:1200px) { .grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:640px) { .grid { grid-template-columns:1fr; } main { padding:28px 16px; } }
+</style>
+</head>
+<body data-theme="mono">
+<main>
+<header>
+<p class="eyebrow">Einkaufszettel · Design-Untermenü</p>
+<h1>Erst „Design“, dann die Farbschemata.</h1>
+<p>Die Farbschemata sind anfangs ausgeblendet. Tippe in einer Vorschau auf <strong>Design</strong>, um das jeweilige Untermenü auszuprobieren. Farbpunkte und der dauerhafte Auswahlrahmen mit Häkchen bleiben in allen Varianten gleich.</p>
+<p><strong>Empfehlung: 02.</strong> Das Untermenü ersetzt den Inhalt im selben Menüfenster – ohne seitlichen Flyout und ohne zusätzliche Ebene über der App. Alle Änderungen hier gelten ausschließlich für die jeweilige Vorschau.</p>
+</header>
+<section class="grid" aria-label="Vier Design-Untermenüs"></section>
+</main>
+<script>
+const themes = [
+["mono","Mono","#141414","#202020","#2b2b2b","#383838","#f5f5f5","#aaa"],
+["botanical","Botanical","#111813","#1b251e","#26362a","#304035","#a3e635","#aab7ac"],
+["midnight-plum","Midnight Plum","#15121c","#211b2b","#30243e","#3b3148","#c4a7ff","#b9adc8"],
+["market-journal","Market Journal","#1a1411","#271d18","#38281d","#49382e","#ffb454","#c7b3a5"],
+["fresh-signal","Fresh Signal","#0d171b","#13242a","#19343b","#24444c","#55e0d0","#9db8ba"],
+["tomato","Tomato","#1b1315","#281c1f","#382327","#493137","#ff8977","#c2a7a6"],
+["lime-focus","Lime Focus","#0c0f0c","#171c16","#222b1e","#343e2d","#d4ff00","#a9b197"],
+["indigo-pocket","Indigo Pocket","#101522","#192033","#222d49","#303b56","#83a7ff","#aab5ca"]
+];
+const variants=[
+["01 · Im Menü aufklappen","Die Design-Gruppe erweitert sich direkt nach unten. Die übrigen Gruppen bleiben im selben Menü erreichbar."],
+["02 · Menü-internes Untermenü","„Design“ öffnet eine eigene Ansicht im gleichen Menüfenster. „Zurück“ führt wieder zu den Hauptgruppen."],
+["03 · Kompakter Auswahldialog","Ein zentrierter Dialog über dem Menü trennt die Farbauswahl deutlich von den Verwaltungsaktionen."],
+["04 · Auswahl von unten","Ein Bottom-Sheet zeigt die Designs mit gut erreichbaren Auswahlzeilen. Das Hauptmenü bleibt dahinter."]
+];
+const action = title => `<button class="action">${title}</button>`;
+variants.forEach(([title,description],index)=>{
+ const n=index+1, article=document.createElement("article");
+ const list=`<fieldset class="themes" aria-label="Farbschema – Variante ${n}">${themes.map(([id,name,,,,,color])=>`<label class="theme-row"><input type="radio" name="theme-${n}" value="${id}" ${id==="mono"?"checked":""}><span class="swatch" style="--swatch:${color}" aria-hidden="true"></span><span>${name}</span><span class="tick" aria-hidden="true">✓</span></label>`).join("")}</fieldset>`;
+ const heading=`<div class="subheading">${n===2?'<button class="back" aria-label="Zurück zum App-Menü">‹</button>':""}<h4>Design</h4><button class="close" aria-label="Designauswahl schließen">×</button></div><p class="subhelp">Farbschema auswählen</p>`;
+ const designButton='<button class="design-open" aria-expanded="false">Design <span class="current"><span class="swatch current-swatch" aria-hidden="true"></span><span class="current-name">Mono</span></span><span class="arrow" aria-hidden="true">›</span></button>';
+ article.innerHTML=`<h2>${title}</h2><div class="phone">
+ <div class="brandline"><img src="../custom_components/einkaufszettel/www/icon.svg" alt="">EINKAUFSZETTEL<span aria-hidden="true">•••</span></div>
+ <h3>Wocheneinkauf ▾</h3><div class="mock">Offline – lokale Liste</div><div class="mock">Milch</div><div class="mock">Haferflocken</div>
+ <nav class="panel" aria-label="App-Menü – Variante ${n}"><div class="main-view"><h4>App-Menü</h4><details class="group" open><summary>Listen &amp; Supermärkte</summary>${["Listen verwalten","Supermärkte verwalten","Alexa-Liste kopieren"].map(action).join("")}</details>
+ <div class="group">${designButton}${n===1?`<div class="sub-view inline-sub" hidden>${list}</div>`:""}</div>
+ <details class="group"><summary>Installation &amp; Verbindung</summary>${["Mit HA verbinden","App installieren","Im Browser öffnen","Home Assistant öffnen"].map(action).join("")}</details><p class="note">Offline gespeichert auf diesem Gerät</p></div>
+ ${n===2?`<div class="sub-view" hidden>${heading}${list}</div>`:""}</nav>
+ ${n>2?`<div class="sub-view layer ${n===4?"sheet-layer":""}" hidden><section class="subcard" role="dialog" aria-label="Designauswahl – Variante ${n}">${n===4?'<div class="handle"></div>':""}${heading}${list}</section></div>`:""}
+ </div><p class="description">${description}</p><p class="feedback" role="status"></p>`;
+ const phone=article.querySelector(".phone"), opener=article.querySelector(".design-open"), sub=article.querySelector(".sub-view");
+ function toggle(open) {
+   sub.hidden=!open; opener.setAttribute("aria-expanded",String(open));
+   if(n===2) article.querySelector(".main-view").hidden=open;
+   if(open) sub.querySelector(".back, .close, input:checked").focus();
+   else opener.focus();
+ }
+ opener.addEventListener("click",()=>toggle(sub.hidden));
+ article.querySelectorAll(".back,.close").forEach(button=>button.addEventListener("click",()=>toggle(false)));
+ article.addEventListener("keydown",event=>{if(event.key==="Escape"&&!sub.hidden){event.preventDefault();toggle(false);}});
+ if(n>2) sub.addEventListener("click",event=>{if(event.target===sub)toggle(false);});
+ article.querySelectorAll('input[type="radio"]').forEach(input=>input.addEventListener("change",()=>{
+   const theme=themes.find(theme=>theme[0]===input.value);
+   ["bg","surface","surface2","line","accent","muted"].forEach((key,i)=>phone.style.setProperty(`--${key}`,theme[i+2]));
+   article.querySelector(".current-name").textContent=theme[1];
+   article.querySelector(".current-swatch").style.setProperty("--swatch",theme[6]);
+   article.querySelector(".feedback").textContent=`Vorschau ${n}: ${theme[1]} ausgewählt.`;
+ }));
+ article.querySelectorAll(".action").forEach(button=>button.addEventListener("click",()=>{article.querySelector(".feedback").textContent=`${button.textContent} – nur Vorschau.`;}));
+ document.querySelector(".grid").append(article);
+});
+</script>
+</body>
+</html>
