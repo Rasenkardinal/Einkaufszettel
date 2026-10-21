@@ -58,6 +58,16 @@ Unter **Einstellungen → Geräte & Dienste → Einkaufszettel → Entitäten** 
 
 ## Offline-Web-App verwenden
 
+Das Dreipunkte-App-Menü ist in aufklappbare Bereiche gegliedert:
+
+- **Installation:** HA-Anmeldung, App-Installation sowie Browser-/HA-Links zum Öffnen und Testen.
+- **Design:** Acht dunkle Farbschemata zur Auswahl: **Botanical**, **Midnight Plum**, **Market Journal**, **Fresh Signal**, **Mono** (Standard), **Tomato**, **Lime Focus** und **Indigo Pocket**. Die Auswahl wird auf diesem Gerät gespeichert und gilt auch offline für alle Listen. Schrift und Aufbau bleiben gleich.
+- **Listenverwaltung:** **Listen verwalten** (Quellen, App-Namen und Sichtbarkeit) und **Alexa-Liste kopieren**. Der bisherige manuelle Kopiermechanismus bleibt unverändert; automatische oder bidirektionale Alexa-Synchronisation ist damit nicht eingeführt.
+
+Die nachfolgenden Verweise auf **Setup → Listen verwalten** meinen **App-Menü → Listenverwaltung → Listen verwalten**; Anmeldung und Installationslinks liegen unter **Installation**.
+
+Die Listenauswahl liegt direkt auf dem Listentitel mit dem gefüllten Dreieck rechts oben. Aktive Artikel haben hellere Flächen; erledigte Artikel werden ausgegraut und durchgestrichen, lassen sich aber weiterhin wieder öffnen, bearbeiten und löschen.
+
 1. In Home Assistant die neue **Einkaufszettel-Seite in der Seitenleiste** öffnen. Sie zeigt die Web-App direkt in Home Assistant; sie ist der normale Startweg.
 2. Oben rechts das **Dreipunkte-Menü (Setup)** öffnen und **„App in eigenem Browserfenster öffnen / installieren“** wählen. Für Installation und Offline-Betrieb die HTTPS-Adresse verwenden, zum Beispiel über Nabu Casa. Im eigenen Browserfenster beim ersten Aufruf im Setup **Mit HA verbinden** wählen und Home Assistant den Zugriff erlauben; dann über **App installieren** oder das Browsermenü zum Startbildschirm hinzufügen.
 3. Beim nächsten Einkauf das Homescreen-Symbol direkt starten; ohne Installation die Einkaufszettel-Seite in der HA-Seitenleiste öffnen.

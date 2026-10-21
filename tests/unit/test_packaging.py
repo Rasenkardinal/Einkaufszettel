@@ -82,3 +82,69 @@ def test_web_app_assets_are_versioned_and_precached():
     assert {asset.split("?v=")[1] for asset in assets} == {version}
     for asset in assets:
         assert f'"{asset}"' in worker
+
+
+def test_app_menu_groups_existing_actions():
+    html = (
+        ROOT / "custom_components" / "einkaufszettel" / "www" / "app.html"
+    ).read_text(encoding="utf-8")
+    for section, title, actions in (
+        (
+            "menu-installation",
+            "Installation",
+            ("connect", "install", "open-app-browser", "open-homeassistant"),
+        ),
+        ("menu-design", "Design", ("design-select",)),
+        ("menu-lists", "Listenverwaltung", ("manage-lists", "copy-source")),
+    ):
+        match = re.search(
+            rf'<details id="{section}"[^>]*>(.*?)</details>', html, re.DOTALL
+        )
+        assert match is not None
+        content = match.group(1)
+        assert f"<summary>{title}</summary>" in content
+        for action in actions:
+            assert f'id="{action}"' in content
+
+
+def test_named_dark_designs_share_layout_and_storage():
+    webapp = ROOT / "custom_components" / "einkaufszettel" / "www"
+    html = (webapp / "app.html").read_text(encoding="utf-8")
+    css = (webapp / "app.css").read_text(encoding="utf-8")
+    script = (webapp / "app.js").read_text(encoding="utf-8")
+    designs = {
+        "botanical": "Botanical",
+        "midnight-plum": "Midnight Plum",
+        "market-journal": "Market Journal",
+        "fresh-signal": "Fresh Signal",
+        "mono": "Mono",
+        "tomato": "Tomato",
+        "lime-focus": "Lime Focus",
+        "indigo-pocket": "Indigo Pocket",
+    }
+    select = re.search(r'<select id="design-select">(.*?)</select>', html, re.DOTALL)
+    assert select is not None
+    assert (
+        dict(
+            re.findall(
+                r'<option value="([^"]+)"(?: selected)?>([^<]+)</option>',
+                select.group(1),
+            )
+        )
+        == designs
+    )
+    assert '<body data-theme="mono">' in html
+    assert 'value="mono" selected' in select.group(1)
+    for theme in designs.keys() - {"mono"}:
+        block = re.search(rf'body\[data-theme="{theme}"\]\s*\{{([^}}]+)\}}', css)
+        assert block is not None
+        assert all(
+            declaration.strip().startswith("--")
+            for declaration in block.group(1).split(";")
+            if declaration.strip()
+        )
+    assert "localStorage.setItem(DESIGN_KEY" in script
+    assert "localStorage.getItem(DESIGN_KEY)" in script
+    assert ".item.completed .item-name { text-decoration: line-through; }" in css
+    assert 'class="list-arrow" aria-hidden="true"' in html
+    assert "Design-Einstellungen folgen" not in html

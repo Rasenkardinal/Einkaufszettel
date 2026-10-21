@@ -3,9 +3,11 @@ const ENTRY_KEY = "einkaufszettel.entry_id";
 const TOKEN_KEY = "einkaufszettel.auth";
 const OAUTH_STATE_PREFIX = "einkaufszettel.oauth.";
 const DOMAIN = "einkaufszettel";
+const DESIGN_KEY = "einkaufszettel.design";
 
 const elements = {
   setup: document.querySelector("#setup"),
+  designSelect: document.querySelector("#design-select"),
   manageLists: document.querySelector("#manage-lists"),
   listManagement: document.querySelector("#list-management"),
   managementMessage: document.querySelector("#management-message"),
@@ -51,6 +53,34 @@ let busy = false;
 let lastOperationTime = 0;
 let availableLists = [];
 let editingUid;
+
+function applyDesign(theme) {
+  document.body.dataset.theme = theme;
+  elements.designSelect.value = theme;
+  document.querySelector('meta[name="theme-color"]').content =
+    getComputedStyle(document.body).getPropertyValue("--bg").trim();
+}
+
+function initializeDesign() {
+  try {
+    const theme = localStorage.getItem(DESIGN_KEY) || "mono";
+    if (![...elements.designSelect.options].some((option) => option.value === theme)) {
+      throw new Error("Das gespeicherte Farbschema ist unbekannt. Bitte wähle unter Menü → Design ein neues aus.");
+    }
+    applyDesign(theme);
+  } catch (error) {
+    showError(error);
+  }
+}
+
+elements.designSelect.addEventListener("change", () => {
+  applyDesign(elements.designSelect.value);
+  try {
+    localStorage.setItem(DESIGN_KEY, elements.designSelect.value);
+  } catch (error) {
+    showError(new Error(`Das Farbschema konnte nicht auf diesem Gerät gespeichert werden: ${error.message}`));
+  }
+});
 
 function openDatabase() {
   return new Promise((resolve, reject) => {
@@ -789,4 +819,5 @@ async function start() {
   }
 }
 
+initializeDesign();
 start();
