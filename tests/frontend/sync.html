@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Synchronization regression tests</title>
+<pre id="results">Running...</pre>
+<script>
+async function runTests() {
+  const source = await (await fetch("../../custom_components/einkaufszettel/www/app.js")).text();
+  const persistence = source.slice(source.indexOf("function storeRequest("), source.indexOf("function render()"));
+  const selection = source.slice(source.indexOf("async function loadSelectedList()"), source.indexOf("async function selectList("));
+  const protocol = source.slice(source.indexOf("async function synchronize()"), source.indexOf("async function loadRemoteLists()"));
+  const results = [];
+  const assert = (value, message) => { if (!value) throw Error(message); };
+  async function fixture(test) {
+    const name = `einkaufszettel-sync-test-${crypto.randomUUID()}`;
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open(name, 1);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore("lists", { keyPath: "entry_id" });
+        request.result.createObjectStore("operations", { keyPath: "id" });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const env = { database, states: [], send: async () => { throw Error("Unexpected network"); } };
+    const create = new Function("env", `
+      const { database } = env;
+      const DOMAIN = "einkaufszettel", WebSocket = { OPEN: 1 }, socket = { readyState: 1 };
+      const elements = { listName: { textContent: "Test" }, message: { textContent: "" } };
+      let entryId = "a", currentItems = [], deletedUids = new Set(), pendingOperations = [],
+        lastOperationTime = 0, busy = false, authenticated = false;
+      let availableLists = [{ entry_id: "a", name: "Test" }];
+      const setBusy = value => { busy = value; };
+      const render = () => {}, renderListSelection = () => {}, loadMarketSelection = () => {};
+      const updateConnection = (state, message) => env.states.push({ state, message });
+      const sendCommand = (type, payload) => env.send(type, payload);
+      ${persistence}
+      ${selection}
+      ${protocol}
+      return { enqueue, readQueue, saveList, loadSelectedList, synchronize, acknowledgeOperation,
+        online: () => { authenticated = true; },
+        select: async id => { entryId = id; await loadSelectedList(); },
+        state: () => ({ currentItems, pendingOperations, message: elements.message.textContent }) };
+    `);
+    const api = create(env);
+    try { await test(api, env); }
+    finally {
+      database.close();
+      await new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(name);
+        request.onsuccess = resolve; request.onerror = () => reject(request.error);
+      });
+    }
+  }
+  async function test(name, fn) { await fixture(fn); results.push(`PASS ${name}`); }
+
+  await test("Offline patches retain metadata and revision across reload", async api => {
+    await api.saveList({ entry_id: "a", name: "A", revision: 7, deleted_uids: ["deleted"],
+      items: [{ uid: "one", summary: "Milk", status: "needs_action", metadata: { category_id: "dairy", quantity: "1" } }] });
+    await api.loadSelectedList();
+    await api.enqueue({ type: "update_item", uid: "one", metadata: { quantity: "2" } });
+    await api.loadSelectedList();
+    assert(api.state().currentItems[0].metadata.category_id === "dairy", "Category lost");
+    assert(api.state().currentItems[0].metadata.quantity === "2", "Quantity lost");
+    await api.enqueue({ type: "add_item", uid: "deleted", summary: "Must not reappear" });
+    assert(api.state().currentItems.length === 1, "Tombstone ignored");
+  });
+
+  await test("Lost acknowledgement retries the same operation without replacing newer data", async (api, env) => {
+    let server = { entry_id: "a", name: "A", revision: 1, items: [{ uid: "one", summary: "Milk", status: "needs_action" }] };
+    await api.saveList(server); await api.loadSelectedList();
+    await api.enqueue({ type: "update_item", uid: "one", summary: "Oat milk" });
+    const operation = (await api.readQueue())[0];
+    let loseReply = true, applied = 0;
+    const receipts = new Set();
+    env.send = async (type, payload) => {
+      if (type.endsWith("/apply_operation")) {
+        assert(payload.operation_id === operation.id, "Operation identity changed");
+        assert(!("created_at" in payload), "Client clock used for ordering");
+        if (!receipts.has(payload.operation_id)) {
+          applied++; receipts.add(payload.operation_id);
+          server = { ...server, revision: 2, items: [{ ...server.items[0], ...payload.changes }] };
+        }
+        if (loseReply) { loseReply = false; throw Error("Lost response"); }
+        return { ...server, ack_operation_id: payload.operation_id, operation_result: "applied" };
+      }
+      return server;
+    };
+    api.online();
+    let failed = false;
+    try { await api.synchronize(); } catch { failed = true; }
+    assert(failed && (await api.readQueue()).length === 1, "Unconfirmed queue removed");
+    server.items[0].summary = "Newer edit from another device";
+    await api.synchronize();
+    assert(applied === 1 && !(await api.readQueue()).length, "Retry not idempotent");
+    assert(api.state().currentItems[0].summary === server.items[0].summary, "Newer edit overwritten");
+  });
+
+  await test("Failed local acknowledgement never consumes the queued operation", async api => {
+    await api.enqueue({ type: "add_item", uid: "one", summary: "Milk" });
+    const operation = (await api.readQueue())[0];
+    let failed = false;
+    try { await api.acknowledgeOperation({ items: [] }, operation.id); } catch { failed = true; }
+    assert(failed && (await api.readQueue()).length === 1, "Queue was consumed");
+  });
+
+  await test("Deleted acknowledgements and source failures remain visible, including inactive lists", async (api, env) => {
+    await api.enqueue({ type: "add_item", uid: "old", summary: "Milk" });
+    const snapshots = {
+      a: { entry_id: "a", name: "A", revision: 2, deleted_uids: ["old"], items: [], source_error: "Source unavailable" },
+      b: { entry_id: "b", name: "B", revision: 1, items: [] },
+    };
+    await api.saveList(snapshots.b);
+    await api.select("b");
+    // The real app keeps all enabled lists in availableLists; this fixture's A remains inactive.
+    env.send = async (type, payload) => ({
+      ...snapshots[payload.entry_id],
+      ...(type.endsWith("/apply_operation") ? { ack_operation_id: payload.operation_id, operation_result: "deleted" } : {}),
+    });
+    api.online(); await api.synchronize();
+    assert(!(await api.readQueue("a")).length, "Inactive queue not synchronized");
+    assert(api.state().message.includes("gelöschten") && api.state().message.includes("Source unavailable"), "Warnings hidden");
+    await api.select("a");
+    assert(!api.state().currentItems.length, "Deleted article resurrected");
+  });
+
+  document.querySelector("#results").textContent = results.join("\n");
+  document.body.dataset.result = "passed";
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent = `FAIL ${error.stack}`;
+  document.body.dataset.result = "failed";
+});
+</script>
+</html>

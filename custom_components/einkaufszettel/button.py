@@ -13,6 +13,7 @@ from . import EinkaufszettelConfigEntry
 from .const import CONF_SOURCE, DOMAIN, update_signal
 from .model import append_new_items
 from .source import async_read_source
+from .sync import persist_items
 
 
 async def async_setup_entry(
@@ -50,12 +51,9 @@ class CopySourceButton(ButtonEntity):
                 updated = append_new_items(data.items, incoming)
                 if updated == data.items:
                     return
-                await data.store.async_save(
-                    {"items": [item.to_dict() for item in updated]}
-                )
+                await persist_items(data, updated)
             except (HomeAssistantError, ValueError, OSError, TimeoutError) as err:
                 raise HomeAssistantError(f"Cannot copy source list: {err}") from err
-            data.items = updated
             async_dispatcher_send(self.hass, update_signal(self._entry.entry_id))
 
 

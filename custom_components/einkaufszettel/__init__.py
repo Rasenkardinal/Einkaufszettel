@@ -1,6 +1,7 @@
 """An independent local copy of a Home Assistant To-do list."""
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from homeassistant.helpers.storage import Store
 from .const import CONF_SOURCE, DOMAIN, LEGACY_DOMAIN, STORAGE_VERSION
 from .model import ShoppingItem, load_items
 from .source import async_read_source
+from .sync import load_sync_state, new_sync_state
 
 PLATFORMS = [Platform.BUTTON]
 WEBAPP_PATH = Path(__file__).parent / "www"
@@ -37,6 +39,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     )
     from .websocket import (  # noqa: PLC0415
         websocket_add_item,
+        websocket_apply_operation,
         websocket_configure_list,
         websocket_copy_source,
         websocket_delete_item,
@@ -46,6 +49,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_get_sources,
         websocket_get_supermarkets,
         websocket_save_supermarket,
+        websocket_sync_source,
         websocket_update_item,
     )
 
@@ -61,6 +65,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_get_supermarkets,
         websocket_save_supermarket,
         websocket_delete_supermarket,
+        websocket_apply_operation,
+        websocket_sync_source,
     ):
         websocket_api.async_register_command(hass, command)
     return True
@@ -73,6 +79,9 @@ class EinkaufszettelData:
     store: Store[dict[str, Any]]
     items: list[ShoppingItem]
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    sync: dict[str, Any] = field(default_factory=new_sync_state)
+    source_error: str | None = None
+    cancel_source_sync: Callable[[], None] | None = None
 
 
 type EinkaufszettelConfigEntry = ConfigEntry[EinkaufszettelData]
@@ -118,10 +127,11 @@ async def async_setup_entry(
             await store.async_save({"items": [item.to_dict() for item in items]})
         else:
             items = load_items(data)
+        sync = load_sync_state(data.get("sync") if data is not None else None)
     except (HomeAssistantError, OSError, ValueError, TimeoutError) as err:
         raise ConfigEntryNotReady(f"Cannot load Einkaufszettel: {err}") from err
 
-    entry.runtime_data = EinkaufszettelData(store, items)
+    entry.runtime_data = EinkaufszettelData(store, items, sync=sync)
     registry = er.async_get(hass)
     for entity in list(registry.entities.values()):
         if entity.platform == DOMAIN and entity.entity_id.startswith("todo."):
@@ -138,6 +148,10 @@ async def async_setup_entry(
             config={"url": f"/{DOMAIN}/app.html"},
         )
     panel_entries.add(entry.entry_id)
+    if CONF_SOURCE in entry.data:
+        from .source_sync import start_source_sync  # noqa: PLC0415
+
+        entry.runtime_data.cancel_source_sync = start_source_sync(hass, entry)
     return True
 
 
@@ -147,6 +161,8 @@ async def async_unload_entry(
     """Unload without deleting the local shopping list."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
+        if entry.runtime_data.cancel_source_sync:
+            entry.runtime_data.cancel_source_sync()
         panel_entries = hass.data.get(PANEL_ENTRIES_KEY, set())
         panel_entries.discard(entry.entry_id)
         if not panel_entries:

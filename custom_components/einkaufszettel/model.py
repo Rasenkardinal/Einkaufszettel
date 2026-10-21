@@ -1,6 +1,6 @@
 """Serializable shopping items, independent of Home Assistant."""
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from typing import Any
 from uuid import uuid4
@@ -31,6 +31,7 @@ class ShoppingItem:
     description: str | None = None
     due: str | None = None
     source_uid: str | None = None
+    metadata: dict[str, str | None] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.uid, str) or not self.uid:
@@ -39,14 +40,21 @@ class ShoppingItem:
             raise ValueError("An item must have a nonempty summary")
         if not isinstance(self.status, str) or self.status not in STATUSES:
             raise ValueError("Invalid item status")
-        for field in (self.description, self.due, self.source_uid):
-            if field is not None and not isinstance(field, str):
+        for value in (self.description, self.due, self.source_uid):
+            if value is not None and not isinstance(value, str):
                 raise ValueError("Invalid optional item field")
         parse_due(self.due)
+        if not isinstance(self.metadata, dict) or any(
+            not isinstance(key, str)
+            or not key
+            or (value is not None and not isinstance(value, str))
+            for key, value in self.metadata.items()
+        ):
+            raise ValueError("Metadata must contain named text values or null")
 
     def to_dict(self) -> dict[str, Any]:
         """Return the storage representation."""
-        return {
+        result = {
             "uid": self.uid,
             "summary": self.summary,
             "status": self.status,
@@ -54,6 +62,9 @@ class ShoppingItem:
             "due": self.due,
             "source_uid": self.source_uid,
         }
+        if self.metadata:
+            result["metadata"] = dict(self.metadata)
+        return result
 
 
 def import_items(raw_items: object) -> list[ShoppingItem]:
@@ -93,6 +104,7 @@ def load_items(data: object) -> list[ShoppingItem]:
             description=raw.get("description"),
             due=raw.get("due"),
             source_uid=raw.get("source_uid"),
+            metadata=raw.get("metadata", {}),
         )
         if item.uid in seen:
             raise ValueError("Duplicate stored UID")

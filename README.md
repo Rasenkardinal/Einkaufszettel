@@ -2,7 +2,7 @@
 
 Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- und Kategorienlogik sowie Alexa-Anbindung über eine vorhandene HA-To-do-Liste.
 
-> **Projektstatus:** Alpha. Enthält HA-Quelllistenverwaltung mit gemeinsamen App-Anzeigenamen, Quelllisten-Kopierer und eine installierbare Offline-PWA. Die Integration erzeugt keine zusätzlichen To-do-Listen. Produktkatalog und Kategorien sind noch nicht implementiert.
+> **Projektstatus:** Alpha. Enthält HA-Quelllistenverwaltung mit gemeinsamen App-Anzeigenamen, automatischen Quellabgleich und eine installierbare Offline-PWA. Die Integration erzeugt keine zusätzlichen To-do-Listen. Produktkatalog und Kategorieverwaltung sind noch nicht implementiert; Zusatzdaten können bereits im synchronisierten Modell gespeichert werden.
 
 ## Funktionsumfang
 
@@ -10,14 +10,14 @@ Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- u
 - Offene Einträge werden beim ersten Aktivieren in einen internen HA-Speicher kopiert.
 - Ein Button ergänzt später neue, offene Quell-Einträge anhand ihrer Quell-IDs, ohne vorhandene lokale Änderungen zurückzusetzen.
 - Die PWA unterstützt Hinzufügen, Abhaken/Wiederöffnen, Umbenennen und Löschen. Es erscheint keine doppelte Einkaufszettel-Liste in der HA-To-do-Ansicht.
-- Die Quelle wird nicht verändert; es gibt keinen automatischen oder bidirektionalen Sync.
+- Name und Status werden automatisch mit der Quelle abgeglichen; App-Änderungen werden zurückgeschrieben, soweit die Quelle die jeweilige Aktion unterstützt. Zusatzinformationen bleiben in unserem HA-Speicher.
 - Kategorien, Produktkatalog und strukturierte Mengen sind noch nicht implementiert.
 - Die Smartphone-Oberfläche wird als PWA von der Integration über Home Assistant ausgeliefert. App-Dateien und Listendaten werden lokal gespeichert; Hinzufügen, Abhaken und Löschen werden offline vorgemerkt und beim nächsten Verbinden synchronisiert.
 
 ## Installation mit HACS
 
 1. In HACS das Repository `https://github.com/Rasenkardinal/Einkaufszettel` als **Integration** hinzufügen oder den bereits vorhandenen Repository-Eintrag aktualisieren.
-2. Die aktuelle Vorabversion herunterladen.
+2. Das aktuelle Release herunterladen.
 3. Home Assistant neu starten.
 4. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Einkaufszettel** öffnen.
 5. Einrichtung bestätigen. Die Quelllisten werden anschließend in der App verwaltet.
@@ -54,7 +54,7 @@ Unter **Einstellungen → Geräte & Dienste → Einkaufszettel → Entitäten** 
 - Nur unbekannte, offene Quell-IDs werden hinzugefügt; wiederholtes Drücken erzeugt keine Duplikate.
 - Vorhandene lokale Namen, Beschreibungen, Fälligkeiten und Erledigt-Status bleiben erhalten. Abgehakte Artikel werden nicht wieder geöffnet.
 - Gleicher Name mit einer neuen Quell-ID gilt als neuer Eintrag. Fehlen stabile Quell-IDs, wird mit einer Fehlermeldung abgebrochen statt nach Namen zu raten.
-- Quelländerungen und -löschungen werden nicht zurückgespiegelt. Bei nicht erreichbarer Quelle oder fehlgeschlagenem Speichern bleibt der lokale Bestand unverändert.
+- Der Kopierbutton selbst spiegelt keine Quelländerungen und -löschungen zurück; der separate automatische Quellabgleich übernimmt diese nach den unten beschriebenen Synchronisationsregeln. Bei nicht erreichbarer Quelle oder fehlgeschlagenem Speichern bleibt der lokale Bestand beim Kopieren unverändert.
 
 ## Offline-Web-App verwenden
 
@@ -62,7 +62,7 @@ Das Dreipunkte-App-Menü ist in direkt aufklappbare Untermenüs mit Plus/Minus s
 
 - **Installation:** HA-Anmeldung, App-Installation sowie Browser-/HA-Links zum Öffnen und Testen.
 - **Design:** Klappt die Farbauswahl direkt im Menü auf, ohne Flyout oder zusätzlichen Dialog. Die acht dunklen Farbschemata sind erst nach dem Aufklappen sichtbar: **Botanical**, **Midnight Plum**, **Market Journal**, **Fresh Signal**, **Mono** (Standard), **Tomato**, **Lime Focus** und **Indigo Pocket**. Farbpunkte zeigen die Akzentfarben; Rahmen und Häkchen markieren die aktive Auswahl. Änderungen sind sofort sichtbar und werden auf diesem Gerät auch offline für alle Listen gespeichert. Die Auswahl lässt das Untermenü geöffnet. Schrift und Aufbau bleiben gleich.
-- **Listenverwaltung:** **Listen verwalten** (Quellen, App-Namen und Sichtbarkeit) und **Alexa-Liste kopieren**. Der bisherige manuelle Kopiermechanismus bleibt unverändert; automatische oder bidirektionale Alexa-Synchronisation ist damit nicht eingeführt.
+- **Listenverwaltung:** **Listen verwalten** (Quellen, App-Namen und Sichtbarkeit) und **Quelllisten abgleichen**. Der Abgleich ergänzt die automatische Synchronisation von Name und Status; die kompatible manuelle Kopierfunktion bleibt über den HA-Button verfügbar.
 - **Supermärkte verwalten:** Gemeinsame Supermärkte/Filialen anlegen, umbenennen und nach Bestätigung löschen. Änderungen erfordern HA-Administratorrechte und eine Online-Verbindung; Listen werden dadurch nicht verändert. Die Daten liegen getrennt unter `.storage/einkaufszettel.supermarkets` und werden beim Verbinden bzw. Öffnen der Verwaltung neu geladen.
 
 Rechts neben **Auf der Liste** lässt sich unabhängig von der Einkaufsliste ein Supermarkt auswählen, alternativ **Ohne Markt**. Die Auswahl öffnet dasselbe kompakte Flyout wie der Listentitel, mit Häkchen am aktiven Markt und derselben Tastaturbedienung. Es ist immer nur eine der beiden Auswahlen geöffnet. Die Auswahl wird je Liste auf diesem Gerät gespeichert. Bereits geladene Märkte stehen auch offline zur Auswahl bereit; Offline-Änderungen an der gemeinsamen Marktverwaltung werden nicht vorgemerkt. Abteilungen, Marktstruktur und eine entsprechende Neusortierung der Artikel sind noch nicht implementiert.
@@ -79,13 +79,28 @@ Die HA-Seitenleiste zeigt genau einen gemeinsamen Eintrag **Einkaufszettel**, un
 2. Oben rechts das **Dreipunkte-Menü (Setup)** öffnen und **„App in eigenem Browserfenster öffnen / installieren“** wählen. Für Installation und Offline-Betrieb die HTTPS-Adresse verwenden, zum Beispiel über Nabu Casa. Im eigenen Browserfenster beim ersten Aufruf im Setup **Mit HA verbinden** wählen und Home Assistant den Zugriff erlauben; dann über **App installieren** oder das Browsermenü zum Startbildschirm hinzufügen.
 3. Beim nächsten Einkauf das Homescreen-Symbol direkt starten; ohne Installation die Einkaufszettel-Seite in der HA-Seitenleiste öffnen.
 4. Artikel hinzufügen, abhaken oder entfernen. Ohne Netz werden Änderungen in der lokalen Browser-Datenbank und einer dauerhaften Warteschlange gespeichert. Beim nächsten Start mit erreichbarem HA werden diese nacheinander übertragen.
-5. Der Sync-Status zeigt ausstehende Änderungen. Nach Verbindungsabbrüchen verbindet sich die App automatisch erneut und synchronisiert vorgemerkte Änderungen. Nur bei abgelehnter oder widerrufener Anmeldung unter **Installation → Mit HA verbinden** die Anmeldung erneut erlauben. Das Kopieren neuer Alexa-/Quelllistenartikel benötigt eine Verbindung.
+5. Der Sync-Status zeigt ausstehende Änderungen. Nach Verbindungsabbrüchen verbindet sich die App automatisch erneut und synchronisiert vorgemerkte Änderungen. Nur bei abgelehnter oder widerrufener Anmeldung unter **Installation → Mit HA verbinden** die Anmeldung erneut erlauben. Der automatische Abgleich mit Alexa-/Quelllisten benötigt eine Verbindung; Fehler der Quelle werden getrennt von bereits in HA gespeicherten App-Änderungen angezeigt.
 
 Die Wiederverbindung verwendet Wartezeiten von 1, 2, 4, 8, 16 und maximal 30 Sekunden. Beim Zurückkehren zur App, nach Wiederherstellung des Netzes und beim Wiederanzeigen einer Seite wird die Verbindung erneut geprüft. Ping/Pong prüft eine angemeldete Verbindung alle 30 Sekunden; ohne Antwort innerhalb von 15 Sekunden wird sie neu aufgebaut. Auch ein nicht abgeschlossener Verbindungsaufbau wird nach 15 Sekunden erneut versucht. Netzwerkfehler und vorübergehende Serverfehler bei der Token-Erneuerung verlangen keine neue Anmeldung. Ein abgelehntes Zugriffstoken wird einmal automatisch erneuert; lehnt HA auch diese Anmeldung ab, wird ausdrücklich eine neue Freigabe angefordert.
 
 Die App verwendet ausschließlich die Adresse, unter der sie geöffnet wurde, ohne automatischen Wechsel zur lokalen IP. Für die installierte App möglichst dieselbe HTTPS-Adresse verwenden. Lokale IP, Nabu-Casa-Adresse und andere Domains haben getrennte Browser-Speicher einschließlich Anmeldung und Offline-Änderungen.
 
 Die Verbindungsregressionen lassen sich ohne zusätzliche Pakete prüfen: Repository per HTTP bereitstellen (z. B. `python -m http.server 8774 --bind 127.0.0.1`) und `/tests/frontend/connection.html` öffnen. Die Seite testet die Verbindungsfunktionen aus dem aktuellen App-Skript mit simulierten Timern, WebSocket und Anmeldung; sie greift nicht auf Home Assistant zu.
+
+### Synchronisationsregeln
+
+- **HA ist der zentrale Speicher.** Apps übertragen kleine Feldänderungen, keine vollständigen Listen als Ersatz. Bei Änderungen desselben Feldes gewinnt die zuletzt in HA unter dem Listen-Lock angenommene Änderung. Eine später übertragene alte Offlineänderung kann deshalb eine neuere Eingabe überschreiben. Geräteuhren entscheiden nicht über Konflikte.
+- **Dauerhafte Bestätigungen:** Jede Aktion hat eine unveränderliche ID. HA speichert ihren Inhalt und das Ergebnis zusammen mit dem Artikelstand. Eine Wiederholung nach verloren gegangener Antwort oder Neustart erhält eine Bestätigung, ohne die Änderung erneut anzuwenden. Die App speichert neuen Stand und Warteschlangenentfernung in derselben IndexedDB-Transaktion. Eine Listenrevision kennzeichnet den Stand; derzeit werden vollständige Snapshots übertragen, kein Delta-Verlauf.
+- **Feldweise Änderungen:** Name, Status, Beschreibung und Fälligkeit sind unabhängig. `metadata` enthält zusätzliche benannte Textwerte bzw. `null`, z. B. `product_id`, `category_id`, `quantity`, `unit` und `note`. Ein Metadatenpatch ändert nur die angegebenen Schlüssel. Diese Daten werden zwischen Apps synchronisiert, aber nie aus fehlenden Quellfeldern gelöscht. Die Eingabemasken für Produkt- und Kategorieverwaltung sind damit noch nicht umgesetzt.
+- **Automatischer Quellabgleich:** Jede eingeblendete Liste wird in HA alle 30 Sekunden geprüft, auch ohne geöffnete App. Eine sichtbare, verbundene App gleicht ebenfalls alle 30 Sekunden und nach eigenen Änderungen ab. Über **Listenverwaltung → Quelllisten abgleichen** oder die Sync-Schaltfläche lässt sich der Abgleich anstoßen. Es gibt keine garantierte Echtzeit-Zustellung; hinzu kommt das Aktualisierungsintervall der Alexa-Anbindung selbst.
+- **Drei-Wege-Vergleich:** Für jede Quell-ID wird der zuletzt bestätigte Stand von Name und Status gespeichert. Unveränderte alte Quellwerte überschreiben keine lokalen Änderungen. Tatsächliche Quelländerungen gelten zum Zeitpunkt ihrer Erkennung in HA als neue Änderungen. Ändern beide Seiten dasselbe Feld vor dem Abgleich, gewinnt die dann erkannte Quelländerung. Nicht kollidierende lokale Änderungen bleiben erhalten und werden zurückgeschrieben.
+- **Quellgrenzen:** Automatisch abgeglichen werden Name und erledigt/offen, sofern die konkrete HA-To-do-Quelle Schreiben unterstützt. Beschreibung, Fälligkeit und sämtliche Zusatzinformationen bleiben integrationsverwaltet; für bestehende Artikel werden sie nicht aus der Quelle überschrieben. Neue offene Quellartikel werden importiert, alte unzugeordnete erledigte Quellartikel nicht. Rein lokale, schon erledigte Artikel werden nicht nachträglich als offene Artikel in Alexa angelegt. Gleichnamige Artikel bleiben eigenständige IDs.
+- **Löschen:** App-Löschungen erhalten dauerhafte Löschvermerke. Verspätete Bearbeitungen oder Anlagen derselben ID werden bestätigt, aber ausdrücklich als verworfen gemeldet; sie stellen den Artikel nicht wieder her. Entfernt die Quelle einen Artikel, bleibt er bei uns samt Zusatzdaten als erledigt erhalten. Ein anschließendes ausdrückliches Wiederöffnen legt bei Bedarf einen neuen Quellartikel an. Ein fehlgeschlagener Abruf, eine nicht verfügbare Quelle oder eine ungültige Antwort ist niemals eine leere Liste.
+- **Wiederanlauf und Grenzen der Quellschnittstelle:** Änderungen und Löschungen werden anhand des bestätigten Quellstands erneut versucht. Vor einer Anlage wird dagegen eine dauerhafte Absicht gespeichert, weil `todo.add_item` keine verlässlich zuordenbare neue ID zurückgibt. Anschließend wird die neue Quell-ID anhand neu hinzugekommener passender Artikel bestätigt. Bei unbestätigtem oder mehrdeutigem Ergebnis wird die Anlage nicht blind wiederholt; der betreffende Quellabgleich hält mit einer sichtbaren Fehlermeldung an, bis die Zuordnung eindeutig ist. Das verhindert automatische Doppelanlagen, ersetzt aber keine transaktionale Alexa-Schnittstelle. Bei gleichzeitig neu angelegten gleichnamigen Quellartikeln ist eine manuelle Prüfung nötig.
+- **Offline und Fehler:** App-Änderungen bleiben auch bei defekter, nicht verfügbarer oder schreibgeschützter Quelle in HA erhalten. Die App zeigt ausstehende Quellprobleme mit Listennamen an und meldet nicht pauschal vollständigen Erfolg. Ein Quellversuch ist auf zehn Sekunden begrenzt. Bereits laufende Abgleiche werden nicht parallel gestartet. Ausgeblendete Listen werden nicht automatisch abgeglichen.
+- Bestätigungen, Löschvermerke und Quellzuordnungen bleiben derzeit dauerhaft im HA-Store erhalten. Eine spätere Bereinigung benötigt ein gesondertes Verfahren für sehr lange offline gebliebene Geräte; sie erfolgt nicht stillschweigend nach einer Zeitspanne.
+
+Die Frontend-Synchronisationsregressionen stehen unter `/tests/frontend/sync.html`: echte IndexedDB-Transaktionen mit simuliertem Server für verlorene Antworten, Wiederholungen, Metadaten, Löschungen und inaktive Listen. Beide Browser-Testseiten greifen nicht auf echte HA-Daten zu.
 
 Die PWA speichert ein Home-Assistant-Refresh-Token lokal im Browserprofil, damit sie unabhängig von der HA-Companion-App synchronisieren kann. Die Anmeldung wird über den offiziellen Home-Assistant-Autorisierungsdialog erteilt. Beim Verbinden aus der HA-Seitenleiste öffnet die App ein eigenes Browserfenster bzw. einen neuen Tab und startet dort automatisch die Anmeldung. Bitte das Öffnen dieses Fensters erlauben und dort fortfahren. Danach öffnet sich die eigenständige App; die gewählte Liste bleibt im Rücksprung erhalten. Die ursprüngliche HA-Ansicht verbindet sich ebenfalls, sobald die Anmeldung im selben Browserprofil unter derselben Adresse gespeichert wurde. So kann HA die OAuth-Parameter korrekt auswerten, statt „Invalid redirect URI“ anzuzeigen. Bei blockierten Popups erscheint ein Hinweis auf den direkten App-Link unter **Installation**. Browserdaten nicht löschen, solange lokale Änderungen ausstehen; danach muss die App erneut verbunden werden. Der erste Offline-Sync verwendet stabile Aktions-IDs, damit ein nach Verbindungsabbruch wiederholter Artikel nicht doppelt angelegt wird. Bei gleichzeitigen Offline-Änderungen derselben Eigenschaft gilt die zuletzt synchronisierte Aktion; andere Eigenschaften desselben Eintrags bleiben davon unberührt.
 
@@ -99,14 +114,14 @@ Die kleine Markenzeile bleibt **EINKAUFSZETTEL**; die große Überschrift zeigt 
 - Nach der Anmeldung werden alle geladenen Einkaufszettel-Listen angeboten und für den Offline-Zugriff zwischengespeichert. Bereits geladene Listen lassen sich auch ohne Netz wechseln.
 - Artikel hinzufügen, abhaken und entfernen wie bisher; zum Bearbeiten des Namens den Artikelnamen antippen. Jede Liste hat ihre eigenen Artikel und ihre eigene Offline-Warteschlange.
 - Beim Synchronisieren werden auch ausstehende Änderungen anderer verfügbarer Listen übertragen. Neue bzw. noch nicht zwischengespeicherte Listen benötigen zunächst eine Verbindung.
-- **Alexa-Liste kopieren** im Setup bezieht sich immer auf die ausgewählte Liste und deren konfigurierte Quelle. Der bisherige Kopiermechanismus bleibt unverändert; es entsteht keine neue bidirektionale Alexa-Synchronisation.
+- **Quelllisten abgleichen** im Setup führt den automatischen Abgleich einschließlich der vorgemerkten App-Änderungen aus. Der bisherige HA-Kopierbutton und die alte Kopier-API bleiben für kompatible manuelle Übernahmen erhalten; auch sie bewahren Synchronisationsdaten und respektieren Löschvermerke.
 - Ausgeblendete Listen verschwinden nach dem Online-Abgleich auch aus der Offline-Auswahl. Ihre internen Daten und ausstehenden Offline-Aktionen bleiben erhalten; ausstehende Aktionen werden nach erneutem Einblenden synchronisiert. Ohne Netz können Listen verwendet, aber keine gemeinsamen Einstellungen geändert werden.
 
 ## Daten und Grenzen
 
 - Die Config Entry speichert Quell-Entity-ID und Listenname, keine Zugangsdaten.
 - Die maßgebliche lokale Liste liegt dauerhaft im integrationsverwalteten HA-`Store` unter `.storage/einkaufszettel.<entry_id>`. Die PWA speichert den letzten Stand und ausstehende Aktionen zusätzlich gerätegebunden in IndexedDB.
-- Die PWA greift direkt auf den integrationsverwalteten HA-Speicher zu. Eine zusätzliche `TodoListEntity` ist nicht erforderlich. Produktzuordnung, Kategorie, Menge und Einheit werden bei späterer Produktfunktion im eigenen Datenmodell geführt.
+- Die PWA greift über die authentifizierte WebSocket-API auf den integrationsverwalteten HA-Speicher zu. Eine zusätzliche `TodoListEntity` ist nicht erforderlich. Der Store enthält Artikel, Zusatzinformationen, Listenrevision, Aktionsbestätigungen, Löschvermerke und Quellabgleichsdaten zusammen in einem Snapshot. Bestehende Stores ohne Synchronisationsdaten werden beim ersten Schreibvorgang ergänzt; ungültige Synchronisationsdaten lösen einen ausdrücklichen Ladefehler statt eines Neuimports aus.
 - Änderungen werden vor Anzeige dauerhaft gespeichert. Fehler werden nicht als Erfolg oder leere Liste verschleiert.
 - Entfernen der Integration löscht weder den HA-Store noch Browserdaten automatisch. Backups verwenden und `.storage` nicht manuell bearbeiten.
 - Der HA-WebSocket-Zugang und damit die erste Anmeldung sowie Synchronisation benötigen eine Verbindung zu Home Assistant. Bereits installierte App-Shell und zwischengespeicherte Liste sind offline verfügbar.

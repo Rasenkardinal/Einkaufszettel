@@ -16,6 +16,7 @@ from homeassistant.helpers.storage import Store
 from .const import CONF_SOURCE, DOMAIN, update_signal
 from .model import ShoppingItem, append_new_items, update_item
 from .source import async_read_source
+from .sync import apply_operation, persist_items
 
 
 async def _market_command(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
@@ -131,22 +132,93 @@ def _get_entry(hass: HomeAssistant, connection, msg: dict[str, Any]):
     return entry
 
 
-def _send_snapshot(connection, message_id: int, entry) -> None:
+def _send_snapshot(connection, message_id: int, entry, **extra) -> None:
     connection.send_result(
         message_id,
         {
             "entry_id": entry.entry_id,
             "name": entry.data[CONF_NAME],
             "items": [item.to_dict() for item in entry.runtime_data.items],
+            "revision": getattr(entry.runtime_data, "sync", {}).get("revision", 0),
+            "deleted_uids": list(
+                getattr(entry.runtime_data, "sync", {}).get("deleted", {})
+            ),
+            "source_error": getattr(entry.runtime_data, "source_error", None),
+            **extra,
         },
     )
 
 
 async def _save_items(entry, items: list[ShoppingItem]) -> None:
-    await entry.runtime_data.store.async_save(
-        {"items": [item.to_dict() for item in items]}
+    await persist_items(entry.runtime_data, items)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/apply_operation",
+        vol.Required("entry_id"): str,
+        vol.Required("operation_id"): str,
+        vol.Required("action"): vol.In(["add_item", "update_item", "delete_item"]),
+        vol.Required("uid"): str,
+        vol.Required("changes"): dict,
+    }
+)
+@websocket_api.async_response
+async def websocket_apply_operation(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Acknowledge only after item changes and deduplication are durable."""
+    entry = _get_entry(hass, connection, msg)
+    if entry is None:
+        return
+    async with entry.runtime_data.lock:
+        try:
+            result = await apply_operation(
+                entry.runtime_data,
+                msg["operation_id"],
+                msg["action"],
+                msg["uid"],
+                msg["changes"],
+            )
+        except (HomeAssistantError, OSError, ValueError, TypeError) as err:
+            connection.send_error(msg["id"], "cannot_apply_operation", str(err))
+            return
+        async_dispatcher_send(hass, update_signal(entry.entry_id))
+        _send_snapshot(
+            connection,
+            msg["id"],
+            entry,
+            ack_operation_id=msg["operation_id"],
+            operation_result=result,
+        )
+
+
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{DOMAIN}/sync_source", vol.Required("entry_id"): str}
+)
+@websocket_api.async_response
+async def websocket_sync_source(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Try source reconciliation without withholding already durable app changes."""
+    from .source_sync import synchronize_source  # noqa: PLC0415
+
+    entry = _get_entry(hass, connection, msg)
+    if entry is None:
+        return
+    completed = await synchronize_source(hass, entry)
+    _send_snapshot(
+        connection,
+        msg["id"],
+        entry,
+        **(
+            {}
+            if completed
+            else {
+                "source_error": "Quelllistenabgleich läuft bereits oder die Liste ist ausgeblendet."
+            }
+        ),
     )
-    entry.runtime_data.items = items
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_lists"})

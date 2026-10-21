@@ -151,6 +151,10 @@ def integration(monkeypatch):
         get_url=Mock(return_value="https://ha.example.test"),
     )
     module("homeassistant.helpers.storage", Store=Store)
+    module(
+        "homeassistant.helpers.event",
+        async_track_time_interval=Mock(return_value=Mock()),
+    )
     dispatcher = module(
         "homeassistant.helpers.dispatcher",
         async_dispatcher_connect=Mock(),
@@ -866,7 +870,7 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 11
+    assert env.websocket_api.async_register_command.call_count == 13
 
 
 async def test_supermarkets_shared_crud_and_restart(integration):
@@ -1148,3 +1152,466 @@ async def test_simultaneous_copy_presses_do_not_duplicate_items(integration):
     button.hass = env.hass
     await asyncio.gather(button.async_press(), button.async_press())
     assert len(env.entry.runtime_data.items) == 2
+
+
+async def sync_environment(env, monkeypatch, *, features=49):
+    """Use the real reconciler against an in-memory external To-do service."""
+    await env.package.async_setup_entry(env.hass, env.entry)
+    sync = importlib.import_module(f"{env.package.__name__}.sync")
+    source_sync = importlib.import_module(f"{env.package.__name__}.source_sync")
+    remote = [{"uid": "a", "summary": "Milch", "status": "needs_action"}]
+    calls = []
+
+    async def service(domain, service, payload, **kwargs):
+        assert domain == "todo"
+        calls.append((service, dict(payload)))
+        if service == "get_items":
+            return {"todo.alexa": {"items": [dict(item) for item in remote]}}
+        if service == "add_item":
+            remote.append(
+                {
+                    "uid": f"created-{len(calls)}",
+                    "summary": payload["item"],
+                    "status": "needs_action",
+                }
+            )
+        elif service == "update_item":
+            item = next(item for item in remote if item["uid"] == payload["item"])
+            for source, target in (("rename", "summary"), ("status", "status")):
+                if source in payload:
+                    item[target] = payload[source]
+        elif service == "remove_item":
+            remote[:] = [item for item in remote if item["uid"] != payload["item"]]
+        else:
+            raise AssertionError(service)
+
+    env.hass.services.async_call.side_effect = service
+    env.hass.states.get = lambda _id: SimpleNamespace(
+        state="1", attributes={"supported_features": features}
+    )
+    monkeypatch.setattr(env.entry, "options", {})
+    return SimpleNamespace(
+        protocol=sync,
+        source=source_sync,
+        remote=remote,
+        calls=calls,
+        data=env.entry.runtime_data,
+    )
+
+
+async def test_receipts_survive_restart_and_retry_does_not_overwrite_newer_edit(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(
+        ctx.data, "first", "update_item", uid, {"summary": "A"}
+    )
+    await ctx.protocol.apply_operation(
+        ctx.data, "second", "update_item", uid, {"summary": "B"}
+    )
+    saved = env.store.async_save.call_args.args[0]
+    env.store.async_load.return_value = saved
+    await env.package.async_setup_entry(env.hass, env.entry)
+    data = env.entry.runtime_data
+    revision = data.sync["revision"]
+    await ctx.protocol.apply_operation(
+        data, "first", "update_item", uid, {"summary": "A"}
+    )
+    assert data.items[0].summary == "B"
+    assert data.sync["revision"] == revision
+    with pytest.raises(ValueError, match="already used"):
+        await ctx.protocol.apply_operation(
+            data, "first", "update_item", uid, {"summary": "C"}
+        )
+
+
+async def test_field_patches_preserve_metadata_and_last_accepted_field_wins(
+    integration, monkeypatch
+):
+    ctx = await sync_environment(integration, monkeypatch)
+    uid = ctx.data.items[0].uid
+    for op, patch in (
+        ("category", {"metadata": {"category_id": "dairy", "quantity": "2"}}),
+        ("status", {"status": "completed"}),
+        ("quantity", {"metadata": {"quantity": "3", "note": "bio"}}),
+        ("rename", {"summary": "Hafermilch"}),
+    ):
+        await ctx.protocol.apply_operation(ctx.data, op, "update_item", uid, patch)
+    item = ctx.data.items[0]
+    assert item.summary == "Hafermilch"
+    assert item.status == "completed"
+    assert item.metadata == {"category_id": "dairy", "quantity": "3", "note": "bio"}
+    assert ctx.data.sync["revision"] == 4
+
+
+async def test_delete_wins_over_delayed_edit_and_creation(integration, monkeypatch):
+    ctx = await sync_environment(integration, monkeypatch)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(ctx.data, "delete", "delete_item", uid, {})
+    for op, action in (("late-edit", "update_item"), ("late-add", "add_item")):
+        assert (
+            await ctx.protocol.apply_operation(
+                ctx.data, op, action, uid, {"summary": "Wieder da"}
+            )
+            == "deleted"
+        )
+    assert not ctx.data.items
+    assert ctx.data.sync["deleted"][uid]["source_uid"] == "a"
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    assert not ctx.remote
+    assert not ctx.data.items
+    assert ctx.data.source_error is None
+
+
+async def test_failed_operation_save_does_not_publish_or_acknowledge(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    uid = ctx.data.items[0].uid
+    env.store.async_save.side_effect = OSError("disk full")
+    env.hass.config_entries.async_get_entry.return_value = env.entry
+    env.entry.domain = "einkaufszettel"
+    connection = Mock()
+    await env.websocket.websocket_apply_operation(
+        env.hass,
+        connection,
+        {
+            "id": 42,
+            "entry_id": env.entry.entry_id,
+            "operation_id": "save-fails",
+            "action": "delete_item",
+            "uid": uid,
+            "changes": {},
+        },
+    )
+    connection.send_result.assert_not_called()
+    connection.send_error.assert_called_once()
+    assert ctx.data.items[0].uid == uid
+    assert not ctx.data.sync["receipts"]
+    assert not ctx.data.sync["deleted"]
+
+
+async def test_source_updates_preserve_local_metadata_and_do_not_echo(
+    integration, monkeypatch
+):
+    ctx = await sync_environment(integration, monkeypatch)
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "meta",
+        "update_item",
+        uid,
+        {
+            "metadata": {"product_id": "p1", "unit": "l", "quantity": "2"},
+            "description": "Nur unsere Notiz",
+        },
+    )
+    ctx.remote[0].update(summary="Sojamilch", status="completed")
+    ctx.calls.clear()
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    item = ctx.data.items[0]
+    assert (item.summary, item.status) == ("Sojamilch", "completed")
+    assert item.description == "Nur unsere Notiz"
+    assert item.metadata == {"product_id": "p1", "unit": "l", "quantity": "2"}
+    assert all(service == "get_items" for service, _ in ctx.calls)
+
+
+async def test_source_three_way_merge_writes_only_locally_changed_fields(
+    integration, monkeypatch
+):
+    ctx = await sync_environment(integration, monkeypatch)
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(
+        ctx.data, "local", "update_item", uid, {"summary": "Hafermilch"}
+    )
+    ctx.remote[0]["status"] = "completed"
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    assert ctx.data.items[0].summary == ctx.remote[0]["summary"] == "Hafermilch"
+    assert ctx.data.items[0].status == ctx.remote[0]["status"] == "completed"
+    writes = [payload for service, payload in ctx.calls if service == "update_item"]
+    assert writes == [{"entity_id": "todo.alexa", "item": "a", "rename": "Hafermilch"}]
+    ctx.calls.clear()
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    assert all(service == "get_items" for service, _ in ctx.calls)
+
+
+async def test_source_change_observed_later_wins_same_field(integration, monkeypatch):
+    ctx = await sync_environment(integration, monkeypatch)
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    await ctx.protocol.apply_operation(
+        ctx.data, "rename", "update_item", ctx.data.items[0].uid, {"summary": "Lokal"}
+    )
+    ctx.remote[0]["summary"] = "Alexa"
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    assert ctx.data.items[0].summary == "Alexa"
+    assert not any(service == "update_item" for service, _ in ctx.calls)
+
+
+async def test_source_missing_means_completed_not_destroyed_and_reopen_creates_new_id(
+    integration, monkeypatch
+):
+    ctx = await sync_environment(integration, monkeypatch)
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(
+        ctx.data, "meta", "update_item", uid, {"metadata": {"note": "Behalten"}}
+    )
+    ctx.remote.clear()
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    assert ctx.data.items[0].status == "completed"
+    assert ctx.data.items[0].metadata == {"note": "Behalten"}
+    await ctx.protocol.apply_operation(
+        ctx.data, "reopen", "update_item", uid, {"status": "needs_action"}
+    )
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    assert ctx.data.items[0].uid == uid
+    assert ctx.data.items[0].source_uid != "a"
+    assert len(ctx.remote) == 1
+    assert ctx.data.source_error is None
+
+
+async def test_equal_names_keep_distinct_ids_on_both_sides(integration, monkeypatch):
+    ctx = await sync_environment(integration, monkeypatch)
+    await ctx.protocol.apply_operation(
+        ctx.data, "add", "add_item", "local-second", {"summary": "Milch"}
+    )
+    ctx.remote.append(
+        {"uid": "remote-second", "summary": "Milch", "status": "needs_action"}
+    )
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    assert len(ctx.data.items) == len(ctx.remote) == 3
+    assert len({item.source_uid for item in ctx.data.items}) == 3
+    assert ctx.data.source_error is None
+
+
+async def test_ambiguous_source_creation_is_not_retried_after_restart(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.protocol.apply_operation(
+        ctx.data, "add", "add_item", "new", {"summary": "Brot"}
+    )
+    real_service = env.hass.services.async_call.side_effect
+
+    async def uncertain(domain, service, payload, **kwargs):
+        if service == "add_item":
+            await real_service(domain, service, payload, **kwargs)
+            raise TimeoutError("response lost")
+        return await real_service(domain, service, payload, **kwargs)
+
+    env.hass.services.async_call.side_effect = uncertain
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert "new" in ctx.data.sync["creates"]
+    assert ctx.data.source_error
+    saved = env.store.async_save.call_args.args[0]
+    env.store.async_load.return_value = saved
+    await env.package.async_setup_entry(env.hass, env.entry)
+    env.hass.services.async_call.side_effect = real_service
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    data = env.entry.runtime_data
+    assert not data.sync["creates"]
+    assert len(ctx.remote) == 2
+    assert sum(service == "add_item" for service, _ in ctx.calls) == 1
+    assert data.source_error is None
+
+
+async def test_unconfirmed_source_creation_does_not_guess_or_duplicate(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.protocol.apply_operation(
+        ctx.data, "add", "add_item", "new", {"summary": "Brot"}
+    )
+    real_service = env.hass.services.async_call.side_effect
+    attempts = 0
+
+    async def uncertain(domain, service, payload, **kwargs):
+        nonlocal attempts
+        if service == "add_item":
+            attempts += 1
+            raise TimeoutError("request outcome unknown")
+        return await real_service(domain, service, payload, **kwargs)
+
+    env.hass.services.async_call.side_effect = uncertain
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert attempts == 1
+    assert len(ctx.data.items) == 2
+    assert "unbestätigt" in ctx.data.source_error
+    assert "new" in ctx.data.sync["creates"]
+
+
+@pytest.mark.parametrize("bad_response", [None, {}, {"todo.alexa": {"items": None}}])
+async def test_failed_source_read_does_not_remove_any_items(
+    integration, monkeypatch, bad_response
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    before = list(ctx.data.items)
+    env.hass.services.async_call.side_effect = None
+    env.hass.services.async_call.return_value = bad_response
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.items == before
+    assert ctx.data.source_error
+    assert not ctx.data.sync["deleted"]
+
+
+async def test_read_only_source_keeps_local_edits_and_exposes_pending_error(
+    integration, monkeypatch
+):
+    ctx = await sync_environment(integration, monkeypatch, features=0)
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    await ctx.protocol.apply_operation(
+        ctx.data, "edit", "update_item", ctx.data.items[0].uid, {"summary": "Lokal"}
+    )
+    await ctx.protocol.apply_operation(
+        ctx.data, "add", "add_item", "new", {"summary": "Brot"}
+    )
+    await ctx.source.synchronize_source(integration.hass, integration.entry)
+    assert ctx.data.items[0].summary == "Lokal"
+    assert ctx.remote[0]["summary"] == "Milch"
+    assert "unterstützt" in ctx.data.source_error
+    assert all(service == "get_items" for service, _ in ctx.calls)
+
+
+async def test_corrupt_receipts_abort_startup_instead_of_forgetting_history(
+    integration,
+):
+    env = integration
+    sync = importlib.import_module(f"{env.package.__name__}.sync")
+    state = sync.new_sync_state()
+    state["receipts"]["x"] = {"result": "applied"}
+    env.store.async_load.return_value = {"items": [], "sync": state}
+    with pytest.raises(env.not_ready, match="receipt"):
+        await env.package.async_setup_entry(env.hass, env.entry)
+    env.hass.services.async_call.assert_not_awaited()
+
+
+async def test_source_write_then_failed_save_recovers_without_losing_local_fields(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "edit",
+        "update_item",
+        uid,
+        {
+            "summary": "Hafermilch",
+            "metadata": {"quantity": "2"},
+        },
+    )
+    env.store.async_save.side_effect = OSError("disk full")
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.remote[0]["summary"] == "Hafermilch"
+    assert ctx.data.source_error == "disk full"
+    assert ctx.data.items[0].metadata == {"quantity": "2"}
+    env.store.async_save.side_effect = None
+    ctx.calls.clear()
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.source_error is None
+    assert ctx.data.sync["source"]["a"]["summary"] == "Hafermilch"
+    assert not any(service == "update_item" for service, _ in ctx.calls)
+
+
+async def test_ambiguous_new_source_ids_remain_unlinked_and_are_not_created_twice(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.protocol.apply_operation(
+        ctx.data, "add", "add_item", "new", {"summary": "Brot"}
+    )
+    real_service = env.hass.services.async_call.side_effect
+
+    async def racing(domain, service, payload, **kwargs):
+        result = await real_service(domain, service, payload, **kwargs)
+        if service == "add_item":
+            ctx.remote.append(
+                {
+                    "uid": "other-new",
+                    "summary": payload["item"],
+                    "status": "needs_action",
+                }
+            )
+        return result
+
+    env.hass.services.async_call.side_effect = racing
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.source_error
+    assert next(item for item in ctx.data.items if item.uid == "new").source_uid is None
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert "mehrdeutig" in ctx.data.source_error
+    assert sum(service == "add_item" for service, _ in ctx.calls) == 1
+
+
+async def test_deleted_metadata_and_source_mapping_survive_restart(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(
+        ctx.data, "meta", "update_item", uid, {"metadata": {"note": "bio"}}
+    )
+    await ctx.protocol.apply_operation(ctx.data, "delete", "delete_item", uid, {})
+    env.store.async_load.return_value = env.store.async_save.call_args.args[0]
+    await env.package.async_setup_entry(env.hass, env.entry)
+    data = env.entry.runtime_data
+    assert data.sync["deleted"][uid]["metadata"] == {"note": "bio"}
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert not data.items
+    assert not ctx.remote
+    assert (
+        await ctx.protocol.apply_operation(
+            data, "delayed", "add_item", uid, {"summary": "Alt"}
+        )
+        == "deleted"
+    )
+
+
+@pytest.mark.parametrize(
+    "bad_items",
+    [
+        [
+            {"uid": "x", "summary": "A", "status": "needs_action"},
+            {"uid": "x", "summary": "B", "status": "completed"},
+        ],
+        [{"summary": "A", "status": "needs_action"}],
+    ],
+)
+async def test_invalid_source_identity_never_imports_or_deletes(
+    integration, monkeypatch, bad_items
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    before = list(ctx.data.items)
+    env.hass.services.async_call.side_effect = None
+    env.hass.services.async_call.return_value = {"todo.alexa": {"items": bad_items}}
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.items == before
+    assert ctx.data.source_error
+    assert not ctx.data.sync["deleted"]
+
+
+async def test_source_timer_registered_and_cancelled_on_unload(integration):
+    env = integration
+    events = sys.modules["homeassistant.helpers.event"]
+    await env.package.async_setup_entry(env.hass, env.entry)
+    callback = events.async_track_time_interval.call_args.args[1]
+    assert events.async_track_time_interval.call_args.args[2].total_seconds() == 30
+    env.hass.services.async_call.side_effect = env.error("Offline")
+    await callback(None)
+    assert env.entry.runtime_data.source_error == "Offline"
+    assert await env.package.async_unload_entry(env.hass, env.entry)
+    events.async_track_time_interval.return_value.assert_called_once()

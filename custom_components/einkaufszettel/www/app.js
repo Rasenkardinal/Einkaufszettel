@@ -73,6 +73,7 @@ let connectionGeneration = 0;
 let nextMessageId = 1;
 let pendingInstallPrompt;
 let currentItems = [];
+let deletedUids = new Set();
 let pendingOperations = [];
 let busy = false;
 let lastOperationTime = 0;
@@ -306,7 +307,9 @@ function storeRequest(storeName, method, value) {
 }
 
 async function saveList(snapshot) {
+  const cached = snapshot ? null : await storeRequest("lists", "get");
   await storeRequest("lists", "put", snapshot || {
+    ...cached,
     entry_id: entryId,
     name: elements.listName.textContent,
     items: currentItems,
@@ -351,6 +354,7 @@ async function enqueue(operation) {
 }
 
 function applyLocalOperation(operation) {
+  if (deletedUids.has(operation.uid)) return;
   if (operation.type === "add_item") {
     if (!currentItems.some((item) => item.uid === operation.uid)) {
       currentItems.push({
@@ -361,10 +365,14 @@ function applyLocalOperation(operation) {
     }
   } else if (operation.type === "update_item") {
     const changes = {};
-    if (operation.status !== undefined) changes.status = operation.status;
-    if (operation.summary !== undefined) changes.summary = operation.summary;
+    for (const field of ["status", "summary", "description", "due"]) {
+      if (operation[field] !== undefined) changes[field] = operation[field];
+    }
     currentItems = currentItems.map((item) =>
-      item.uid === operation.uid ? { ...item, ...changes } : item,
+      item.uid === operation.uid ? {
+        ...item, ...changes,
+        ...(operation.metadata ? { metadata: { ...item.metadata, ...operation.metadata } } : {}),
+      } : item,
     );
   } else if (operation.type === "delete_item") {
     currentItems = currentItems.filter((item) => item.uid !== operation.uid);
@@ -542,6 +550,7 @@ async function readCachedLists() {
 
 async function loadSelectedList() {
   const cached = await storeRequest("lists", "get");
+  deletedUids = new Set(cached?.deleted_uids || []);
   elements.listName.textContent = cached?.name ||
     availableLists.find((list) => list.entry_id === entryId)?.name || "Liste laden";
   currentItems = cached?.items || [];
@@ -989,6 +998,7 @@ function sendCommand(type, payload = {}) {
 async function synchronize() {
   if (busy || !authenticated || socket?.readyState !== WebSocket.OPEN || !entryId) return;
   setBusy(true);
+  const warnings = [];
   try {
     const ids = new Set([entryId, ...availableLists.map((list) => list.entry_id)]);
     for (const listId of ids) {
@@ -996,18 +1006,29 @@ async function synchronize() {
       await saveList(snapshot);
       const operations = await readQueue(listId);
       for (const operation of operations) {
-        const payload = { ...operation };
-        delete payload.id;
-        delete payload.created_at;
-        delete payload.type;
-        snapshot = await sendCommand(`${DOMAIN}/${operation.type}`, payload);
-        await saveList(snapshot);
-        await storeRequest("operations", "delete", operation.id);
+        const changes = {};
+        for (const field of ["summary", "status", "description", "due", "metadata"]) {
+          if (operation[field] !== undefined) changes[field] = operation[field];
+        }
+        snapshot = await sendCommand(`${DOMAIN}/apply_operation`, {
+          entry_id: listId, operation_id: operation.id,
+          action: operation.type, uid: operation.uid, changes,
+        });
+        if (snapshot.ack_operation_id !== operation.id || snapshot.entry_id !== listId ||
+            !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
+            !Array.isArray(snapshot.items) ||
+            !["applied", "already_exists", "deleted"].includes(snapshot.operation_result)) {
+          throw new Error("Die Synchronisationsbestätigung passt nicht zur gesendeten Änderung.");
+        }
+        await acknowledgeOperation(snapshot, operation.id);
+        if (snapshot.operation_result === "deleted") {
+          warnings.push("Eine Änderung an einem bereits gelöschten Artikel wurde verworfen.");
+        }
       }
+      snapshot = await sendCommand(`${DOMAIN}/sync_source`, { entry_id: listId });
+      await saveList(snapshot);
+      if (snapshot.source_error) warnings.push(`${snapshot.name}: ${snapshot.source_error}`);
     }
-    await loadSelectedList();
-    updateConnection("online", "Alle Änderungen wurden synchronisiert.");
-    elements.message.textContent = "";
   } finally {
     try {
       await loadSelectedList();
@@ -1015,6 +1036,22 @@ async function synchronize() {
       setBusy(false);
     }
   }
+  updateConnection("online", warnings.length
+    ? "App-Änderungen in HA gespeichert. Hinweise zum Abgleich beachten."
+    : "Alle Änderungen wurden synchronisiert.");
+  elements.message.textContent = [...new Set(warnings)].join(" ");
+}
+
+async function acknowledgeOperation(snapshot, operationId) {
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(["lists", "operations"], "readwrite");
+    transaction.objectStore("lists").put(snapshot);
+    transaction.objectStore("operations").delete(operationId);
+    transaction.oncomplete = resolve;
+    transaction.onabort = transaction.onerror = () => reject(
+      transaction.error || new Error("Die Synchronisationsbestätigung konnte nicht gespeichert werden."),
+    );
+  });
 }
 
 async function loadRemoteLists() {
@@ -1167,18 +1204,11 @@ elements.sync.addEventListener("click", () => {
 
 elements.copySource.addEventListener("click", async () => {
   if (busy) return;
-  setBusy(true);
   try {
-    const result = await sendCommand(`${DOMAIN}/copy_source`, { entry_id: entryId });
-    currentItems = result.items;
-    await saveList();
-    for (const operation of pendingOperations) applyLocalOperation(operation);
-    render();
-    elements.message.textContent = "Neue Artikel aus der Quellliste übernommen.";
+    if (!authenticated) throw new Error("Home Assistant ist gerade nicht erreichbar.");
+    await synchronize();
   } catch (error) {
     showError(error);
-  } finally {
-    setBusy(false);
   }
 });
 
@@ -1225,6 +1255,11 @@ elements.install.addEventListener("click", async () => {
 });
 
 async function start() {
+  window.setInterval(() => {
+    if (authenticated && !busy && document.visibilityState === "visible") {
+      synchronize().catch(showError);
+    }
+  }, 30000);
   const appUrl = new URL(location.href);
   const startAuthorization = appUrl.searchParams.get("connect_ha") === "1";
   if (startAuthorization) {

@@ -17,6 +17,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import EinkaufszettelConfigEntry, EinkaufszettelData
 from .const import update_signal
 from .model import parse_due, update_item
+from .sync import persist_items
 
 
 async def async_setup_entry(
@@ -88,12 +89,9 @@ class EinkaufszettelTodo(TodoListEntity):
                     item.description,
                     item.due.isoformat() if item.due is not None else None,
                 )
-                await self._data.store.async_save(
-                    {"items": [value.to_dict() for value in updated]}
-                )
+                await persist_items(self._data, updated)
             except (ValueError, OSError, HomeAssistantError) as err:
                 raise HomeAssistantError(f"Cannot save shopping item: {err}") from err
-            self._data.items = updated
             self.async_write_ha_state()
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
@@ -116,12 +114,9 @@ class EinkaufszettelTodo(TodoListEntity):
             )
             updated = [*self._data.items, created]
             try:
-                await self._data.store.async_save(
-                    {"items": [value.to_dict() for value in updated]}
-                )
+                await persist_items(self._data, updated)
             except (OSError, HomeAssistantError) as err:
                 raise HomeAssistantError(f"Cannot save shopping item: {err}") from err
-            self._data.items = updated
             self.async_write_ha_state()
 
     async def async_delete_todo_items(self, uids: list[str]) -> None:
@@ -131,10 +126,7 @@ class EinkaufszettelTodo(TodoListEntity):
             if len(updated) == len(self._data.items):
                 return
             try:
-                await self._data.store.async_save(
-                    {"items": [value.to_dict() for value in updated]}
-                )
+                await persist_items(self._data, updated)
             except (OSError, HomeAssistantError) as err:
                 raise HomeAssistantError(f"Cannot delete shopping item: {err}") from err
-            self._data.items = updated
             self.async_write_ha_state()
