@@ -111,6 +111,11 @@ def integration(monkeypatch):
         ConfigEntryNotReady=NotReady,
     )
     module("homeassistant.helpers")
+    network = module(
+        "homeassistant.helpers.network",
+        NoURLAvailableError=type("NoURLAvailableError", (Exception,), {}),
+        get_url=Mock(return_value="https://ha.example.test"),
+    )
     module("homeassistant.helpers.storage", Store=Store)
     dispatcher = module(
         "homeassistant.helpers.dispatcher",
@@ -176,6 +181,8 @@ def integration(monkeypatch):
         model=model,
         websocket=websocket,
         websocket_api=websocket_api,
+        persistent_notification=persistent_notification,
+        network=network,
         hass=hass,
         entry=entry,
         store=stores.setdefault(
@@ -454,6 +461,25 @@ async def test_copy_button_noop_does_not_save_unchanged_list(integration):
     await button.async_press()
     assert len(env.entry.runtime_data.items) == 1
     assert env.store.async_save.await_count == saved
+
+
+async def test_install_button_uses_configured_external_url(integration):
+    env = integration
+    button = env.button.InstallWebAppButton(env.entry)
+    button.hass = env.hass
+
+    await button.async_press()
+
+    env.network.get_url.assert_called_once_with(env.hass, prefer_external=True)
+    message = env.persistent_notification.async_create.call_args.args[1]
+    assert (
+        "[Web-App öffnen und installieren]"
+        "(https://ha.example.test/einkaufszettel/app.html?entry_id=test-entry)"
+        in message
+    )
+    assert (
+        "https://ha.example.test/einkaufszettel/app.html?entry_id=test-entry" in message
+    )
 
 
 async def test_async_setup_serves_app_and_registers_websocket_api(integration):

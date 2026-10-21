@@ -2,7 +2,7 @@
 
 Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- und Kategorienlogik sowie Alexa-Anbindung über eine vorhandene HA-To-do-Liste.
 
-> **Projektstatus:** Alpha `0.3.0-alpha.1`. Enthält Konfigurationsflow, initialen Import, Quelllisten-Kopierer, lokale HA-To-do-Liste und eine installierbare Offline-PWA. Produktkatalog und Kategorien sind noch nicht implementiert.
+> **Projektstatus:** Alpha `0.3.0-alpha.2`. Enthält Konfigurationsflow, initialen Import, Quelllisten-Kopierer, lokale HA-To-do-Liste und eine installierbare Offline-PWA. Produktkatalog und Kategorien sind noch nicht implementiert.
 
 ## Funktionsumfang
 
@@ -17,7 +17,7 @@ Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- u
 ## Installation mit HACS
 
 1. In HACS das Repository `https://github.com/Rasenkardinal/Einkaufszettel` als **Integration** hinzufügen oder den bereits vorhandenen Repository-Eintrag aktualisieren.
-2. Version `0.3.0-alpha.1` herunterladen.
+2. Version `0.3.0-alpha.2` herunterladen.
 3. Home Assistant neu starten.
 4. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Einkaufszettel** öffnen.
 5. Alexa-/Quell-To-do-Liste auswählen und eine lokale Listenbezeichnung festlegen.
@@ -31,7 +31,7 @@ Die Installation benötigt HTTPS, beispielsweise über Nabu Casa. Die PWA muss m
 Diese Version ändert die technische HA-Domain von `easy_shopping` auf `einkaufszettel`. Home Assistant kann Config Entries nicht domainübergreifend migrieren. Deshalb wird eine neue Integrationseinrichtung benötigt. Der neue Konfigurationsflow kann jedoch vorhandene lokale Eintragsdaten aus einem passenden alten `easy_shopping`-Config-Entry übernehmen, wenn dieser noch in HA registriert ist und dieselbe Quell-Entity ausgewählt wird.
 
 1. Vor dem Update ein Home-Assistant-Backup erstellen, einschließlich `.storage`.
-2. HACS aktualisieren und **Einkaufszettel `0.3.0-alpha.1`** herunterladen. Home Assistant neu starten.
+2. HACS aktualisieren und **Einkaufszettel `0.3.0-alpha.2`** herunterladen. Home Assistant neu starten.
 3. Den bisherigen Easy-Shopping-Eintrag **nicht vorher löschen**. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen** die neue Integration **Einkaufszettel** hinzufügen.
 4. Im neuen Konfigurationsflow dieselbe Alexa-/Quell-To-do-Entity wie zuvor wählen. Dadurch kann die Integration den alten lokalen Snapshot anhand der Quell-Entity übernehmen, ohne die Alexa-Liste erneut zu importieren. Die alte Integration darf bis zur erfolgreichen Prüfung registriert bleiben.
 5. Prüfen, ob Einträge, Erledigt-Status, lokale Namen und Notizen in der neuen `todo.einkaufszettel`-Liste vorhanden sind. Dashboards, Automationen und Skripte mit `todo.easy_shopping` oder der alten Button-Entity anschließend auf die neuen Einkaufszettel-Entities umstellen.

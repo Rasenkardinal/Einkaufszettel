@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from . import EinkaufszettelConfigEntry
 from .const import CONF_SOURCE, DOMAIN, update_signal
@@ -69,11 +70,19 @@ class InstallWebAppButton(ButtonEntity):
 
     async def async_press(self) -> None:
         """Show a Home Assistant notification linking to the installable PWA."""
-        app_url = f"/{DOMAIN}/app.html?entry_id={self._entry.entry_id}"
+        try:
+            base_url = get_url(self.hass, prefer_external=True)
+        except NoURLAvailableError:
+            base_url = ""
+        app_url = (
+            f"{base_url.rstrip('/')}/{DOMAIN}/app.html?entry_id={self._entry.entry_id}"
+        )
         persistent_notification.async_create(
             self.hass,
             (
                 f"[Web-App öffnen und installieren]({app_url})\n\n"
+                f"Falls sich der Link nicht öffnet, kopiere diese Adresse in "
+                f"deinen Browser:\n\n{app_url}\n\n"
                 "Öffne den Link online und wähle im Browser **Installieren** "
                 "oder **Zum Startbildschirm hinzufügen**. Danach lässt sich "
                 "die zuvor geladene Liste auch offline öffnen."
