@@ -220,6 +220,8 @@ def _get_entry(hass: HomeAssistant, connection, msg: dict[str, Any]):
 
 
 def _send_snapshot(connection, message_id: int, entry, **extra) -> None:
+    from .source_sync import source_conflicts  # noqa: PLC0415
+
     connection.send_result(
         message_id,
         {
@@ -231,6 +233,12 @@ def _send_snapshot(connection, message_id: int, entry, **extra) -> None:
                 getattr(entry.runtime_data, "sync", {}).get("deleted", {})
             ),
             "source_error": getattr(entry.runtime_data, "source_error", None),
+            "source_conflicts": source_conflicts(entry.runtime_data),
+            "source_local_items": [
+                item
+                for item in source_conflicts(entry.runtime_data, include_local=True)
+                if item["local_only"]
+            ],
             **extra,
         },
     )
@@ -306,6 +314,47 @@ async def websocket_sync_source(
             }
         ),
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/resolve_source_conflict",
+        vol.Required("entry_id"): str,
+        vol.Required("uid"): str,
+        vol.Required("token"): str,
+        vol.Required("action"): vol.In(["link", "retry", "local"]),
+        vol.Optional("source_uid"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_resolve_source_conflict(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Apply an explicit decision, rejecting stale dialogs from another device."""
+    from .source_sync import resolve_source_conflict  # noqa: PLC0415
+
+    entry = _get_entry(hass, connection, msg)
+    if entry is None:
+        return
+    try:
+        async with asyncio.timeout(10):
+            await resolve_source_conflict(
+                hass,
+                entry,
+                msg["uid"],
+                msg["token"],
+                msg["action"],
+                msg.get("source_uid"),
+            )
+    except (HomeAssistantError, OSError, ValueError, TimeoutError) as err:
+        connection.send_error(
+            msg["id"],
+            "cannot_resolve_conflict",
+            str(err) or "Zeitüberschreitung bei der Konfliktauflösung.",
+        )
+        return
+    async_dispatcher_send(hass, update_signal(entry.entry_id))
+    _send_snapshot(connection, msg["id"], entry)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_lists"})

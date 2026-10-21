@@ -61,6 +61,23 @@ async function runTests() {
     assert(doc.querySelectorAll(".item-note").length === 1, "Optional notes missing");
     assert(doc.querySelector(".item-note").textContent === "1 · Vollkorn", "Quantity or note missing");
     assert(doc.querySelectorAll(".item").length === 3, "Items lost");
+    assert(doc.querySelectorAll(".item .delete").length === 0, "Delete buttons should not be shown");
+    assert(doc.querySelector(".item-name .item-note"), "Item details should stay in the item-name column");
+    assert(doc.querySelector(".item-name").getAttribute("aria-keyshortcuts") === "Delete", "Keyboard delete shortcut missing");
+  });
+  const swipeRow = doc.querySelector(".item");
+  swipeRow.dispatchEvent(new win.PointerEvent("pointerdown", {
+    pointerId: 1, pointerType: "touch", button: 0, clientX: 240, clientY: 120, bubbles: true
+  }));
+  swipeRow.dispatchEvent(new win.PointerEvent("pointermove", {
+    pointerId: 1, pointerType: "touch", clientX: 150, clientY: 120, bubbles: true, cancelable: true
+  }));
+  swipeRow.dispatchEvent(new win.PointerEvent("pointerup", {
+    pointerId: 1, pointerType: "touch", clientX: 150, clientY: 120, bubbles: true
+  }));
+  await new Promise(resolve => win.setTimeout(resolve, 220));
+  test("Left swipe queues item deletion", () => {
+    assert(operations.some(operation => operation.type === "delete_item" && operation.uid === "two"), "Swipe did not queue deletion");
   });
   test("Without a market groups follow A-Z, with uncategorized items last", () => {
     api.withoutMarket();
@@ -84,13 +101,42 @@ async function runTests() {
     assert(api.state().catalogDraft.category_ids.join() === "b,z", "Move failed");
     assert(state.supermarkets[0].category_ids.join() === "z,b", "Draft leaked before save");
   });
-  test("Keyboard move and drag/drop update the same draft", () => {
+  test("Keyboard and live pointer sorting update the same draft before release", () => {
     doc.querySelector(".move-grip").dispatchEvent(new win.KeyboardEvent("keydown", {key:"ArrowDown", bubbles:true}));
     assert(api.state().catalogDraft.category_ids.join() === "z,b", "Keyboard move failed");
-    const transfer = new win.DataTransfer();
-    doc.querySelector(".move-grip").dispatchEvent(new win.DragEvent("dragstart", {dataTransfer:transfer, bubbles:true}));
-    doc.querySelectorAll(".category-order-row")[1].dispatchEvent(new win.DragEvent("drop", {dataTransfer:transfer, bubbles:true}));
-    assert(api.state().catalogDraft.category_ids.join() === "b,z", "Drag/drop failed");
+    const list = doc.querySelector(".category-order");
+    // Synthetic PointerEvents do not create a browser-owned active pointer.
+    list.setPointerCapture = () => {};
+    const grip = list.querySelector(".move-grip");
+    grip.scrollIntoView({block:"center"});
+    const start = grip.getBoundingClientRect();
+    const target = list.children[1].getBoundingClientRect();
+    grip.dispatchEvent(new win.PointerEvent("pointerdown", {pointerId:12, isPrimary:true, button:0, clientX:start.left + 20, clientY:start.top + 20, bubbles:true}));
+    win.dispatchEvent(new win.PointerEvent("pointermove", {pointerId:12, clientX:start.left + 20, clientY:target.bottom - 5, cancelable:true}));
+    assert(api.state().catalogDraft.category_ids.join() === "b,z", "No live sorting");
+    assert(doc.querySelector(".category-drag-ghost"), "Floating row missing");
+    assert(state.supermarkets[0].category_ids.join() === "z,b", "Drag leaked before save");
+    assert(list.children[0].querySelector(".secondary").disabled, "First up control stale");
+    win.dispatchEvent(new win.PointerEvent("pointerup", {pointerId:12}));
+    assert(!doc.querySelector(".category-drag-ghost"), "Floating row leaked");
+    assert(api.state().catalogDraft.category_ids.join() === "b,z", "Drop lost order");
+  });
+  test("Pointer cancellation restores order; large grips and compact SVG back navigation", () => {
+    const list = doc.querySelector(".category-order");
+    list.setPointerCapture = () => {};
+    const grip = list.querySelector(".move-grip");
+    const start = grip.getBoundingClientRect(), target = list.children[1].getBoundingClientRect();
+    assert(start.width >= 48 && start.height >= 48, "Grip too small");
+    grip.dispatchEvent(new win.PointerEvent("pointerdown", {pointerId:13, isPrimary:true, button:0, clientX:start.left + 20, clientY:start.top + 20, bubbles:true}));
+    win.dispatchEvent(new win.PointerEvent("pointermove", {pointerId:13, clientX:start.left + 20, clientY:target.bottom - 5, cancelable:true}));
+    assert(api.state().catalogDraft.category_ids.join() === "z,b", "Cancel test did not move");
+    win.dispatchEvent(new win.PointerEvent("pointercancel", {pointerId:13}));
+    assert(api.state().catalogDraft.category_ids.join() === "b,z", "Cancel did not restore");
+    assert(!doc.querySelector(".category-drag-ghost"), "Cancel leaked ghost");
+    for (const back of doc.querySelectorAll(".management-back")) {
+      assert(back.querySelector("svg"), "Back arrow not SVG");
+      assert(win.getComputedStyle(back).height === "32px", "Back not variant C");
+    }
   });
   test("Selection comes from A-Z store, does not reset existing order", () => {
     doc.querySelector("#catalog-content > .primary").click();
@@ -142,6 +188,66 @@ async function runTests() {
   results.push("PASS Item category, quantity and notes use existing offline operation queue");
   assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, "Mobile horizontal overflow");
   results.push("PASS No horizontal overflow at 390px");
+  // Step the animation clock explicitly, including in headless virtual-time runs.
+  const requestFrame = win.requestAnimationFrame, cancelFrame = win.cancelAnimationFrame;
+  const frames = new Map();
+  let frameId = 0;
+  win.requestAnimationFrame = callback => { frames.set(++frameId, callback); return frameId; };
+  win.cancelAnimationFrame = id => frames.delete(id);
+  state.categories = Array.from({length:30}, (_, index) => ({id:`long-${index}`, name:`Kategorie ${index + 1}`}));
+  api.reset();
+  const order = state.categories.map(category => category.id);
+  api.openCatalog("market-order", {...state.supermarkets[0], category_ids:order});
+  const list = doc.querySelector(".category-order");
+  list.setPointerCapture = () => {};
+  const outside = new win.PointerEvent("pointerdown", {pointerId:20, isPrimary:true, button:0, bubbles:true, cancelable:true});
+  list.querySelector(".order-name").dispatchEvent(outside);
+  assert(!outside.defaultPrevented, "Normal scrolling blocked outside grip");
+  assert(win.getComputedStyle(list.querySelector(".order-name")).touchAction === "auto", "Row blocks native touch scroll");
+  const grip = list.querySelector(".move-grip");
+  grip.scrollIntoView({block:"center"});
+  const start = grip.getBoundingClientRect();
+  const offsetY = start.top + 20 - grip.closest("li").getBoundingClientRect().top;
+  const pointer = (type, y, pointerId = 21) => new win.PointerEvent(type, {
+    pointerId, pointerType:"touch", isPrimary:true, button:0,
+    clientX:start.left + 20, clientY:y, bubbles:true, cancelable:true,
+  });
+  grip.dispatchEvent(pointer("pointerdown", start.top + 20));
+  win.dispatchEvent(pointer("pointermove", win.innerHeight - 4));
+  const ghost = doc.querySelector(".category-drag-ghost");
+  assert(ghost && Math.abs(parseFloat(ghost.style.top) - (win.innerHeight - 4 - offsetY)) < 1, "Floating row not at touch position");
+  const ghostTop = ghost.style.top;
+  win.dispatchEvent(pointer("pointermove", win.innerHeight - 24));
+  assert(parseFloat(ghost.style.top) === parseFloat(ghostTop) - 20, "Ghost did not follow pointer");
+  win.dispatchEvent(pointer("pointermove", win.innerHeight - 4));
+  win.dispatchEvent(pointer("pointerup", 0, 99));
+  assert(doc.querySelector(".category-drag-ghost"), "Unrelated pointer ended drag");
+  const scrollBefore = win.scrollY;
+  for (let time = 16; time <= 512; time += 16) {
+    const pending = [...frames.values()];
+    frames.clear();
+    pending.forEach(callback => callback(time));
+  }
+  assert(win.scrollY > scrollBefore + 20, "Edge scrolling did not advance");
+  assert(api.state().catalogDraft.category_ids.indexOf(order[0]) > 1, "Long list did not reorder live");
+  win.dispatchEvent(new win.KeyboardEvent("keydown", {key:"Escape", cancelable:true}));
+  assert(api.state().catalogDraft.category_ids.join() === order.join(), "Escape did not restore original order");
+  assert(!api.state().catalogDirty, "Escape did not restore clean draft");
+  assert(!doc.querySelector(".category-drag-ghost"), "Escape leaked floating row");
+  assert(frames.size === 0, "Escape leaked animation loop");
+  results.push("PASS Touch pointer follows finger, ignores other pointers, edge-scrolls and rolls back on Escape");
+  grip.scrollIntoView({block:"center"});
+  const next = list.children[1].getBoundingClientRect();
+  grip.dispatchEvent(pointer("pointerdown", grip.getBoundingClientRect().top + 20));
+  win.dispatchEvent(pointer("pointermove", next.bottom - 2));
+  assert(doc.querySelector(".category-drag-ghost"), "Navigation test did not drag");
+  api.openCatalog("categories");
+  assert(!doc.querySelector(".category-drag-ghost"), "Navigation leaked drag");
+  assert(api.state().catalogDraft.category_ids.length === 0, "Drag rollback overwrote new page draft");
+  assert(frames.size === 0, "Navigation leaked animation loop");
+  win.requestAnimationFrame = requestFrame;
+  win.cancelAnimationFrame = cancelFrame;
+  results.push("PASS Navigation cleans up drag without overwriting the new draft");
   document.querySelector("#results").textContent = results.join("\n");
 }
 runTests().catch(error => {

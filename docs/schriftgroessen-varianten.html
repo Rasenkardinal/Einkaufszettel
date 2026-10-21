@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Einkaufszettel – Artikelabstände vergleichen</title>
+  <link rel="stylesheet" href="../custom_components/einkaufszettel/www/app.css">
+  <style>
+    body { background: #101010; }
+    main { max-width: 1600px; padding: 36px 24px 56px; margin: auto; }
+    .intro { max-width: 900px; margin-bottom: 30px; }
+    .intro .eyebrow { margin: 0 0 12px; }
+    .intro h1 { font-size: clamp(26px, 4vw, 40px); }
+    .intro p { color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+    article { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: #181818; }
+    article.selected { border: 2px solid var(--accent); box-shadow: 0 0 0 3px var(--glow); }
+    article > h2 { margin-bottom: 6px; font-size: 18px; }
+    .selected-label { display: inline-block; margin: 0 0 10px; padding: 5px 9px; border-radius: 999px; background: var(--accent); color: var(--accent-text); font-size: 10px; font-weight: 750; letter-spacing: .04em; }
+    .description { min-height: 40px; margin: 0 0 16px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .screen { max-width: 500px; min-height: 340px; margin: auto; padding: 18px 16px; border: 1px solid var(--line); border-radius: 18px; background: radial-gradient(ellipse at 50% 0, var(--glow), transparent 55%), var(--bg); }
+    .screen .brandline { display: flex; align-items: center; gap: 6px; margin-bottom: 20px; color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: .14em; }
+    .screen .brand-icon { width: 20px; height: 20px; }
+    .screen h3 { margin: 0 0 5px; font-size: 20px; line-height: 1.15; }
+    .screen .hint { margin: 0 0 16px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .preview-main .list-heading { margin-bottom: 8px; }
+    .preview-main .list-heading h2 { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+    .preview-main .market { margin-bottom: 12px; color: var(--muted); font-size: 10px; }
+    .preview-main .item-category { margin-bottom: 14px; }
+    .preview-main .item-category-title { margin: 12px 0; font-size: 11px; }
+    .preview-main .category-count { font-size: 10px; }
+    .preview-main .items { gap: 6px; }
+    .preview-main .item { min-height: 58px; padding: 6px 10px; }
+    .preview-main .item-main { min-width: 0; gap: 0; }
+    .preview-main .item input[type="checkbox"] { width: 20px; height: 20px; }
+    .preview-main .item-name { min-width: 0; flex: 1; flex-direction: row; align-items: baseline; justify-content: flex-start; overflow: hidden; padding: 8px 0; font-size: 18px; font-weight: 650; white-space: nowrap; }
+    .preview-main .item-name.has-note { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 40%); column-gap: 12px; }
+    .preview-main .item-name > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .preview-main .item-note { max-width: 100%; flex: none; justify-self: end; overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+    .preview-main .delete { display: none; }
+    .variant-21 .preview-main .item-main { gap: 14px; }
+    .variant-21 .preview-main .item-name { gap: 8px; }
+    .variant-22 .preview-main .item-main { gap: 20px; }
+    .variant-22 .preview-main .item-name { gap: 16px; }
+    .variant-23 .preview-main .item-main { gap: 16px; }
+    .variant-23 .preview-main .item-name { gap: 8px; }
+    .variant-23 .preview-main .item-note { margin-left: auto; padding-left: 16px; }
+    .variant-24 .preview-main .item-main { gap: 18px; }
+    .variant-24 .preview-main .item-name.has-note { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 40%); align-items: baseline; column-gap: 12px; }
+    .sizes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+    .sizes span { padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; color: #ccc; font-size: 10px; }
+    @media (max-width: 850px) { .grid { grid-template-columns: 1fr; } }
+    @media (max-width: 540px) {
+      main { padding: 24px 12px; }
+      article { padding: 14px 10px; }
+      .screen { min-height: 320px; padding: 14px 10px; }
+    }
+  </style>
+</head>
+<body data-theme="mono">
+<main>
+  <header class="intro">
+    <p class="eyebrow">EINKAUFSZETTEL · VARIANTE 2</p>
+    <h1>Mehr Abstand in der Artikelliste</h1>
+    <p>Vier Möglichkeiten, die Checkbox, den kräftigen Artikelnamen und die Zusatzinfo weiter auseinanderzusetzen. Die Löschkreuze sind in allen Entwürfen entfernt; in der App lassen sich Artikel jetzt per Wischgeste nach links löschen.</p>
+    <p><strong>Ausgewählt und umgesetzt: Nr. 4.</strong> Die App zeigt die Zusatzinfo in einer festen rechten Spalte.</p>
+  </header>
+  <section class="grid" aria-label="Vier Abstandsvarianten für die Hauptansicht">
+    <article class="variant-21">
+      <h2>2.1 · Mehr Luft am Artikel</h2>
+      <p class="description">Checkbox und Artikelname haben mehr Abstand; die Zusatzinfo folgt direkt nach dem Namen.</p>
+      <div class="screen preview-main"></div>
+      <div class="sizes"><span>Checkbox → Name: 14 px</span><span>Name → Info: 8 px</span></div>
+    </article>
+    <article class="variant-22">
+      <h2>2.2 · Deutlich getrennte Info</h2>
+      <p class="description">Größerer Abstand sowohl zur Checkbox als auch zwischen Artikelname und Zusatzinfo.</p>
+      <div class="screen preview-main"></div>
+      <div class="sizes"><span>Checkbox → Name: 20 px</span><span>Name → Info: 16 px</span></div>
+    </article>
+    <article class="variant-23">
+      <h2>2.3 · Zusatzinfo rechtsbündig</h2>
+      <p class="description">Der Artikelname steht nach der Checkbox; die Zusatzinfo rückt an den rechten Rand der Zeile.</p>
+      <div class="screen preview-main"></div>
+      <div class="sizes"><span>Checkbox → Name: 16 px</span><span>Info am rechten Rand</span></div>
+    </article>
+    <article class="variant-24 selected">
+      <h2>2.4 · Feste Info-Spalte</h2>
+      <p class="selected-label">Ausgewählt · in der App umgesetzt</p>
+      <p class="description">Name und Zusatzinfo bekommen eigene Spalten. Die Infos stehen so bei allen Artikeln auf gleicher Höhe.</p>
+      <div class="screen preview-main"></div>
+      <div class="sizes"><span>Checkbox → Name: 18 px</span><span>Info-Spalte rechts</span></div>
+    </article>
+  </section>
+</main>
+<script>
+  const mainContent = `
+    <div class="brandline"><img class="brand-icon" src="../custom_components/einkaufszettel/www/icon.svg" alt="">EINKAUFSZETTEL</div>
+    <h3>Wocheneinkauf</h3>
+    <p class="hint">Liste ist auf diesem Gerät gespeichert.</p>
+    <div class="list-heading"><h2>Auf der Liste</h2><span class="market">Kaufland Mitte</span></div>
+    <section class="item-category"><h2 class="item-category-title">Obst &amp; Gemüse <span class="category-count">2</span></h2><ul class="items">
+      <li class="item"><div class="item-main"><input type="checkbox" aria-label="Äpfel erledigt"><button class="item-name has-note" type="button"><span>Äpfel</span><span class="item-note">1 kg · Bio</span></button></div></li>
+      <li class="item"><div class="item-main"><input type="checkbox" aria-label="Bananen erledigt"><button class="item-name" type="button"><span>Bananen</span></button></div></li>
+    </ul></section>
+    <section class="item-category"><h2 class="item-category-title">Milchprodukte <span class="category-count">2</span></h2><ul class="items">
+      <li class="item"><div class="item-main"><input type="checkbox" aria-label="Milch erledigt"><button class="item-name has-note" type="button"><span>Milch</span><span class="item-note">2 × 1 l</span></button></div></li>
+      <li class="item"><div class="item-main"><input type="checkbox" aria-label="Joghurt erledigt"><button class="item-name" type="button"><span>Joghurt Natur</span></button></div></li>
+    </ul></section>`;
+  for (const screen of document.querySelectorAll(".preview-main")) screen.innerHTML = mainContent;
+</script>
+</body>
+</html>

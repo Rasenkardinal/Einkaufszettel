@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.1">
+    <link rel="stylesheet" href="./app.css?v=0.4.2">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -68,8 +68,18 @@
                 <p>HA-Listen auswählen, App-Namen vergeben und den automatischen Abgleich anstoßen.</p>
               </div>
             </details>
-            <button id="manage-supermarkets">Supermärkte verwalten</button>
-            <button id="manage-categories">Produktkategorien verwalten</button>
+            <details id="menu-supermarkets" class="setup-section">
+              <summary>Supermärkte verwalten</summary>
+              <div class="setup-submenu">
+                <button id="manage-supermarkets">Supermarktverwaltung öffnen</button>
+              </div>
+            </details>
+            <details id="menu-categories" class="setup-section">
+              <summary>Produktkategorien verwalten</summary>
+              <div class="setup-submenu">
+                <button id="manage-categories">Kategorieverwaltung öffnen</button>
+              </div>
+            </details>
             <p>Offline gespeichert auf diesem Gerät</p>
           </div>
         </details>
@@ -102,19 +112,27 @@
         </div>
       </div>
       <p id="message" class="message" role="status"></p>
+      <button id="resolve-sync-conflicts" class="secondary" type="button" hidden>Sync-Konflikte auflösen</button>
       <ul id="items" class="items"></ul>
       <p id="empty" class="empty" hidden>Noch nichts auf der Liste.</p>
 
     </main>
+    <dialog id="sync-conflicts" aria-labelledby="sync-conflicts-title">
+      <h2 id="sync-conflicts-title">Quellanlage klären</h2>
+      <p>Die Anlage konnte nicht eindeutig bestätigt werden. Bitte entscheide pro Artikel. Andere Artikel werden weiter abgeglichen.</p>
+      <p id="sync-conflicts-message" class="message" role="status"></p>
+      <div id="sync-conflicts-content"></div>
+      <form method="dialog"><button class="secondary">Später entscheiden</button></form>
+    </dialog>
     <section id="catalog-page" class="app management-page" hidden aria-labelledby="catalog-title">
-      <header class="management-header"><span class="page-brand"><img src="./icon.svg" alt="" width="24" height="24"> EINKAUFSZETTEL</span><button id="catalog-back" class="text-button" type="button">← Einkaufsliste</button></header>
+      <header class="management-header"><span class="page-brand"><img src="./icon.svg" alt="" width="24" height="24"> EINKAUFSZETTEL</span><button id="catalog-back" class="management-back" type="button"><svg viewBox="0 0 30 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M26 12H4m7-7-7 7 7 7"/></svg><span>Zurück zur Liste</span></button></header>
       <h1 id="catalog-title" tabindex="-1"></h1>
       <p id="catalog-help" class="management-help"></p>
       <p id="catalog-message" role="status" class="message"></p>
       <div id="catalog-content"></div>
     </section>
     <section id="list-management" class="app management-page" hidden aria-labelledby="list-management-title">
-      <header class="management-header"><span class="page-brand"><img src="./icon.svg" alt="" width="24" height="24"> EINKAUFSZETTEL</span><button id="lists-back" class="text-button" type="button">← Einkaufsliste</button></header>
+      <header class="management-header"><span class="page-brand"><img src="./icon.svg" alt="" width="24" height="24"> EINKAUFSZETTEL</span><button id="lists-back" class="management-back" type="button"><svg viewBox="0 0 30 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M26 12H4m7-7-7 7 7 7"/></svg><span>Zurück zur Liste</span></button></header>
       <h1 id="list-management-title" tabindex="-1">Listen verwalten</h1>
       <p class="management-help">HA-Listen für die App auswählen und kurz benennen. Alexa- und HA-Namen bleiben unverändert. Änderungen gelten für alle Nutzer und benötigen HA-Administratorrechte.</p>
       <p id="management-message" role="status"></p>
@@ -144,6 +162,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.1" defer></script>
+    <script src="./app.js?v=0.4.2" defer></script>
   </body>
 </html>

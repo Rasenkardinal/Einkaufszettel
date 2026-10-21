@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import importlib.util
 import sys
+from copy import deepcopy
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -870,7 +871,7 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 17
+    assert env.websocket_api.async_register_command.call_count == 18
 
 
 async def test_catalog_shared_persistence_and_market_rename_preserves_categories(
@@ -1312,6 +1313,401 @@ async def sync_environment(env, monkeypatch, *, features=49):
     )
 
 
+async def conflict_environment(env, monkeypatch, *, ambiguous=False):
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "pending-add",
+        "add_item",
+        "pending",
+        {
+            "summary": "Brot",
+            "metadata": {"note": "Behalten"},
+        },
+    )
+    state = deepcopy(ctx.data.sync)
+    state["creates"]["pending"] = {"before": ["a"], "summary": "Brot"}
+    await ctx.protocol.persist_items(ctx.data, ctx.data.items, state)
+    if ambiguous:
+        ctx.remote.extend(
+            [
+                {"uid": "b1", "summary": "Brot", "status": "needs_action"},
+                {"uid": "b2", "summary": "Brot", "status": "needs_action"},
+            ]
+        )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    return ctx
+
+
+@pytest.mark.parametrize("ambiguous", [False, True])
+async def test_conflict_does_not_block_other_items_and_requires_explicit_decision(
+    integration, monkeypatch, ambiguous
+):
+    env = integration
+    ctx = await conflict_environment(env, monkeypatch, ambiguous=ambiguous)
+    uid = ctx.data.items[0].uid
+    ctx.remote[0]["status"] = "completed"
+    ctx.remote.append({"uid": "other", "summary": "Obst", "status": "needs_action"})
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.items[0].status == "completed"
+    assert any(item.source_uid == "other" for item in ctx.data.items)
+    conflicts = ctx.source.source_conflicts(ctx.data)
+    assert len(conflicts) == 1
+    assert conflicts[0]["uid"] == "pending"
+    assert conflicts[0]["reason"] == ("multiple" if ambiguous else "unconfirmed")
+    if ambiguous:
+        ctx.remote[:] = [item for item in ctx.remote if item["uid"] != "b2"]
+    else:
+        ctx.remote.append({"uid": "b1", "summary": "Brot", "status": "needs_action"})
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.source.source_conflicts(ctx.data)
+    assert (
+        next(item for item in ctx.data.items if item.uid == "pending").source_uid
+        is None
+    )
+    assert not any(service == "add_item" for service, _ in ctx.calls)
+    assert uid == ctx.data.items[0].uid
+
+
+async def test_link_conflict_preserves_metadata_and_rejects_stale_second_device(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await conflict_environment(env, monkeypatch, ambiguous=True)
+    token = ctx.source.source_conflicts(ctx.data)[0]["token"]
+    await ctx.source.resolve_source_conflict(
+        env.hass, env.entry, "pending", token, "link", "b1"
+    )
+    assert next(item for item in ctx.data.items if item.uid == "pending").metadata == {
+        "note": "Behalten"
+    }
+    assert (
+        next(item for item in ctx.data.items if item.uid == "pending").source_uid
+        == "b1"
+    )
+    assert not ctx.source.source_conflicts(ctx.data)
+    with pytest.raises(ValueError, match="bereits geändert"):
+        await ctx.source.resolve_source_conflict(
+            env.hass, env.entry, "pending", token, "retry"
+        )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert not any(service == "add_item" for service, _ in ctx.calls)
+
+
+async def test_local_only_choice_survives_restart_and_never_recreates(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await conflict_environment(env, monkeypatch)
+    token = ctx.source.source_conflicts(ctx.data)[0]["token"]
+    await ctx.source.resolve_source_conflict(
+        env.hass, env.entry, "pending", token, "local"
+    )
+    env.store.async_load.return_value = env.store.async_save.call_args.args[0]
+    await env.package.async_setup_entry(env.hass, env.entry)
+    for _ in range(2):
+        await ctx.source.synchronize_source(env.hass, env.entry)
+    data = env.entry.runtime_data
+    assert next(item for item in data.items if item.uid == "pending").metadata == {
+        "note": "Behalten"
+    }
+    assert not ctx.source.source_conflicts(data)
+    assert not any(service == "add_item" for service, _ in ctx.calls)
+    assert data.source_error is None
+    local = ctx.source.source_conflicts(data, include_local=True)[0]
+    assert local["token"] != token
+    with pytest.raises(ValueError):
+        await ctx.source.resolve_source_conflict(
+            env.hass, env.entry, "pending", token, "retry"
+        )
+    await ctx.source.resolve_source_conflict(
+        env.hass, env.entry, "pending", local["token"], "retry"
+    )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert any(service == "add_item" for service, _ in ctx.calls)
+
+
+async def test_explicit_retry_creates_once_and_rejects_replayed_decision(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await conflict_environment(env, monkeypatch)
+    token = ctx.source.source_conflicts(ctx.data)[0]["token"]
+    await ctx.source.resolve_source_conflict(
+        env.hass, env.entry, "pending", token, "retry"
+    )
+    with pytest.raises(ValueError):
+        await ctx.source.resolve_source_conflict(
+            env.hass, env.entry, "pending", token, "retry"
+        )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert sum(service == "add_item" for service, _ in ctx.calls) == 1
+    assert not ctx.source.source_conflicts(ctx.data)
+
+
+@pytest.mark.parametrize("invalid", ["linked", "missing", "retired"])
+async def test_link_conflict_revalidates_target_and_keeps_intent_on_error(
+    integration, monkeypatch, invalid
+):
+    env = integration
+    ctx = await conflict_environment(env, monkeypatch, ambiguous=True)
+    token = ctx.source.source_conflicts(ctx.data)[0]["token"]
+    target = "a" if invalid == "linked" else "b1"
+    if invalid == "missing":
+        ctx.remote[:] = [item for item in ctx.remote if item["uid"] != "b1"]
+    if invalid == "retired":
+        ctx.data.sync["source"]["b1"] = {
+            "summary": "Brot",
+            "status": "completed",
+            "present": True,
+            "superseded": True,
+        }
+    with pytest.raises(ValueError, match="fehlt oder"):
+        await ctx.source.resolve_source_conflict(
+            env.hass, env.entry, "pending", token, "link", target
+        )
+    assert "pending" in ctx.data.sync["creates"]
+
+
+async def test_failed_resolution_save_does_not_consume_conflict(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await conflict_environment(env, monkeypatch, ambiguous=True)
+    token = ctx.source.source_conflicts(ctx.data)[0]["token"]
+    env.store.async_save.side_effect = OSError("disk full")
+    with pytest.raises(OSError):
+        await ctx.source.resolve_source_conflict(
+            env.hass, env.entry, "pending", token, "link", "b1"
+        )
+    assert "pending" in ctx.data.sync["creates"]
+    assert (
+        next(item for item in ctx.data.items if item.uid == "pending").source_uid
+        is None
+    )
+
+
+async def test_inflight_create_is_not_presented_as_a_decision(integration, monkeypatch):
+    ctx = await sync_environment(integration, monkeypatch)
+    state = deepcopy(ctx.data.sync)
+    state["creates"]["new"] = {"before": ["a"], "summary": "Brot"}
+    await ctx.protocol.persist_items(ctx.data, ctx.data.items, state)
+    assert not ctx.source.source_conflicts(ctx.data)
+    assert not ctx.source.source_conflicts(ctx.data, include_local=True)
+
+
+@pytest.mark.parametrize("failure", [None, "save", "stale", "list"])
+async def test_conflict_websocket_persists_before_ack_and_returns_scoped_snapshot(
+    integration, monkeypatch, failure
+):
+    env = integration
+    ctx = await conflict_environment(env, monkeypatch, ambiguous=True)
+    env.entry.domain = "einkaufszettel"
+    env.hass.config_entries.async_get_entry.side_effect = (
+        lambda key: env.entry if key == env.entry.entry_id else None
+    )
+    conflict = ctx.source.source_conflicts(ctx.data)[0]
+    connection = Mock()
+    env.dispatcher.async_dispatcher_send.reset_mock()
+    if failure == "save":
+        env.store.async_save.side_effect = OSError("disk full")
+    await env.websocket.websocket_resolve_source_conflict(
+        env.hass,
+        connection,
+        {
+            "id": 73,
+            "entry_id": "missing" if failure == "list" else env.entry.entry_id,
+            "uid": "pending",
+            "token": "outdated" if failure == "stale" else conflict["token"],
+            "action": "local",
+        },
+    )
+    if failure:
+        connection.send_result.assert_not_called()
+        connection.send_error.assert_called_once()
+        env.dispatcher.async_dispatcher_send.assert_not_called()
+        assert ctx.source.source_conflicts(ctx.data)
+    else:
+        connection.send_error.assert_not_called()
+        snapshot = connection.send_result.call_args.args[1]
+        assert snapshot["entry_id"] == env.entry.entry_id
+        assert snapshot["source_conflicts"] == []
+        assert snapshot["source_local_items"][0]["uid"] == "pending"
+        saved = env.store.async_save.call_args.args[0]
+        assert saved["sync"]["creates"]["pending"]["local_only"]
+        env.dispatcher.async_dispatcher_send.assert_called_once()
+
+
+async def test_deleted_conflict_links_for_deletion_but_cannot_retry(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await conflict_environment(env, monkeypatch, ambiguous=True)
+    await ctx.protocol.apply_operation(
+        ctx.data, "delete-pending", "delete_item", "pending", {}
+    )
+    conflict = ctx.source.source_conflicts(ctx.data)[0]
+    assert conflict["deleted"]
+    with pytest.raises(ValueError, match="gelöschter"):
+        await ctx.source.resolve_source_conflict(
+            env.hass, env.entry, "pending", conflict["token"], "retry"
+        )
+    await ctx.source.resolve_source_conflict(
+        env.hass, env.entry, "pending", conflict["token"], "link", "b1"
+    )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert not any(item.uid == "pending" for item in ctx.data.items)
+    assert not any(item["uid"] == "b1" for item in ctx.remote)
+    assert not any(service == "add_item" for service, _ in ctx.calls)
+
+
+async def test_failed_create_does_not_block_next_article(integration, monkeypatch):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    for uid, summary in (("first", "Brot"), ("second", "Obst")):
+        await ctx.protocol.apply_operation(
+            ctx.data, uid, "add_item", uid, {"summary": summary}
+        )
+    real_service = env.hass.services.async_call.side_effect
+
+    async def service(domain, service, payload, **kwargs):
+        if service == "add_item" and payload["item"] == "Brot":
+            raise TimeoutError("reply lost")
+        return await real_service(domain, service, payload, **kwargs)
+
+    env.hass.services.async_call.side_effect = service
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.source.source_conflicts(ctx.data)[0]["uid"] == "first"
+    assert next(item for item in ctx.data.items if item.uid == "second").source_uid
+    assert ctx.data.source_error
+
+
+@pytest.mark.parametrize("same_poll", [False, True])
+async def test_alexa_readd_reuses_completed_item_and_retires_old_identity(
+    integration, monkeypatch, same_poll
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "metadata",
+        "update_item",
+        uid,
+        {
+            "metadata": {"category_id": "dairy", "quantity": "2", "note": "bio"},
+            "description": "Behalten",
+        },
+    )
+    ctx.remote[0]["status"] = "completed"
+    if not same_poll:
+        await ctx.source.synchronize_source(env.hass, env.entry)
+    ctx.remote.append(
+        {"uid": "new-milk", "summary": "  MILCH  ", "status": "needs_action"}
+    )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert len(ctx.data.items) == 1
+    item = ctx.data.items[0]
+    assert (item.uid, item.source_uid, item.status) == (uid, "new-milk", "needs_action")
+    assert item.metadata == {"category_id": "dairy", "quantity": "2", "note": "bio"}
+    assert item.description == "Behalten"
+    assert ctx.data.sync["source"]["a"]["superseded"] is True
+    env.store.async_load.return_value = env.store.async_save.call_args.args[0]
+    await env.package.async_setup_entry(env.hass, env.entry)
+    ctx.remote[0]["status"] = "needs_action"
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    data = env.entry.runtime_data
+    assert len(data.items) == 1
+    assert data.items[0].source_uid == "new-milk"
+    assert data.items[0].status == "needs_action"
+    assert not any(service != "get_items" for service, _ in ctx.calls)
+
+
+@pytest.mark.parametrize(
+    "case", ["open", "multiple_completed", "multiple_new", "different_name"]
+)
+async def test_source_readd_never_guesses_ambiguous_or_open_match(
+    integration, monkeypatch, case
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    if case != "open":
+        ctx.remote[0]["status"] = "completed"
+    if case == "multiple_completed":
+        ctx.data.items.append(env.model.ShoppingItem("other", "Milch", "completed"))
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    before = len(ctx.data.items)
+    ctx.remote.append(
+        {
+            "uid": "new",
+            "summary": "Hafermilch" if case == "different_name" else "Milch",
+            "status": "needs_action",
+        }
+    )
+    if case == "multiple_new":
+        ctx.remote.append({"uid": "new2", "summary": "MILCH", "status": "needs_action"})
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert len(ctx.data.items) == before + (2 if case == "multiple_new" else 1)
+    assert ctx.data.items[0].source_uid == "a"
+
+
+async def test_source_readd_failed_save_leaves_old_mapping_intact(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    ctx.remote[0]["status"] = "completed"
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    ctx.remote.append({"uid": "new", "summary": "Milch", "status": "needs_action"})
+    env.store.async_save.side_effect = OSError("disk full")
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert len(ctx.data.items) == 1
+    assert ctx.data.items[0].source_uid == "a"
+    assert not ctx.data.sync["source"]["a"].get("superseded")
+    env.store.async_save.side_effect = None
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert len(ctx.data.items) == 1
+    assert ctx.data.items[0].source_uid == "new"
+
+
+async def test_repeated_readds_normalize_whitespace_and_delete_only_current_source(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    ctx.remote[0]["summary"] = "Frische Milch"
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    uid = ctx.data.items[0].uid
+    for source_uid, name in (
+        ("second", " FRISCHE\t Milch "),
+        ("third", "frische   milch"),
+    ):
+        ctx.remote[-1]["status"] = "completed"
+        ctx.remote.append(
+            {"uid": source_uid, "summary": name, "status": "needs_action"}
+        )
+        await ctx.source.synchronize_source(env.hass, env.entry)
+        assert len(ctx.data.items) == 1
+        assert ctx.data.items[0].uid == uid
+        assert ctx.data.items[0].source_uid == source_uid
+    # Even a stale source reopening must not be copied back through the old API.
+    ctx.remote[0]["status"] = "needs_action"
+    button = env.button.CopySourceButton(env.entry)
+    button.hass = env.hass
+    await button.async_press()
+    assert len(ctx.data.items) == 1
+    await ctx.protocol.apply_operation(ctx.data, "delete", "delete_item", uid, {})
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert {item["uid"] for item in ctx.remote} == {"a", "second"}
+    assert not ctx.data.items
+
+
 async def test_receipts_survive_restart_and_retry_does_not_overwrite_newer_edit(
     integration, monkeypatch
 ):
@@ -1528,6 +1924,13 @@ async def test_ambiguous_source_creation_is_not_retried_after_restart(
     env.hass.services.async_call.side_effect = real_service
     await ctx.source.synchronize_source(env.hass, env.entry)
     data = env.entry.runtime_data
+    conflict = ctx.source.source_conflicts(data)[0]
+    assert conflict["candidates"][0]["uid"] == ctx.remote[-1]["uid"]
+    assert data.source_error
+    await ctx.source.resolve_source_conflict(
+        env.hass, env.entry, "new", conflict["token"], "link", ctx.remote[-1]["uid"]
+    )
+    await ctx.source.synchronize_source(env.hass, env.entry)
     assert not data.sync["creates"]
     assert len(ctx.remote) == 2
     assert sum(service == "add_item" for service, _ in ctx.calls) == 1

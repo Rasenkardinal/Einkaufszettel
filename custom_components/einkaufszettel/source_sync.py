@@ -1,6 +1,8 @@
 """Reconcile the HA source without treating failed reads as empty lists."""
 
 import asyncio
+import hashlib
+import json
 import logging
 from collections.abc import Callable
 from copy import deepcopy
@@ -25,6 +27,100 @@ def _baseline(item, present=True):
     return {"summary": item.summary, "status": item.status, "present": present}
 
 
+def _normalized_name(name: str) -> str:
+    return " ".join(name.split()).casefold()
+
+
+def conflict_token(intent: dict) -> str:
+    """Identify an attempt independently of changing candidate observations."""
+    return hashlib.sha256(
+        json.dumps(
+            {
+                key: intent.get(key)
+                for key in ("before", "summary", "attempt", "local_only")
+            },
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+
+
+def source_conflicts(data, *, include_local=False) -> list[dict]:
+    linked = {item.source_uid for item in data.items if item.source_uid}
+    return [
+        {
+            "uid": uid,
+            "summary": intent["summary"],
+            "token": conflict_token(intent),
+            "candidates": [
+                candidate
+                for candidate in intent.get("candidates", [])
+                if candidate["uid"] not in linked
+            ],
+            "reason": "multiple" if intent.get("match_count", 0) > 1 else "unconfirmed",
+            "deleted": uid in data.sync["deleted"],
+            "local_only": intent.get("local_only", False),
+        }
+        for uid, intent in getattr(data, "sync", {}).get("creates", {}).items()
+        if (intent.get("needs_decision") or intent.get("local_only"))
+        and (include_local or not intent.get("local_only"))
+    ]
+
+
+def _available_sources(data, incoming, uid):
+    linked = {item.source_uid for item in data.items if item.uid != uid}
+    blocked = {item.get("source_uid") for item in data.sync["deleted"].values()} | {
+        key for key, value in data.sync["source"].items() if value.get("superseded")
+    }
+    return [item for item in incoming if item.uid not in linked | blocked]
+
+
+async def resolve_source_conflict(hass, entry, uid, token, action, source_uid=None):
+    """Revalidate a human decision against current source IDs under the list lock."""
+    data = entry.runtime_data
+    async with data.lock:
+        intent = data.sync["creates"].get(uid)
+        if not intent or conflict_token(intent) != token:
+            raise ValueError(
+                "Der Konflikt wurde bereits geändert. Bitte erneut synchronisieren."
+            )
+        state = deepcopy(data.sync)
+        items = list(data.items)
+        if action == "local":
+            state["creates"][uid]["local_only"] = True
+        elif action == "retry":
+            if uid in state["deleted"]:
+                raise ValueError(
+                    "Ein gelöschter Artikel kann nicht erneut angelegt werden."
+                )
+            del state["creates"][uid]
+        elif action == "link":
+            incoming = await async_read_all_source(hass, entry.data[CONF_SOURCE])
+            source = next(
+                (
+                    item
+                    for item in _available_sources(data, incoming, uid)
+                    if item.uid == source_uid
+                ),
+                None,
+            )
+            if source is None:
+                raise ValueError(
+                    "Der Quellartikel fehlt oder ist bereits zugeordnet. Bitte erneut synchronisieren."
+                )
+            items = [
+                replace(item, source_uid=source.uid) if item.uid == uid else item
+                for item in items
+            ]
+            if uid in state["deleted"]:
+                state["deleted"][uid]["source_uid"] = source.uid
+            state["source"][source.uid] = _baseline(source)
+            del state["creates"][uid]
+        else:
+            raise ValueError("Unbekannte Konfliktentscheidung.")
+        await persist_items(data, items, state)
+        data.source_error = None
+
+
 async def _reconcile(hass, entry) -> None:
     data = entry.runtime_data
     entity_id = entry.data[CONF_SOURCE]
@@ -37,19 +133,44 @@ async def _reconcile(hass, entry) -> None:
         raise ValueError("Die gespeicherte Quellzuordnung ist nicht eindeutig.")
 
     # A persisted intent is never blindly re-issued after a crash or timeout.
+    unresolved_names = set()
     for uid, intent in list(state["creates"].items()):
+        if intent.get("local_only"):
+            intent["candidates"] = [
+                {"uid": item.uid, "summary": item.summary, "status": item.status}
+                for item in _available_sources(data, incoming, uid)
+            ]
+            continue
         candidates = [
             item
             for item in incoming
             if item.uid not in intent["before"] and item.summary == intent["summary"]
         ]
-        linked = {item.source_uid for item in items if item.uid != uid}
-        candidates = [item for item in candidates if item.uid not in linked]
-        if len(candidates) != 1:
-            raise HomeAssistantError(
-                "Quellanlage noch unbestätigt oder mehrdeutig. "
-                "Bitte die Quellliste prüfen; die Anlage wird nicht blind wiederholt."
+        available = _available_sources(data, incoming, uid)
+        available_ids = {item.uid for item in available}
+        candidates = [
+            item
+            for item in candidates
+            if item.uid in available_ids
+            and not any(
+                value.source_uid == item.uid and value.uid != uid for value in items
             )
+        ]
+        competing_attempt = any(
+            other_uid != uid
+            and not other.get("local_only")
+            and other["summary"] == intent["summary"]
+            for other_uid, other in state["creates"].items()
+        )
+        if len(candidates) != 1 or intent.get("needs_decision") or competing_attempt:
+            intent["needs_decision"] = True
+            intent["match_count"] = len(candidates)
+            intent["candidates"] = [
+                {"uid": item.uid, "summary": item.summary, "status": item.status}
+                for item in available
+            ]
+            unresolved_names.add(_normalized_name(intent["summary"]))
+            continue
         source = candidates[0]
         items = [
             replace(item, source_uid=source.uid) if item.uid == uid else item
@@ -68,20 +189,6 @@ async def _reconcile(hass, entry) -> None:
         for item in state["deleted"].values()
         if item.get("source_uid")
     }
-    linked = {item.source_uid for item in items if item.source_uid}
-    for source in incoming:
-        if source.uid in deleted_sources:
-            continue
-        if source.uid not in linked and source.status == "needs_action":
-            # A removed source identity is not automatically resurrected.
-            if (
-                source.uid in state["source"]
-                and not state["source"][source.uid]["present"]
-            ):
-                continue
-            items.append(replace(source, uid=str(uuid4())))
-            state["source"][source.uid] = _baseline(source)
-
     merged = []
     for item in items:
         source = remote.get(item.source_uid)
@@ -110,12 +217,60 @@ async def _reconcile(hass, entry) -> None:
             item = replace(item, **changes)
             state["source"][source.uid] = _baseline(source)
         merged.append(item)
+
+    linked = {item.source_uid for item in merged if item.source_uid}
+    unlinked = [
+        source
+        for source in incoming
+        if source.uid not in linked
+        and source.uid not in deleted_sources
+        and source.status == "needs_action"
+        and not state["source"].get(source.uid, {}).get("superseded")
+        and state["source"].get(source.uid, {}).get("present", True)
+        and _normalized_name(source.summary) not in unresolved_names
+    ]
+    # Decide all matches against the same snapshot, never by source iteration order.
+    for source in unlinked:
+        name = _normalized_name(source.summary)
+        matches = [
+            item
+            for item in merged
+            if _normalized_name(item.summary) == name
+            and not state["creates"].get(item.uid, {}).get("local_only")
+        ]
+        completed = [item for item in matches if item.status == "completed"]
+        unique_incoming = (
+            sum(_normalized_name(item.summary) == name for item in unlinked) == 1
+        )
+        if (
+            source.uid not in state["source"]
+            and unique_incoming
+            and len(completed) == 1
+            and not any(item.status == "needs_action" for item in matches)
+        ):
+            old = completed[0]
+            if old.source_uid:
+                state["source"][old.source_uid]["superseded"] = True
+            reopened = replace(
+                old,
+                summary=source.summary,
+                status="needs_action",
+                source_uid=source.uid,
+            )
+            merged = [reopened if item.uid == old.uid else item for item in merged]
+        else:
+            merged.append(replace(source, uid=str(uuid4())))
+        state["source"][source.uid] = _baseline(source)
     if merged != data.items or state != data.sync:
         await persist_items(data, merged, state)
 
     entity = hass.states.get(entity_id)
     features = entity.attributes.get("supported_features", 0) if entity else 0
     errors = []
+    if unresolved_names:
+        errors.append(
+            "Quellanlage unbestätigt oder mehrdeutig. Bitte die Sync-Konflikte auflösen."
+        )
     for source_uid in deleted_sources:
         if source_uid not in remote:
             continue
@@ -130,6 +285,8 @@ async def _reconcile(hass, entry) -> None:
         )
 
     for item in list(data.items):
+        if item.uid in data.sync["creates"]:
+            continue
         source = remote.get(item.source_uid)
         if source is not None:
             patch = {}
@@ -174,15 +331,27 @@ async def _reconcile(hass, entry) -> None:
             state["creates"][item.uid] = {
                 "before": [value.uid for value in before],
                 "summary": item.summary,
+                "attempt": uuid4().hex,
             }
             await persist_items(data, data.items, state)
-            await hass.services.async_call(
-                "todo",
-                "add_item",
-                {"entity_id": entity_id, "item": item.summary},
-                blocking=True,
-            )
-            after = await async_read_all_source(hass, entity_id)
+            try:
+                async with asyncio.timeout(3):
+                    await hass.services.async_call(
+                        "todo",
+                        "add_item",
+                        {"entity_id": entity_id, "item": item.summary},
+                        blocking=True,
+                    )
+                    after = await async_read_all_source(hass, entity_id)
+            except (HomeAssistantError, OSError, ValueError, TimeoutError) as err:
+                state = deepcopy(data.sync)
+                state["creates"][item.uid]["needs_decision"] = True
+                await persist_items(data, data.items, state)
+                errors.append(
+                    f"Quellanlage für „{item.summary}“ unbestätigt: "
+                    f"{str(err) or 'Zeitüberschreitung'}. Bitte Sync-Konflikt auflösen."
+                )
+                continue
             candidates = [
                 value
                 for value in after
@@ -190,9 +359,19 @@ async def _reconcile(hass, entry) -> None:
                 and value.summary == item.summary
             ]
             if len(candidates) != 1:
-                raise HomeAssistantError(
-                    "Die Anlage in der Quelle ist noch nicht eindeutig bestätigt."
+                state = deepcopy(data.sync)
+                intent = state["creates"][item.uid]
+                intent["needs_decision"] = True
+                intent["match_count"] = len(candidates)
+                intent["candidates"] = [
+                    {"uid": value.uid, "summary": value.summary, "status": value.status}
+                    for value in _available_sources(data, after, item.uid)
+                ]
+                await persist_items(data, data.items, state)
+                errors.append(
+                    f"Quellanlage für „{item.summary}“ unbestätigt oder mehrdeutig. Bitte Sync-Konflikt auflösen."
                 )
+                continue
             created = candidates[0]
             state = deepcopy(data.sync)
             state["source"][created.uid] = _baseline(created)

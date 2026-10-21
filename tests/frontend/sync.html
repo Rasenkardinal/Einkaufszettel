@@ -23,21 +23,41 @@ async function runTests() {
       request.onerror = () => reject(request.error);
     });
     const env = { database, states: [], send: async () => { throw Error("Unexpected network"); } };
+    const fixtureRoot = document.createElement("div");
+    fixtureRoot.innerHTML = '<button id="test-conflict-trigger"></button><dialog id="test-conflict-dialog"><p id="test-conflict-message"></p><div id="test-conflict-content"></div></dialog>';
+    document.body.append(fixtureRoot);
+    env.conflictElements = {
+      resolveSyncConflicts: fixtureRoot.querySelector("button"),
+      syncConflicts: fixtureRoot.querySelector("dialog"),
+      syncConflictsMessage: fixtureRoot.querySelector("p"),
+      syncConflictsContent: fixtureRoot.querySelector("div"),
+    };
+    env.confirm = () => false;
     const create = new Function("env", `
       const { database } = env;
       const DOMAIN = "einkaufszettel", WebSocket = { OPEN: 1 }, socket = { readyState: 1 };
-      const elements = { listName: { textContent: "Test" }, message: { textContent: "" } };
+      const elements = { listName: { textContent: "Test" }, message: { textContent: "" }, ...env.conflictElements };
+      const confirm = text => env.confirm(text);
       let entryId = "a", currentItems = [], deletedUids = new Set(), pendingOperations = [],
         lastOperationTime = 0, busy = false, authenticated = false;
       let availableLists = [{ entry_id: "a", name: "Test" }];
       const setBusy = value => { busy = value; };
       const render = () => {}, renderListSelection = () => {}, loadMarketSelection = () => {};
       const updateConnection = (state, message) => env.states.push({ state, message });
+      const showError = error => { elements.message.textContent = error.message; };
       const sendCommand = (type, payload) => env.send(type, payload);
+      async function readCachedLists() {
+        return new Promise((resolve, reject) => {
+          const request = database.transaction("lists").objectStore("lists").getAll();
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      }
       ${persistence}
       ${selection}
       ${protocol}
       return { enqueue, readQueue, saveList, loadSelectedList, synchronize, acknowledgeOperation,
+        refreshSyncConflicts, openSyncConflicts, resolveSyncConflict,
         online: () => { authenticated = true; },
         select: async id => { entryId = id; await loadSelectedList(); },
         state: () => ({ currentItems, pendingOperations, message: elements.message.textContent }) };
@@ -45,6 +65,7 @@ async function runTests() {
     const api = create(env);
     try { await test(api, env); }
     finally {
+      fixtureRoot.remove();
       database.close();
       await new Promise((resolve, reject) => {
         const request = indexedDB.deleteDatabase(name);
@@ -122,6 +143,80 @@ async function runTests() {
     assert(api.state().message.includes("gelöschten") && api.state().message.includes("Source unavailable"), "Warnings hidden");
     await api.select("a");
     assert(!api.state().currentItems.length, "Deleted article resurrected");
+  });
+
+  await test("Conflicts prompt once and a cancelled retry never sends a command", async (api, env) => {
+    const conflict = { uid: "one", summary: "Brot", token: "attempt-1", candidates: [], reason: "unconfirmed" };
+    await api.saveList({ entry_id: "a", name: "Test", items: [], source_conflicts: [conflict] });
+    await api.refreshSyncConflicts();
+    assert(env.conflictElements.syncConflicts.open, "No prompt");
+    const retry = [...env.conflictElements.syncConflictsContent.querySelectorAll("button")]
+      .find(button => button.textContent === "Bewusst erneut anlegen");
+    let confirms = 0;
+    env.confirm = () => { confirms++; return false; };
+    retry.click();
+    assert(confirms === 1, "Retry lacked confirmation");
+    env.conflictElements.syncConflicts.close();
+    await api.refreshSyncConflicts();
+    assert(!env.conflictElements.syncConflicts.open, "Repeated nagging for same attempt");
+    env.conflictElements.resolveSyncConflicts.click();
+    assert(env.conflictElements.syncConflicts.open, "Cannot reopen deferred conflict");
+  });
+
+  await test("Conflict decisions carry list and attempt identity; failures preserve dialog", async (api, env) => {
+    const conflict = {
+      entry_id: "a", uid: "one", summary: "Brot", token: "attempt-1", reason: "multiple",
+      candidates: [{ uid: "r1", summary: "Brot", status: "needs_action" }],
+    };
+    let snapshot = { entry_id: "a", name: "Test", revision: 1, items: [], source_conflicts: [conflict] };
+    await api.saveList(snapshot);
+    await api.refreshSyncConflicts();
+    const linkButton = [...env.conflictElements.syncConflictsContent.querySelectorAll("button")]
+      .find(button => button.textContent === "Quellartikel zuordnen");
+    linkButton.click();
+    assert(env.conflictElements.syncConflictsMessage.textContent.includes("zuerst"), "Missing source selection not reported");
+    let failed = false, sends = 0;
+    env.send = async (type, payload) => {
+      assert(type.endsWith("/resolve_source_conflict"), "Wrong command");
+      assert(payload.entry_id === "a" && payload.uid === "one" && payload.token === "attempt-1", "Missing identity");
+      assert(payload.source_uid === "r1", "Missing selected source identity");
+      sends++;
+      throw Error("Stale conflict");
+    };
+    try { await api.resolveSyncConflict(conflict, "link", "r1"); } catch { failed = true; }
+    assert(failed && env.conflictElements.syncConflicts.open, "Error hidden");
+    assert(!env.conflictElements.syncConflictsContent.inert, "Dialog stuck busy");
+    env.send = async (type, payload) => {
+      if (type.endsWith("/resolve_source_conflict")) {
+        assert(payload.action === "local", "Wrong decision");
+        sends++;
+        snapshot = { ...snapshot, source_conflicts: [] };
+      }
+      return snapshot;
+    };
+    await api.resolveSyncConflict(conflict, "local");
+    assert(sends === 2 && !env.conflictElements.syncConflicts.open, "Successful resolution not applied");
+    assert(env.conflictElements.resolveSyncConflicts.hidden, "Stale conflict trigger");
+  });
+
+  await test("An open dialog follows decisions from another device and local-only stays reachable", async (api, env) => {
+    const conflict = { uid: "one", summary: "Brot", token: "old", candidates: [], reason: "unconfirmed" };
+    const snapshot = { entry_id: "a", name: "A", items: [], source_conflicts: [conflict] };
+    await api.saveList(snapshot);
+    await api.refreshSyncConflicts();
+    await api.saveList({ ...snapshot, source_conflicts: [],
+      source_local_items: [{ ...conflict, token: "local", local_only: true }] });
+    await api.refreshSyncConflicts();
+    assert(env.conflictElements.syncConflictsContent.textContent.includes("bleibt nur lokal"), "Open dialog kept stale decision");
+    env.conflictElements.syncConflicts.close();
+    await api.refreshSyncConflicts();
+    assert(!env.conflictElements.syncConflicts.open, "Local-only prompted again");
+    assert(env.conflictElements.resolveSyncConflicts.textContent.includes("Nur lokale"), "No return path for local-only");
+    env.conflictElements.resolveSyncConflicts.click();
+    assert(env.conflictElements.syncConflicts.open, "Cannot revisit local-only");
+    await api.saveList({ ...snapshot, source_conflicts: [] });
+    await api.refreshSyncConflicts();
+    assert(!env.conflictElements.syncConflicts.open && env.conflictElements.resolveSyncConflicts.hidden, "Resolved dialog remained stale");
   });
 
   document.querySelector("#results").textContent = results.join("\n");

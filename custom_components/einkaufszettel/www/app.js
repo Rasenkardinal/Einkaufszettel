@@ -33,6 +33,10 @@ const elements = {
   items: document.querySelector("#items"),
   empty: document.querySelector("#empty"),
   message: document.querySelector("#message"),
+  resolveSyncConflicts: document.querySelector("#resolve-sync-conflicts"),
+  syncConflicts: document.querySelector("#sync-conflicts"),
+  syncConflictsMessage: document.querySelector("#sync-conflicts-message"),
+  syncConflictsContent: document.querySelector("#sync-conflicts-content"),
   listName: document.querySelector("#list-name"),
   listSelect: document.querySelector("#list-select"),
   listFlyout: document.querySelector("#list-flyout"),
@@ -82,6 +86,7 @@ let currentItems = [];
 let deletedUids = new Set();
 let pendingOperations = [];
 let busy = false;
+let swipeDeletePending = false;
 let lastOperationTime = 0;
 let availableLists = [];
 let editingUid;
@@ -203,6 +208,7 @@ function paragraph(text, className = "management-help") {
 }
 
 function showManagementPage(page) {
+  cancelCategoryDrag?.();
   document.querySelector("main.app").hidden = true;
   elements.catalogPage.hidden = page !== elements.catalogPage;
   elements.listManagement.hidden = page !== elements.listManagement;
@@ -212,6 +218,7 @@ function showManagementPage(page) {
 
 function leaveManagement() {
   if (managingSupermarkets || (catalogDirty && !confirm("Ungespeicherte Änderungen verwerfen?"))) return;
+  cancelCategoryDrag?.();
   catalogRequest++;
   catalogDirty = false;
   catalogView = undefined;
@@ -223,6 +230,7 @@ function leaveManagement() {
 
 function openCatalog(view, record) {
   if (managingSupermarkets || (catalogDirty && !confirm("Ungespeicherte Änderungen verwerfen?"))) return;
+  cancelCategoryDrag?.();
   catalogDirty = false;
   catalogView = view;
   catalogDraft = record ? { ...record, category_ids: [...(record.category_ids || [])] } : { id: "", name: "", category_ids: [] };
@@ -284,17 +292,20 @@ async function saveCatalog(command, payload, nextView) {
   }
 }
 
+let cancelCategoryDrag;
+
 function renderCatalogPage() {
+  cancelCategoryDrag?.();
   const content = elements.catalogContent;
   content.replaceChildren();
   elements.catalogMessage.textContent = "";
   const isMarket = catalogView?.startsWith("market");
   const isList = catalogView === "markets" || catalogView === "categories";
   const noun = isMarket ? "Supermarkt" : "Kategorie";
-  elements.catalogBack.textContent = isList ? "← Einkaufsliste"
-    : catalogView === "market-order" ? "← Supermarkt bearbeiten"
-    : catalogView === "market-select" ? "← Marktkategorien"
-    : isMarket ? "← Supermärkte" : "← Produktkategorien";
+  elements.catalogBack.querySelector("span").textContent = isList ? "Zurück zur Liste"
+    : catalogView === "market-order" ? "Supermarkt bearbeiten"
+    : catalogView === "market-select" ? "Marktkategorien"
+    : isMarket ? "Supermärkte" : "Produktkategorien";
   elements.catalogBack.onclick = () => {
     if (isList) leaveManagement();
     else if (catalogView === "market-order") openCatalog("market-edit", catalogDraft);
@@ -417,7 +428,6 @@ function renderMarketCategories() {
   content.append(paragraph("Am Griff ziehen oder mit ↑ / ↓ verschieben. × entfernt nur die Marktzuordnung."));
   const list = document.createElement("ol");
   list.className = "category-order";
-  let dragging;
   const move = (from, to) => {
     const ids = [...catalogDraft.category_ids];
     const [id] = ids.splice(from, 1);
@@ -432,36 +442,25 @@ function renderMarketCategories() {
     if (!category) return;
     const row = document.createElement("li");
     row.className = "category-order-row";
+    row.dataset.categoryId = id;
+    const position = () => catalogDraft.category_ids.indexOf(id);
     const grip = button("⠿", () => {}, "text-button move-grip");
-    grip.draggable = true;
     grip.setAttribute("aria-label", `${category.name} verschieben; Pfeiltasten hoch und runter`);
     grip.addEventListener("keydown", event => {
-      const target = event.key === "ArrowUp" ? index - 1 : event.key === "ArrowDown" ? index + 1 : index;
-      if (target !== index) {
+      const from = position();
+      const target = event.key === "ArrowUp" ? from - 1 : event.key === "ArrowDown" ? from + 1 : from;
+      if (target !== from) {
         event.preventDefault();
-        if (target >= 0 && target < catalogDraft.category_ids.length) move(index, target);
+        if (target >= 0 && target < catalogDraft.category_ids.length) move(from, target);
       }
-    });
-    grip.addEventListener("dragstart", event => {
-      dragging = index;
-      event.dataTransfer.setData("text/plain", id);
-      event.dataTransfer.effectAllowed = "move";
-      row.classList.add("dragging");
-    });
-    grip.addEventListener("dragend", () => { dragging = undefined; row.classList.remove("dragging"); });
-    row.addEventListener("dragover", event => { if (dragging !== undefined) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } });
-    row.addEventListener("drop", event => {
-      event.preventDefault();
-      if (dragging !== undefined && dragging !== index) move(dragging, index);
-      dragging = undefined;
     });
     const name = document.createElement("span");
     name.className = "order-name";
     name.textContent = `${index + 1}. ${category.name}`;
-    const up = button("↑", () => move(index, index - 1), "secondary move-button");
+    const up = button("↑", () => move(position(), position() - 1), "secondary move-button");
     up.disabled = index === 0;
     up.setAttribute("aria-label", `${category.name} nach oben`);
-    const down = button("↓", () => move(index, index + 1), "secondary move-button");
+    const down = button("↓", () => move(position(), position() + 1), "secondary move-button");
     down.disabled = index === catalogDraft.category_ids.length - 1;
     down.setAttribute("aria-label", `${category.name} nach unten`);
     const remove = button("×", () => {
@@ -474,6 +473,7 @@ function renderMarketCategories() {
     list.append(row);
   });
   content.append(list);
+  initializeCategorySorting(list);
   if (!catalogDraft.category_ids.length) content.append(paragraph("Noch keine Kategorien für diesen Markt ausgewählt."));
   const actions = document.createElement("div");
   actions.className = "page-actions";
@@ -482,6 +482,163 @@ function renderMarketCategories() {
       market_id: catalogDraft.id, category_ids: catalogDraft.category_ids,
     }, "markets"), "primary"));
   content.append(actions);
+}
+
+function initializeCategorySorting(list) {
+  let drag;
+  let frame;
+  const announcement = document.createElement("p");
+  announcement.className = "visually-hidden";
+  announcement.setAttribute("role", "status");
+  list.after(announcement);
+
+  function updateOrder() {
+    const rows = [...list.children];
+    catalogDraft.category_ids = rows.map(row => row.dataset.categoryId);
+    rows.forEach((row, index) => {
+      const category = categories.find(value => value.id === row.dataset.categoryId);
+      row.querySelector(".order-name").textContent = `${index + 1}. ${category.name}`;
+      const controls = row.querySelectorAll(".secondary");
+      controls[0].disabled = index === 0;
+      controls[1].disabled = index === rows.length - 1;
+    });
+  }
+
+  function positionRow() {
+    if (!drag?.ghost) return;
+    drag.ghost.style.top = `${drag.y - drag.offsetY}px`;
+    drag.ghost.style.left = `${drag.x - drag.offsetX}px`;
+    const others = [...list.children].filter(row => row !== drag.row);
+    const target = others.find(row => {
+      const rect = row.getBoundingClientRect();
+      return drag.y < rect.top + rect.height / 2;
+    });
+    if (drag.row.nextElementSibling !== (target || null)) {
+      list.insertBefore(drag.row, target || null);
+      updateOrder();
+      catalogDirty = true;
+      announcement.textContent = `${drag.name}, Position ${catalogDraft.category_ids.indexOf(drag.id) + 1} von ${list.children.length}`;
+    }
+  }
+
+  function scrollAtEdge(timestamp) {
+    if (!drag?.ghost) return;
+    const elapsed = Math.min(timestamp - (drag.time || timestamp), 32);
+    drag.time = timestamp;
+    const scroller = drag.scroller;
+    const isDocument = scroller === document.scrollingElement;
+    const rect = isDocument ? { top: 0, bottom: window.innerHeight } : scroller.getBoundingClientRect();
+    const top = Math.max(0, rect.top);
+    const bottom = Math.min(window.innerHeight, rect.bottom);
+    const edge = Math.min(64, (bottom - top) / 4);
+    const direction = drag.y < top + edge ? -Math.min(1, (top + edge - drag.y) / edge)
+      : drag.y > bottom - edge ? Math.min(1, (drag.y - bottom + edge) / edge) : 0;
+    if (direction && drag.x >= 0 && drag.x <= window.innerWidth) {
+      scroller.scrollTop += direction * elapsed * .65;
+      positionRow();
+    }
+    frame = window.requestAnimationFrame(scrollAtEdge);
+  }
+
+  function finish(cancelled = false) {
+    if (!drag) return;
+    const previous = drag;
+    drag = undefined;
+    window.cancelAnimationFrame(frame);
+    window.removeEventListener("pointermove", pointerMove);
+    window.removeEventListener("pointerup", pointerUp);
+    window.removeEventListener("pointercancel", pointerCancel);
+    window.removeEventListener("keydown", keyDown, true);
+    window.removeEventListener("blur", pointerCancel);
+    window.removeEventListener("pagehide", pointerCancel);
+    window.removeEventListener("pointerdown", blockOtherPointer, true);
+    list.removeEventListener("lostpointercapture", pointerCancel);
+    previous.ghost?.remove();
+    previous.row.classList.remove("dragging");
+    list.classList.remove("sorting");
+    if (cancelled) {
+      const rows = new Map([...list.children].map(row => [row.dataset.categoryId, row]));
+      for (const id of previous.order) list.append(rows.get(id));
+      updateOrder();
+      catalogDirty = previous.dirty;
+      announcement.textContent = "Verschieben abgebrochen.";
+    } else if (previous.ghost) {
+      catalogDirty = previous.dirty || previous.order.some((id, index) => id !== catalogDraft.category_ids[index]);
+      announcement.textContent = `${previous.name}, Position ${catalogDraft.category_ids.indexOf(previous.id) + 1} von ${list.children.length}`;
+    }
+    if (list.hasPointerCapture(previous.pointerId)) list.releasePointerCapture(previous.pointerId);
+    previous.grip.focus({ preventScroll: true });
+    cancelCategoryDrag = undefined;
+  }
+
+  function pointerMove(event) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    event.preventDefault();
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+    if (!drag.ghost) {
+      if (Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < 5) return;
+      const rect = drag.row.getBoundingClientRect();
+      drag.ghost = drag.row.cloneNode(true);
+      drag.ghost.classList.add("category-drag-ghost");
+      drag.ghost.setAttribute("aria-hidden", "true");
+      drag.ghost.inert = true;
+      drag.ghost.style.width = `${rect.width}px`;
+      document.body.append(drag.ghost);
+      drag.row.classList.add("dragging");
+      list.classList.add("sorting");
+      frame = window.requestAnimationFrame(scrollAtEdge);
+    }
+    positionRow();
+  }
+
+  function pointerUp(event) {
+    if (drag && event.pointerId === drag.pointerId) finish();
+  }
+  function pointerCancel(event) {
+    if (drag && (event.pointerId === undefined || event.pointerId === drag.pointerId)) finish(true);
+  }
+  function keyDown(event) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.key === "Escape") {
+      finish(true);
+    }
+  }
+  function blockOtherPointer(event) {
+    if (drag && event.pointerId !== drag.pointerId) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }
+  list.addEventListener("pointerdown", event => {
+    const grip = event.target.closest(".move-grip");
+    if (!grip || event.button !== 0 || event.isPrimary === false || drag) return;
+    event.preventDefault();
+    const row = grip.closest(".category-order-row");
+    const rect = row.getBoundingClientRect();
+    let scroller = list.parentElement;
+    while (scroller && !(scroller.scrollHeight > scroller.clientHeight &&
+      /(auto|scroll)/.test(getComputedStyle(scroller).overflowY))) scroller = scroller.parentElement;
+    drag = {
+      grip, row, id: row.dataset.categoryId, name: categories.find(value => value.id === row.dataset.categoryId).name,
+      pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+      x: event.clientX, y: event.clientY, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top,
+      order: [...catalogDraft.category_ids], dirty: catalogDirty,
+      scroller: scroller || document.scrollingElement,
+    };
+    grip.focus({ preventScroll: true });
+    list.setPointerCapture(event.pointerId);
+    cancelCategoryDrag = () => finish(true);
+    window.addEventListener("pointermove", pointerMove, { passive: false });
+    window.addEventListener("pointerup", pointerUp);
+    window.addEventListener("pointercancel", pointerCancel);
+    window.addEventListener("keydown", keyDown, true);
+    window.addEventListener("blur", pointerCancel);
+    window.addEventListener("pagehide", pointerCancel);
+    window.addEventListener("pointerdown", blockOtherPointer, true);
+    list.addEventListener("lostpointercapture", pointerCancel);
+  });
 }
 
 elements.manageSupermarkets.addEventListener("click", () => loadCatalogPage("markets"));
@@ -625,6 +782,65 @@ function applyLocalOperation(operation) {
   }
 }
 
+function enableItemSwipeDelete(row, uid) {
+  let pointer = null;
+  let suppressClick = false;
+  row.addEventListener("click", event => {
+    if (!suppressClick) return;
+    suppressClick = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+  row.addEventListener("pointerdown", event => {
+    if (busy || swipeDeletePending || event.button !== 0 || row.classList.contains("swipe-removing")) return;
+    pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, horizontal: false };
+  });
+  row.addEventListener("pointermove", event => {
+    if (!pointer || pointer.id !== event.pointerId) return;
+    const deltaX = event.clientX - pointer.x;
+    const deltaY = event.clientY - pointer.y;
+    if (!pointer.horizontal) {
+      if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 10) return;
+      if (Math.abs(deltaY) >= Math.abs(deltaX) || deltaX >= 0) {
+        pointer = null;
+        return;
+      }
+      pointer.horizontal = true;
+      row.classList.add("swiping");
+    }
+    event.preventDefault();
+    row.style.transform = `translateX(${Math.max(deltaX, -row.clientWidth)}px)`;
+  });
+  row.addEventListener("pointerup", event => {
+    if (!pointer || pointer.id !== event.pointerId) return;
+    const shouldDelete = pointer.horizontal && event.clientX - pointer.x <= -72;
+    pointer = null;
+    row.classList.remove("swiping");
+    row.style.transform = "";
+    if (!shouldDelete) return;
+    suppressClick = true;
+    window.setTimeout(() => { suppressClick = false; }, 0);
+    row.classList.add("swipe-removing");
+    swipeDeletePending = true;
+    setBusy(busy);
+    window.setTimeout(() => {
+      enqueue({ type: "delete_item", uid }).catch(error => {
+        showError(error);
+        row.classList.remove("swipe-removing");
+        row.style.transform = "";
+      }).finally(() => {
+        swipeDeletePending = false;
+        setBusy(busy);
+      });
+    }, 180);
+  });
+  row.addEventListener("pointercancel", () => {
+    pointer = null;
+    row.classList.remove("swiping");
+    row.style.transform = "";
+  });
+}
+
 function render() {
   const pendingIds = new Set(
     pendingOperations
@@ -688,8 +904,11 @@ function render() {
       note.className = "item-note";
       note.textContent = details;
       label.append(note);
+      label.classList.add("has-note");
     }
     label.setAttribute("aria-label", `Bearbeiten: ${item.summary}`);
+    label.setAttribute("aria-description", "Zum Löschen nach links wischen oder die Entf-Taste drücken.");
+    label.setAttribute("aria-keyshortcuts", "Delete");
     label.addEventListener("click", () => {
       editingUid = item.uid;
       elements.editSummary.value = item.summary;
@@ -706,17 +925,15 @@ function render() {
       elements.editCategory.value = categoryId;
       elements.editItem.showModal();
     });
-    if (pendingIds.has(item.uid)) label.title = "Wird beim nächsten Verbinden übertragen";
-    main.append(checkbox, label);
-    const remove = document.createElement("button");
-    remove.className = "delete";
-    remove.type = "button";
-    remove.textContent = "×";
-    remove.setAttribute("aria-label", `Entfernen: ${item.summary}`);
-    remove.addEventListener("click", () => {
+    label.addEventListener("keydown", event => {
+      if (event.key !== "Delete" || !confirm(`„${item.summary}“ wirklich löschen?`)) return;
+      event.preventDefault();
       enqueue({ type: "delete_item", uid: item.uid }).catch(showError);
     });
-    row.append(main, remove);
+    if (pendingIds.has(item.uid)) label.title = "Wird beim nächsten Verbinden übertragen";
+    main.append(checkbox, label);
+    row.append(main);
+    enableItemSwipeDelete(row, item.uid);
     const categoryId = categories.some(c => c.id === item.metadata?.category_id) ? item.metadata.category_id : "";
     groupLists.get(categoryId).append(row);
   }
@@ -729,15 +946,17 @@ function render() {
 
 function setBusy(value) {
   busy = value;
-  elements.listSelect.disabled = value || !availableLists.length;
+  const blocked = value || swipeDeletePending;
+  elements.setup.inert = swipeDeletePending;
+  elements.listSelect.disabled = blocked || !availableLists.length;
   if (elements.listSelect.disabled) closeFlyout(elements.listSelect, elements.listFlyout);
-  elements.marketSelect.disabled = value || !entryId;
+  elements.marketSelect.disabled = blocked || !entryId;
   if (elements.marketSelect.disabled) closeFlyout(elements.marketSelect, elements.marketFlyout);
-  elements.addForm.inert = value || !entryId;
-  elements.sync.disabled = value;
-  elements.copySource.disabled = value || !entryId;
-  elements.items.inert = value;
-  elements.manageLists.disabled = value;
+  elements.addForm.inert = blocked || !entryId;
+  elements.sync.disabled = blocked;
+  elements.copySource.disabled = blocked || !entryId;
+  elements.items.inert = blocked;
+  elements.manageLists.disabled = blocked;
 }
 
 function renderListSelection() {
@@ -1337,12 +1556,131 @@ async function synchronize() {
     } finally {
       setBusy(false);
     }
+    await refreshSyncConflicts();
   }
   updateConnection("online", warnings.length
     ? "App-Änderungen in HA gespeichert. Hinweise zum Abgleich beachten."
     : "Alle Änderungen wurden synchronisiert.");
   elements.message.textContent = [...new Set(warnings)].join(" ");
 }
+
+let syncConflicts = [];
+const promptedSyncConflicts = new Set();
+
+async function refreshSyncConflicts() {
+  const previous = JSON.stringify(syncConflicts);
+  const enabledIds = new Set(availableLists.map(list => list.entry_id));
+  syncConflicts = (await readCachedLists())
+    .filter(list => list.enabled !== false && enabledIds.has(list.entry_id))
+    .flatMap(list => [...(list.source_conflicts || []), ...(list.source_local_items || [])].map(conflict => ({
+      ...conflict, entry_id: list.entry_id, list_name: list.name,
+    })));
+  elements.resolveSyncConflicts.hidden = !syncConflicts.length;
+  const activeConflicts = syncConflicts.filter(conflict => !conflict.local_only).length;
+  elements.resolveSyncConflicts.textContent = activeConflicts
+    ? `Sync-Konflikte auflösen (${activeConflicts})`
+    : `Nur lokale Artikel prüfen (${syncConflicts.length})`;
+  if (elements.syncConflicts.open && previous !== JSON.stringify(syncConflicts)) {
+    renderSyncConflicts();
+    if (!syncConflicts.length) elements.syncConflicts.close();
+  }
+  if (syncConflicts.some(conflict => !conflict.local_only && !promptedSyncConflicts.has(conflict.token)) &&
+      !document.querySelector("dialog[open]")) {
+    openSyncConflicts();
+  }
+}
+
+function openSyncConflicts() {
+  elements.syncConflictsMessage.textContent = "";
+  renderSyncConflicts();
+  for (const conflict of syncConflicts) promptedSyncConflicts.add(conflict.token);
+  if (!elements.syncConflicts.open) elements.syncConflicts.showModal();
+}
+
+function renderSyncConflicts() {
+  elements.syncConflictsContent.replaceChildren();
+  for (const conflict of syncConflicts) {
+    const section = document.createElement("section");
+    const title = document.createElement("h3");
+    title.textContent = `${conflict.list_name}: ${conflict.summary}`;
+    const detail = document.createElement("p");
+    detail.textContent = conflict.reason === "multiple"
+      ? "Mehrere passende neue Quellartikel gefunden. Bitte entscheide ausdrücklich."
+      : "Keine eindeutige Anlagenbestätigung. Bitte entscheide ausdrücklich.";
+    detail.textContent += conflict.candidates.length
+      ? " Verfügbare unzugeordnete Quellartikel stehen zur Auswahl."
+      : " Aktuell ist kein freier Quellartikel zur Zuordnung verfügbar.";
+    if (conflict.local_only) {
+      detail.textContent = "Dieser Artikel bleibt nur lokal. Hier kannst du ihn später zuordnen oder ausdrücklich erneut in der Quelle anlegen.";
+    }
+    if (conflict.deleted) detail.textContent += " Der lokale Artikel ist bereits gelöscht.";
+    const select = document.createElement("select");
+    select.setAttribute("aria-label", `Quellartikel für ${conflict.summary}`);
+    select.add(new Option("Quellartikel auswählen", ""));
+    for (const candidate of conflict.candidates) {
+      select.add(new Option(
+        `${candidate.summary} – ${candidate.status === "completed" ? "erledigt" : "offen"} (${candidate.uid})`,
+        candidate.uid,
+      ));
+    }
+    const actions = document.createElement("div");
+    actions.className = "dialog-actions";
+    for (const [action, label] of [
+      ["link", "Quellartikel zuordnen"], ["retry", "Bewusst erneut anlegen"], ["local", "Nur lokal behalten"],
+    ]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary";
+      button.textContent = label;
+      button.disabled = (action === "retry" && conflict.deleted) || (action === "local" && conflict.local_only);
+      button.addEventListener("click", () => {
+        if (action === "link" && !select.value) {
+          elements.syncConflictsMessage.textContent = "Bitte zuerst einen Quellartikel auswählen.";
+          return;
+        }
+        if (action === "retry" && !confirm(
+          `„${conflict.summary}“ wirklich erneut in der Quelle anlegen? Falls der erste Versuch bereits erfolgreich war, kann ein Duplikat entstehen.`,
+        )) return;
+        if (action === "link" && !confirm(
+          `„${conflict.summary}“ mit „${select.selectedOptions[0].textContent}“ verknüpfen? Name und Status des lokalen Artikels werden beim nächsten Abgleich in die Quelle übertragen.${conflict.deleted ? " Der zugeordnete Quellartikel wird gelöscht." : ""}`,
+        )) return;
+        resolveSyncConflict(conflict, action, select.value).catch(error => {
+          elements.syncConflictsMessage.textContent = error.message;
+          if (!elements.syncConflicts.open) showError(error);
+        });
+      });
+      actions.append(button);
+    }
+    section.append(title, detail, select, actions);
+    elements.syncConflictsContent.append(section);
+  }
+}
+
+async function resolveSyncConflict(conflict, action, sourceUid) {
+  if (busy) throw new Error("Bitte warte, bis die Synchronisierung abgeschlossen ist.");
+  setBusy(true);
+  elements.syncConflictsContent.inert = true;
+  elements.syncConflictsMessage.textContent = "Entscheidung wird in HA gespeichert …";
+  try {
+    const snapshot = await sendCommand(`${DOMAIN}/resolve_source_conflict`, {
+      entry_id: conflict.entry_id, uid: conflict.uid, token: conflict.token, action,
+      ...(action === "link" ? { source_uid: sourceUid } : {}),
+    });
+    await saveList(snapshot);
+    await refreshSyncConflicts();
+    renderSyncConflicts();
+    elements.syncConflictsMessage.textContent = action === "local"
+      ? "Der Artikel bleibt in unserer Liste und wird nicht erneut in der Quelle angelegt."
+      : "Entscheidung gespeichert. Der Abgleich wird fortgesetzt.";
+    if (!syncConflicts.length) elements.syncConflicts.close();
+  } finally {
+    elements.syncConflictsContent.inert = false;
+    setBusy(false);
+  }
+  await synchronize();
+}
+
+elements.resolveSyncConflicts.addEventListener("click", openSyncConflicts);
 
 async function acknowledgeOperation(snapshot, operationId) {
   return new Promise((resolve, reject) => {

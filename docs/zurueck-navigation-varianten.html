@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Einkaufszettel – größere Zurück-Navigation</title>
+<link rel="stylesheet" href="../custom_components/einkaufszettel/www/app.css">
+<style>
+body { background: #101010; }
+main { max-width: 1600px; padding: 32px 24px; margin: auto; }
+header.intro { max-width: 900px; margin-bottom: 28px; }
+.intro .eyebrow { margin: 0 0 12px; }
+.intro h1 { font-size: clamp(26px, 4vw, 38px); }
+.intro p, article > p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+article { min-width: 0; }
+article > h2 { font-size: 16px; margin-bottom: 12px; }
+.phone { height: 490px; padding: 20px 18px; overflow: auto; border: 1px solid var(--line); border-radius: 22px; background: var(--bg); }
+.brandline { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 9px; letter-spacing: .12em; min-height: 24px; margin-bottom: 20px; }
+.brandline img { width: 22px; height: 22px; }
+.navigation { display: flex; align-items: center; gap: 12px; padding-bottom: 16px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+.back { display: inline-flex; align-items: center; justify-content: center; gap: 10px; flex: none; min-height: 48px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: #f4f4f4; font-size: 14px; font-weight: 650; text-align: left; }
+.back:hover { background: var(--surface2); }
+.back svg { width: 28px; height: 28px; flex: none; }
+.icon-only { width: 52px; height: 52px; padding: 10px; }
+.round { border-radius: 50%; }
+.context { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.context strong { display: block; color: #f4f4f4; font-size: 13px; }
+.full { justify-content: flex-start; width: 100%; }
+.outline { background: transparent; border-color: #777; }
+.stacked { display: block; font-size: 10px; font-weight: 400; color: var(--muted); margin-top: 2px; }
+.accent { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.accent:hover { background: #ddd; }
+.minimal { padding-left: 0; background: transparent; border-color: transparent; }
+.minimal svg { width: 34px; height: 34px; }
+.phone h3 { margin: 0 0 8px; font-size: 25px; line-height: 1.15; letter-spacing: -.035em; }
+.help { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0 0 20px; }
+.sample { display: flex; justify-content: space-between; align-items: center; padding: 15px 12px; margin: 8px 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+.sample span { color: var(--muted); font-size: 11px; }
+.add { margin-top: 18px; }
+.feedback { min-height: 32px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.reset { margin: 0 0 22px; }
+@media (max-width: 1100px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .grid { grid-template-columns: 1fr; } main { padding: 24px 16px; } }
+</style>
+</head>
+<body data-theme="mono">
+<main>
+<header class="intro">
+<p class="eyebrow">EINKAUFSZETTEL · NAVIGATION</p>
+<h1>Zurück – größer und eindeutiger.</h1>
+<p>Sechs Alternativen für die Verwaltungs- und Unterseiten. Alle Pfeile sind skalierbare SVG-Symbole statt kleiner Schriftzeichen. Die Buttons haben mindestens 48 Pixel Höhe. Schrift und dunkles Farbschema entsprechen der App.</p>
+<p><strong>Empfehlung: 2</strong> für eine kompakte, klare Navigation oder <strong>4</strong> für ein besonders deutliches Rücksprungziel. Anklicken zeigt eine simulierte Rückkehr; echte Listen und Einstellungen werden nicht verändert.</p>
+</header>
+<button class="secondary reset">Alle Vorschauen zurücksetzen</button>
+<section class="grid" aria-label="Sechs Zurück-Varianten"></section>
+</main>
+<script>
+const arrow = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12H4m7-7-7 7 7 7"/></svg>';
+const variants = [
+  ["1 · Großer runder Pfeil", "Nur das Symbol, aber mit 52 × 52 Pixel großer, klar erkennbarer Schaltfläche. Das Ziel steht daneben.", `<button class="back icon-only round" aria-label="Zurück zur Einkaufsliste">${arrow}</button><div class="context">Zurück zur<strong>Einkaufsliste</strong></div>`],
+  ["2 · Pfeil + Zurück", "Kompakter Standardbutton mit großem Pfeil und eindeutigem Text. 48 Pixel Mindesthöhe.", `<button class="back">${arrow}<span>Zurück</span></button><span class="context">Einkaufsliste</span>`],
+  ["3 · Ziel direkt im Button", "Der große Pfeil und das Rücksprungziel stehen zusammen in einem umrandeten Button.", `<button class="back outline">${arrow}<span>Einkaufsliste</span></button>`],
+  ["4 · Breite Navigationszeile", "Besonders deutlich: großer Pfeil mit zweizeiligem Text über die gesamte Breite. 58 Pixel Höhe.", `<button class="back full">${arrow}<span>Zurück<span class="stacked">zur Einkaufsliste</span></span></button>`],
+  ["5 · Heller Zurück-Button", "Hoher Kontrast für maximale Sichtbarkeit. Der Button verwendet die Akzentfarbe des Designs.", `<button class="back accent">${arrow}<span>Zurück</span></button><span class="context">Einkaufsliste</span>`],
+  ["6 · Groß und rahmenlos", "Ruhige Darstellung ohne Buttonfläche. Der 34-Pixel-Pfeil und der Text bleiben deutlich sichtbar.", `<button class="back minimal">${arrow}<span>Zurück zur Liste</span></button>`]
+];
+for (const [title, description, navigation] of variants) {
+  const article = document.createElement("article");
+  article.innerHTML = `<h2>${title}</h2><div class="phone"><div class="brandline"><img src="../custom_components/einkaufszettel/www/icon.svg" alt="">EINKAUFSZETTEL</div><div class="navigation">${navigation}</div><section class="page-content"></section><p class="feedback" role="status"></p></div><p>${description}</p>`;
+  document.querySelector(".grid").append(article);
+  const content = article.querySelector(".page-content");
+  const feedback = article.querySelector(".feedback");
+  const button = article.querySelector(".back");
+  function reset() {
+    content.innerHTML = '<h3>Supermärkte</h3><p class="help">Märkte und Filialen verwalten.</p><div class="sample">Edeka Nord<span>6 Kategorien</span></div><div class="sample">REWE Zentrum<span>8 Kategorien</span></div><button class="secondary add">Supermarkt anlegen</button>';
+    button.disabled = false;
+    feedback.textContent = "";
+  }
+  button.addEventListener("click", () => {
+    content.innerHTML = '<h3>Wocheneinkauf</h3><p class="help">Zurück auf der Einkaufsliste.</p><div class="sample">Milch<span>2 Packungen</span></div><div class="sample">Äpfel<span>1 kg</span></div><button class="secondary add return">Wieder zur Verwaltung</button>';
+    button.disabled = true;
+    feedback.textContent = "Nur Vorschau – keine echte Navigation.";
+    const reopen = content.querySelector(".return");
+    reopen.addEventListener("click", () => { reset(); button.focus(); });
+    reopen.focus();
+  });
+  article.addEventListener("click", event => {
+    if (event.target.matches(".add:not(.return)")) feedback.textContent = "Vorschau – es wird kein Supermarkt angelegt.";
+  });
+  document.querySelector(".reset").addEventListener("click", reset);
+  reset();
+}
+</script>
+</body>
+</html>

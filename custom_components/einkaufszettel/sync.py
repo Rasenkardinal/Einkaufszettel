@@ -49,6 +49,7 @@ def load_sync_state(value: object) -> dict[str, Any]:
             not isinstance(baseline.get("summary"), str)
             or baseline.get("status") not in ("needs_action", "completed")
             or type(baseline.get("present")) is not bool
+            or type(baseline.get("superseded", False)) is not bool
         ):
             raise ValueError("Invalid source baseline")
     for intent in value["creates"].values():
@@ -56,6 +57,19 @@ def load_sync_state(value: object) -> dict[str, Any]:
             not isinstance(intent.get("before"), list)
             or any(not isinstance(uid, str) for uid in intent["before"])
             or not isinstance(intent.get("summary"), str)
+            or type(intent.get("local_only", False)) is not bool
+            or type(intent.get("needs_decision", False)) is not bool
+            or not isinstance(intent.get("attempt", ""), str)
+            or type(intent.get("match_count", 0)) is not int
+            or intent.get("match_count", 0) < 0
+            or not isinstance(intent.get("candidates", []), list)
+            or any(
+                not isinstance(candidate, dict)
+                or not isinstance(candidate.get("uid"), str)
+                or not isinstance(candidate.get("summary"), str)
+                or candidate.get("status") not in ("needs_action", "completed")
+                for candidate in intent.get("candidates", [])
+            )
         ):
             raise ValueError("Invalid source creation intent")
     return deepcopy(value)
@@ -71,10 +85,15 @@ async def persist_items(data, items: list[ShoppingItem], state=None) -> None:
         for item in state["deleted"].values()
         if item.get("source_uid")
     }
+    superseded_sources = {
+        uid for uid, baseline in state["source"].items() if baseline.get("superseded")
+    }
     items = [
         item
         for item in items
-        if item.uid not in state["deleted"] and item.source_uid not in deleted_sources
+        if item.uid not in state["deleted"]
+        and item.source_uid not in deleted_sources
+        and item.source_uid not in superseded_sources
     ]
     previous = {item.uid: item for item in data.items}
     current = {item.uid: item for item in items}

@@ -50,6 +50,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_get_lists,
         websocket_get_sources,
         websocket_get_supermarkets,
+        websocket_resolve_source_conflict,
         websocket_save_category,
         websocket_save_market_categories,
         websocket_save_supermarket,
@@ -75,6 +76,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_delete_supermarket,
         websocket_apply_operation,
         websocket_sync_source,
+        websocket_resolve_source_conflict,
     ):
         websocket_api.async_register_command(hass, command)
     return True

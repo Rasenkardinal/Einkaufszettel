@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Einkaufszettel – flache Zurück-Navigation</title>
+<link rel="stylesheet" href="../custom_components/einkaufszettel/www/app.css">
+<style>
+body { background: #101010; }
+main { max-width: 1500px; margin: auto; padding: 32px 24px; }
+.intro { max-width: 920px; margin-bottom: 28px; }
+.intro .eyebrow { margin: 0 0 12px; }
+.intro h1 { font-size: clamp(26px, 4vw, 38px); }
+.intro p, article > p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; }
+article { min-width: 0; }
+article > h2 { font-size: 15px; margin-bottom: 12px; }
+.phone { height: 440px; padding: 20px 16px; border: 1px solid var(--line); border-radius: 22px; background: var(--bg); overflow: auto; }
+.brandline { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 9px; letter-spacing: .1em; margin-bottom: 20px; }
+.brandline img { width: 22px; height: 22px; }
+.navigation { padding-bottom: 12px; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
+.back { display: inline-flex; align-items: center; gap: 10px; height: var(--height); min-height: 0; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #f4f4f4; font-size: 14px; font-weight: 650; white-space: nowrap; }
+.back svg { width: 30px; height: 24px; flex: none; }
+.back:hover { color: var(--accent); background: var(--surface2); }
+.phone h3 { margin: 0 0 8px; font-size: 25px; line-height: 1.15; letter-spacing: -.035em; }
+.help { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0 0 20px; }
+.sample { padding: 15px 12px; margin: 8px 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+.feedback { min-height: 32px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.reset { margin-bottom: 24px; }
+@media (max-width: 1150px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .grid { grid-template-columns: 1fr; } main { padding: 24px 16px; } }
+</style>
+</head>
+<body data-theme="mono">
+<main>
+<header class="intro">
+<p class="eyebrow">EINKAUFSZETTEL · VARIANTE 6 VERFEINERT</p>
+<h1>Rahmenlos – mit weniger Höhe.</h1>
+<p>Identische Schrift, Textgröße und Pfeilbreite in allen vier Varianten. Nur die Höhe der Navigationsschaltfläche wird reduziert; dadurch rückt der Seiteninhalt nach oben. Kein Rahmen, keine zusätzliche Buttonfläche.</p>
+<p><strong>Empfehlung: B mit 38 Pixeln</strong> als kompakter Kompromiss. A bietet mit 44 Pixeln mehr Komfort auf dem Smartphone. C und D sparen mehr Platz, haben aber entsprechend kleinere Klickflächen.</p>
+</header>
+<button class="secondary reset">Vorschauen zurücksetzen</button>
+<section class="grid" aria-label="Vier Höhenvarianten"></section>
+</main>
+<script>
+const arrow = '<svg viewBox="0 0 30 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M26 12H4m7-7-7 7 7 7"/></svg>';
+const variants = [
+  ["A", 44, "Kompakt mit großzügigerer Klickfläche."],
+  ["B", 38, "Flacher, ohne den Pfeil oder die Schrift zu verkleinern."],
+  ["C", 32, "Sehr kompakte Navigation mit wenig vertikalem Freiraum."],
+  ["D", 28, "Die flachste Variante; kleinere Klickfläche für präzises Antippen."]
+];
+for (const [label, height, description] of variants) {
+  const article = document.createElement("article");
+  article.innerHTML = `<h2>${label} · ${height} Pixel</h2><div class="phone" style="--height:${height}px"><div class="brandline"><img src="../custom_components/einkaufszettel/www/icon.svg" alt="">EINKAUFSZETTEL</div><div class="navigation"><button class="back">${arrow}<span>Zurück zur Liste</span></button></div><section class="content"></section><p class="feedback" role="status"></p></div><p>${description}</p>`;
+  document.querySelector(".grid").append(article);
+  const content = article.querySelector(".content");
+  const back = article.querySelector(".back");
+  const feedback = article.querySelector(".feedback");
+  function reset() {
+    content.innerHTML = '<h3>Supermärkte</h3><p class="help">Märkte und Filialen verwalten.</p><div class="sample">Edeka Nord</div><div class="sample">REWE Zentrum</div>';
+    back.disabled = false;
+    feedback.textContent = "";
+  }
+  back.addEventListener("click", () => {
+    content.innerHTML = '<h3>Wocheneinkauf</h3><p class="help">Zurück auf der Einkaufsliste.</p><div class="sample">Milch</div><div class="sample">Äpfel</div><button class="secondary reopen">Wieder zur Verwaltung</button>';
+    back.disabled = true;
+    feedback.textContent = "Nur Vorschau – keine echten Daten verändert.";
+    const reopen = content.querySelector(".reopen");
+    reopen.addEventListener("click", () => { reset(); back.focus(); });
+    reopen.focus();
+  });
+  document.querySelector(".reset").addEventListener("click", reset);
+  reset();
+}
+</script>
+</body>
+</html>

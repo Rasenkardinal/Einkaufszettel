@@ -126,6 +126,8 @@ def test_app_menu_groups_existing_actions():
             ("connect", "install", "open-app-browser", "open-homeassistant"),
         ),
         ("menu-lists", "Listenverwaltung", ("manage-lists", "copy-source")),
+        ("menu-supermarkets", "Supermärkte verwalten", ("manage-supermarkets",)),
+        ("menu-categories", "Produktkategorien verwalten", ("manage-categories",)),
     ):
         match = re.search(
             rf'<details id="{section}"[^>]*>(.*?)</details>', html, re.DOTALL
@@ -133,6 +135,7 @@ def test_app_menu_groups_existing_actions():
         assert match is not None
         content = match.group(1)
         assert f"<summary>{title}</summary>" in content
+        assert 'class="setup-submenu"' in content
         for action in actions:
             assert f'id="{action}"' in content
 
@@ -203,7 +206,7 @@ def test_supermarket_picker_and_management_are_separate_from_lists():
     assert 'aria-controls="market-flyout"' in heading.group(1)
     assert 'id="market-flyout" aria-label="Supermarkt auswählen" hidden' in html
     assert '<span id="market-name">Ohne Markt</span>' in heading.group(1)
-    assert 'id="manage-supermarkets">Supermärkte verwalten</button>' in html
+    assert 'id="manage-supermarkets">Supermarktverwaltung öffnen</button>' in html
     assert 'id="catalog-page" class="app management-page" hidden' in html
     assert 'id="manage-categories"' in html
     assert '<dialog id="supermarket-management"' not in html
