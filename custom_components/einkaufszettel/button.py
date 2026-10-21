@@ -1,5 +1,6 @@
 """Manually append new items from the configured source list."""
 
+from homeassistant.components import persistent_notification
 from homeassistant.components.button import ButtonEntity
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
@@ -8,7 +9,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import EinkaufszettelConfigEntry
-from .const import CONF_SOURCE, update_signal
+from .const import CONF_SOURCE, DOMAIN, update_signal
 from .model import append_new_items
 from .source import async_read_source
 
@@ -19,7 +20,7 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Expose one copy button per configured list."""
-    async_add_entities([CopySourceButton(entry)])
+    async_add_entities([CopySourceButton(entry), InstallWebAppButton(entry)])
 
 
 class CopySourceButton(ButtonEntity):
@@ -52,3 +53,31 @@ class CopySourceButton(ButtonEntity):
                 raise HomeAssistantError(f"Cannot copy source list: {err}") from err
             data.items = updated
             async_dispatcher_send(self.hass, update_signal(self._entry.entry_id))
+
+
+class InstallWebAppButton(ButtonEntity):
+    """Provide a direct HA action to open and install the list's web app."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "install_web_app"
+    _attr_icon = "mdi:cellphone-arrow-down"
+
+    def __init__(self, entry: EinkaufszettelConfigEntry) -> None:
+        self._entry = entry
+        self._attr_unique_id = f"{entry.entry_id}_install_web_app"
+        self._attr_translation_placeholders = {"list_name": entry.data[CONF_NAME]}
+
+    async def async_press(self) -> None:
+        """Show a Home Assistant notification linking to the installable PWA."""
+        app_url = f"/{DOMAIN}/app.html?entry_id={self._entry.entry_id}"
+        persistent_notification.async_create(
+            self.hass,
+            (
+                f"[Web-App öffnen und installieren]({app_url})\n\n"
+                "Öffne den Link online und wähle im Browser **Installieren** "
+                "oder **Zum Startbildschirm hinzufügen**. Danach lässt sich "
+                "die zuvor geladene Liste auch offline öffnen."
+            ),
+            title="Einkaufszettel",
+            notification_id=f"{DOMAIN}_{self._entry.entry_id}_install",
+        )

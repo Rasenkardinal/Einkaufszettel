@@ -49,6 +49,8 @@ def integration(monkeypatch):
         SET_DESCRIPTION_ON_ITEM = 2
         SET_DUE_DATE_ON_ITEM = 4
         SET_DUE_DATETIME_ON_ITEM = 8
+        CREATE_TODO_ITEM = 16
+        DELETE_TODO_ITEM = 32
 
     @dataclass
     class Item:
@@ -72,6 +74,29 @@ def integration(monkeypatch):
 
     module("homeassistant")
     module("homeassistant.config_entries", ConfigEntry=Generic)
+    components = module("homeassistant.components")
+    module(
+        "homeassistant.components.http",
+        StaticPathConfig=lambda *args, **kwargs: (args, kwargs),
+    )
+    websocket_api = module(
+        "homeassistant.components.websocket_api",
+        async_register_command=Mock(),
+        async_response=lambda function: function,
+        websocket_command=lambda schema: lambda function: function,
+    )
+    components.websocket_api = websocket_api
+    persistent_notification = module(
+        "homeassistant.components.persistent_notification",
+        async_create=Mock(),
+    )
+    components.persistent_notification = persistent_notification
+    module(
+        "voluptuous",
+        Required=lambda key: key,
+        Optional=lambda key: key,
+        In=lambda values: values,
+    )
     module(
         "homeassistant.const",
         Platform=SimpleNamespace(TODO="todo", BUTTON="button"),
@@ -99,7 +124,6 @@ def integration(monkeypatch):
     module(
         "homeassistant.helpers.entity_platform", AddConfigEntryEntitiesCallback=object
     )
-    module("homeassistant.components")
     module("homeassistant.components.button", ButtonEntity=Entity)
     module(
         "homeassistant.components.todo",
@@ -119,6 +143,7 @@ def integration(monkeypatch):
     todo = importlib.import_module(f"{spec.name}.todo")
     button = importlib.import_module(f"{spec.name}.button")
     model = importlib.import_module(f"{spec.name}.model")
+    websocket = importlib.import_module(f"{spec.name}.websocket")
     hass = SimpleNamespace(
         states=SimpleNamespace(get=lambda entity_id: SimpleNamespace(state="1")),
         services=SimpleNamespace(
@@ -136,6 +161,7 @@ def integration(monkeypatch):
             async_forward_entry_setups=AsyncMock(),
             async_unload_platforms=AsyncMock(return_value=True),
             async_entries=Mock(return_value=[]),
+            async_get_entry=Mock(),
         ),
     )
     entry = SimpleNamespace(
@@ -148,6 +174,8 @@ def integration(monkeypatch):
         button=button,
         dispatcher=dispatcher,
         model=model,
+        websocket=websocket,
+        websocket_api=websocket_api,
         hass=hass,
         entry=entry,
         store=stores.setdefault(
@@ -341,13 +369,99 @@ async def test_copy_button_appends_once_and_keeps_local_edits(integration):
     assert data.items[0].status == "completed"
     assert data.items[0].description == "3 Flaschen"
     assert data.items[1].source_uid == "b"
-    env.dispatcher.async_dispatcher_send.assert_called_once_with(
-        env.hass, "einkaufszettel_test-entry_updated"
+
+
+async def test_web_app_api_supports_offline_retryable_mutations(integration):
+    env = integration
+    assert await env.package.async_setup_entry(env.hass, env.entry)
+    env.entry.domain = "einkaufszettel"
+    env.hass.config_entries.async_get_entry.return_value = env.entry
+    connection = Mock()
+
+    await env.websocket.websocket_add_item(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "entry_id": env.entry.entry_id,
+            "uid": "offline-id",
+            "summary": "Brot",
+        },
     )
+    assert env.entry.runtime_data.items[-1].uid == "offline-id"
+    connection.send_result.assert_called_once()
+    env.store.async_save.assert_awaited()
+
+    await env.websocket.websocket_add_item(
+        env.hass,
+        connection,
+        {
+            "id": 2,
+            "entry_id": env.entry.entry_id,
+            "uid": "offline-id",
+            "summary": "Brot",
+        },
+    )
+    assert [item.uid for item in env.entry.runtime_data.items].count("offline-id") == 1
+
+    await env.websocket.websocket_update_item(
+        env.hass,
+        connection,
+        {
+            "id": 3,
+            "entry_id": env.entry.entry_id,
+            "uid": "offline-id",
+            "status": "completed",
+        },
+    )
+    assert env.entry.runtime_data.items[-1].status == "completed"
+
+    await env.websocket.websocket_delete_item(
+        env.hass,
+        connection,
+        {"id": 4, "entry_id": env.entry.entry_id, "uid": "offline-id"},
+    )
+    assert all(item.uid != "offline-id" for item in env.entry.runtime_data.items)
+
+
+async def test_todo_entity_can_add_and_delete_items(integration):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    entity = env.todo.EinkaufszettelTodo(
+        env.entry.runtime_data, env.entry.entry_id, "Einkaufszettel"
+    )
+    entity.async_write_ha_state = Mock()
+
+    await entity.async_create_todo_item(env.Item(uid=None, summary="Brot", status=None))
+    assert env.entry.runtime_data.items[-1].summary == "Brot"
+    created_uid = env.entry.runtime_data.items[-1].uid
+    await entity.async_delete_todo_items([created_uid])
+    assert all(item.uid != created_uid for item in env.entry.runtime_data.items)
+    assert entity.async_write_ha_state.call_count == 2
+
+
+async def test_copy_button_noop_does_not_save_unchanged_list(integration):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    env.hass.services.async_call.return_value = {
+        "todo.alexa": {
+            "items": [{"uid": "a", "summary": "Milch", "status": "needs_action"}]
+        }
+    }
+    button = env.button.CopySourceButton(env.entry)
+    button.hass = env.hass
     saved = env.store.async_save.await_count
     await button.async_press()
-    assert len(data.items) == 2
+    assert len(env.entry.runtime_data.items) == 1
     assert env.store.async_save.await_count == saved
+
+
+async def test_async_setup_serves_app_and_registers_websocket_api(integration):
+    env = integration
+    env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
+    assert await env.package.async_setup(env.hass, {})
+    env.hass.http.async_register_static_paths.assert_awaited_once()
+    assert env.websocket_api.async_register_command.call_count == 5
 
 
 @pytest.mark.parametrize("failure", ["read", "save", "missing_uid"])

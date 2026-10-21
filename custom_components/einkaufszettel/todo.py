@@ -1,5 +1,7 @@
 """Expose the local shopping list in Home Assistant's To-do UI."""
 
+from uuid import uuid4
+
 from homeassistant.components.todo import (
     TodoItem,
     TodoItemStatus,
@@ -35,7 +37,9 @@ class EinkaufszettelTodo(TodoListEntity):
     _attr_has_entity_name = True
     _attr_icon = "mdi:cart-outline"
     _attr_supported_features = (
-        TodoListEntityFeature.UPDATE_TODO_ITEM
+        TodoListEntityFeature.CREATE_TODO_ITEM
+        | TodoListEntityFeature.DELETE_TODO_ITEM
+        | TodoListEntityFeature.UPDATE_TODO_ITEM
         | TodoListEntityFeature.SET_DESCRIPTION_ON_ITEM
         | TodoListEntityFeature.SET_DUE_DATE_ON_ITEM
         | TodoListEntityFeature.SET_DUE_DATETIME_ON_ITEM
@@ -89,5 +93,48 @@ class EinkaufszettelTodo(TodoListEntity):
                 )
             except (ValueError, OSError, HomeAssistantError) as err:
                 raise HomeAssistantError(f"Cannot save shopping item: {err}") from err
+            self._data.items = updated
+            self.async_write_ha_state()
+
+    async def async_create_todo_item(self, item: TodoItem) -> None:
+        """Persist a new list item before publishing it."""
+        if item.summary is None or not item.summary.strip():
+            raise HomeAssistantError("The new item needs text")
+        from .model import ShoppingItem
+
+        async with self._data.lock:
+            created = ShoppingItem(
+                uid=str(uuid4()),
+                summary=item.summary.strip(),
+                status=(
+                    TodoItemStatus(item.status).value
+                    if item.status is not None
+                    else TodoItemStatus.NEEDS_ACTION.value
+                ),
+                description=item.description,
+                due=item.due.isoformat() if item.due is not None else None,
+            )
+            updated = [*self._data.items, created]
+            try:
+                await self._data.store.async_save(
+                    {"items": [value.to_dict() for value in updated]}
+                )
+            except (OSError, HomeAssistantError) as err:
+                raise HomeAssistantError(f"Cannot save shopping item: {err}") from err
+            self._data.items = updated
+            self.async_write_ha_state()
+
+    async def async_delete_todo_items(self, uids: list[str]) -> None:
+        """Persist removal of selected items before publishing it."""
+        async with self._data.lock:
+            updated = [item for item in self._data.items if item.uid not in uids]
+            if len(updated) == len(self._data.items):
+                return
+            try:
+                await self._data.store.async_save(
+                    {"items": [value.to_dict() for value in updated]}
+                )
+            except (OSError, HomeAssistantError) as err:
+                raise HomeAssistantError(f"Cannot delete shopping item: {err}") from err
             self._data.items = updated
             self.async_write_ha_state()

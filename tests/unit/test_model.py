@@ -126,3 +126,9 @@ def test_merge_refuses_to_guess_identity_without_source_ids():
 def test_merge_empty_source_preserves_existing_items():
     old = model.ShoppingItem("local", "Milch", source_uid="a")
     assert model.append_new_items([old], []) == [old]
+
+
+def test_merge_allows_locally_created_items_without_source_ids():
+    local = model.ShoppingItem("local", "Kaffee")
+    imported = model.ShoppingItem("copy", "Milch", source_uid="external-id")
+    assert model.append_new_items([local], [imported]) == [local, imported]

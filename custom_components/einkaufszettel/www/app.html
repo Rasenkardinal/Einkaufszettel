@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#146b50">
+    <meta name="description" content="Dein Einkaufszettel – auch offline verfügbar.">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="icon" href="./icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./app.css">
+    <title>Einkaufszettel</title>
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">EINKAUFSZETTEL</p>
+          <h1 id="list-name">Einkaufszettel</h1>
+        </div>
+        <div class="top-actions">
+          <button id="connect" class="secondary install">Mit HA verbinden</button>
+          <button id="install" class="secondary install">App installieren</button>
+        </div>
+      </header>
+
+      <section class="sync-card" aria-live="polite">
+        <span id="connection-dot" class="dot"></span>
+        <div>
+          <strong id="connection-label">Offline-Liste wird geladen</strong>
+          <p id="sync-detail">Gespeicherte Änderungen werden beim nächsten Verbinden synchronisiert.</p>
+        </div>
+        <button id="sync" class="icon-button" aria-label="Jetzt synchronisieren" title="Jetzt synchronisieren">↻</button>
+      </section>
+
+      <form id="add-form" class="add-form">
+        <label class="visually-hidden" for="new-item">Neuer Artikel</label>
+        <input id="new-item" name="item" autocomplete="off" maxlength="200" placeholder="Was fehlt noch?" required>
+        <button type="submit" class="primary">Hinzufügen</button>
+      </form>
+
+      <div class="list-heading">
+        <h2>Auf der Liste</h2>
+        <button id="copy-source" class="text-button">Alexa-Liste kopieren</button>
+      </div>
+      <p id="message" class="message" role="status"></p>
+      <ul id="items" class="items"></ul>
+      <p id="empty" class="empty" hidden>Noch nichts auf der Liste.</p>
+
+      <footer>
+        <a id="open-homeassistant" href="/">Home Assistant öffnen</a>
+        <span>Offline gespeichert auf diesem Gerät</span>
+      </footer>
+    </main>
+    <dialog id="install-help">
+      <form method="dialog">
+        <h2>Zum Startbildschirm hinzufügen</h2>
+        <p>Öffne das Browser-Menü und wähle <strong>„Zum Startbildschirm hinzufügen“</strong>. Danach kannst du den Einkaufszettel direkt starten.</p>
+        <button class="primary">Verstanden</button>
+      </form>
+    </dialog>
+    <script src="./app.js" defer></script>
+  </body>
+</html>

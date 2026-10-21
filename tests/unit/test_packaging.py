@@ -24,3 +24,16 @@ def test_hacs_metadata_and_integration_layout():
     assert manifest["integration_type"] == "service"
     assert (components[0] / "__init__.py").is_file()
     assert (components[0] / "config_flow.py").is_file()
+    webapp = components[0] / "www"
+    assert {
+        "app.html",
+        "app.css",
+        "app.js",
+        "manifest.json",
+        "service-worker.js",
+        "icon.svg",
+        "icon-192.png",
+        "icon-512.png",
+    }.issubset({path.name for path in webapp.iterdir()})
+    web_manifest = json.loads((webapp / "manifest.json").read_text(encoding="utf-8"))
+    assert web_manifest["display"] == "standalone"

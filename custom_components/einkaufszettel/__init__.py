@@ -2,8 +2,11 @@
 
 import asyncio
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
+from homeassistant.components import websocket_api
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -15,6 +18,37 @@ from .model import ShoppingItem, load_items
 from .source import async_read_source
 
 PLATFORMS = [Platform.TODO, Platform.BUTTON]
+WEBAPP_PATH = Path(__file__).parent / "www"
+
+
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+    """Serve the installable web app and register its authenticated API."""
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                f"/{DOMAIN}",
+                str(WEBAPP_PATH),
+                cache_headers=False,
+            )
+        ]
+    )
+    from .websocket import (  # noqa: PLC0415
+        websocket_add_item,
+        websocket_copy_source,
+        websocket_delete_item,
+        websocket_get_list,
+        websocket_update_item,
+    )
+
+    for command in (
+        websocket_get_list,
+        websocket_add_item,
+        websocket_update_item,
+        websocket_delete_item,
+        websocket_copy_source,
+    ):
+        websocket_api.async_register_command(hass, command)
+    return True
 
 
 @dataclass

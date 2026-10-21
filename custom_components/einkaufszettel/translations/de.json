@@ -4,6 +4,9 @@
     "button": {
       "copy_source": {
         "name": "{list_name}: Quellliste kopieren"
+      },
+      "install_web_app": {
+        "name": "{list_name}: Web-App öffnen / installieren"
       }
     }
   },

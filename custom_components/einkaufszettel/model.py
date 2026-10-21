@@ -70,7 +70,7 @@ def import_items(raw_items: object) -> list[ShoppingItem]:
             status=raw.get("status"),
             description=raw.get("description"),
             due=raw.get("due"),
-            source_uid=raw.get("uid"),
+            source_uid=raw.get("uid") if raw.get("uid") else "",
         )
         if item.status == "needs_action":
             items.append(item)
@@ -105,7 +105,9 @@ def append_new_items(
     existing: list[ShoppingItem], incoming: list[ShoppingItem]
 ) -> list[ShoppingItem]:
     """Append unseen source identities without resetting local edits."""
-    if any(not item.source_uid for item in [*existing, *incoming]):
+    if any(not item.source_uid for item in incoming) or any(
+        item.source_uid == "" for item in existing
+    ):
         raise ValueError("Source item IDs are required for safe repeated copying")
     seen = {item.source_uid for item in existing}
     result = list(existing)
