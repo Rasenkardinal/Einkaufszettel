@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Category management regression tests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Testoberfläche" style="width:390px;height:844px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all([
+    fetch(base + "app.html").then(r => r.text()),
+    fetch(base + "app.js").then(r => r.text()),
+  ]);
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document;
+  const messages = [], operations = [];
+  const storage = new Map();
+  const assert = (condition, text) => { if (!condition) throw Error(text); };
+  const state = {
+    categories: [{ id: "z", name: "Zwiebeln" }, { id: "b", name: "Backwaren" }, { id: "a", name: "Äpfel" }],
+    supermarkets: [{ id: "m", name: "Markt", category_ids: ["z", "b"] }],
+  };
+  let fail = false;
+  win.confirm = () => true;
+  const api = win.Function("test", "localStorage", script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+    sendCommand = async (type, payload) => test.send(type.split("/").pop(), payload);
+    enqueue = async operation => { test.operations.push(operation); };
+    entryId = "test"; busy = false;
+    availableLists = [{entry_id:"test", name:"Test"}];
+    categories = test.state.categories; supermarkets = test.state.supermarkets;
+    currentItems = [
+      { uid:"one", summary:"Brot", status:"needs_action", metadata:{category_id:"b", quantity:"1"}, description:"Vollkorn" },
+      { uid:"two", summary:"Zwiebeln", status:"needs_action", metadata:{category_id:"z"} },
+      { uid:"three", summary:"Sonstiges", status:"completed", metadata:{category_id:"deleted"} }
+    ];
+    selectedMarket = "m";
+    render();
+    return { openCatalog, render, saveCatalog, refreshSupermarkets, loadCachedSupermarkets,
+      state: () => ({categories, supermarkets, selectedMarket, catalogDraft, catalogDirty}),
+      withoutMarket: () => { selectedMarket = ""; render(); },
+      reset: () => { categories = test.state.categories; supermarkets = test.state.supermarkets; }
+    };
+  `)({
+    state, operations,
+    send: async (command, payload) => {
+      messages.push({ command, payload });
+      if (fail) throw Error("Test: Speichern fehlgeschlagen");
+      if (command === "save_market_categories") state.supermarkets[0].category_ids = [...payload.category_ids];
+      if (command === "save_category") state.categories = state.categories.map(c => c.id === payload.category_id ? {...c, name:payload.name} : c);
+      return structuredClone(state);
+    }
+  }, { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) });
+  const results = [];
+  function test(name, action) { action(); results.push(`PASS ${name}`); }
+  const headingNames = () => [...doc.querySelectorAll(".item-category-title")].map(h => h.firstChild.textContent);
+  test("Shopping list follows market order; missing categories appear last", () => {
+    assert(headingNames().join("|") === "Zwiebeln|Backwaren|Ohne Kategorie", "Wrong grouping");
+    assert(doc.querySelectorAll(".item-note").length === 1, "Optional notes missing");
+    assert(doc.querySelector(".item-note").textContent === "1 · Vollkorn", "Quantity or note missing");
+    assert(doc.querySelectorAll(".item").length === 3, "Items lost");
+  });
+  test("Without a market groups follow A-Z, with uncategorized items last", () => {
+    api.withoutMarket();
+    assert(headingNames().join("|") === "Backwaren|Zwiebeln|Ohne Kategorie", "Wrong no-market order");
+  });
+  test("Dedicated category overview is alphabetically sorted", () => {
+    api.openCatalog("categories");
+    assert(doc.querySelector("main.app").hidden, "Shopping page not hidden");
+    assert(!doc.querySelector("#catalog-page").hidden, "Catalog not shown");
+    const names = [...doc.querySelectorAll(".management-link")].map(b => b.textContent);
+    assert(names.join("|") === "Äpfel  ›|Backwaren  ›|Zwiebeln  ›", "Not German A-Z");
+  });
+  test("Market edit links to a separate order page", () => {
+    api.openCatalog("market-edit", state.supermarkets[0]);
+    doc.querySelector(".category-navigation").click();
+    assert(doc.querySelector("#catalog-title").textContent === "Produktkategorien bearbeiten", "Wrong destination");
+    assert(doc.querySelectorAll(".move-grip").length === 2, "Drag grips missing");
+    assert(doc.querySelector('[aria-label="Zwiebeln nach oben"]').disabled, "First up not disabled");
+    assert(doc.querySelector('[aria-label="Backwaren nach unten"]').disabled, "Last down not disabled");
+    doc.querySelector('[aria-label="Backwaren nach oben"]').click();
+    assert(api.state().catalogDraft.category_ids.join() === "b,z", "Move failed");
+    assert(state.supermarkets[0].category_ids.join() === "z,b", "Draft leaked before save");
+  });
+  test("Keyboard move and drag/drop update the same draft", () => {
+    doc.querySelector(".move-grip").dispatchEvent(new win.KeyboardEvent("keydown", {key:"ArrowDown", bubbles:true}));
+    assert(api.state().catalogDraft.category_ids.join() === "z,b", "Keyboard move failed");
+    const transfer = new win.DataTransfer();
+    doc.querySelector(".move-grip").dispatchEvent(new win.DragEvent("dragstart", {dataTransfer:transfer, bubbles:true}));
+    doc.querySelectorAll(".category-order-row")[1].dispatchEvent(new win.DragEvent("drop", {dataTransfer:transfer, bubbles:true}));
+    assert(api.state().catalogDraft.category_ids.join() === "b,z", "Drag/drop failed");
+  });
+  test("Selection comes from A-Z store, does not reset existing order", () => {
+    doc.querySelector("#catalog-content > .primary").click();
+    const choices = [...doc.querySelectorAll(".category-choice")];
+    assert(choices.map(c=>c.textContent).join() === "Äpfel,Backwaren,Zwiebeln", "Selection not A-Z");
+    choices[0].querySelector("input").click();
+    doc.querySelector("#catalog-content > .primary").click();
+    assert(api.state().catalogDraft.category_ids.join() === "b,z,a", "Selection reset order");
+    doc.querySelector('[aria-label="Zwiebeln aus diesem Markt entfernen"]').click();
+    assert(api.state().catalogDraft.category_ids.join() === "b,a", "Removal failed");
+    assert(api.state().categories.length === 3, "Central category deleted");
+  });
+  test("Cancelling a discard prompt keeps unsaved order", () => {
+    win.confirm = () => false;
+    doc.querySelector("#catalog-back").click();
+    assert(doc.querySelector("#catalog-title").textContent === "Produktkategorien bearbeiten", "Left dirty page");
+    assert(api.state().catalogDraft.category_ids.join() === "b,a", "Dirty order lost");
+    win.confirm = () => true;
+  });
+  await api.saveCatalog("save_market_categories", { market_id:"m", category_ids:api.state().catalogDraft.category_ids }, "markets");
+  assert(state.supermarkets[0].category_ids.join() === "b,a", "Order not saved");
+  assert(storage.has("einkaufszettel.catalog"), "Atomic offline catalog cache missing");
+  results.push("PASS Saving persists order and offline cache");
+  api.loadCachedSupermarkets();
+  assert(api.state().supermarkets[0].category_ids.join() === "b,a", "Cached order lost");
+  assert(api.state().categories.length === 3, "Cached categories lost");
+  results.push("PASS Atomic offline catalog reload preserves categories and order");
+  fail = true;
+  api.openCatalog("category-edit", state.categories[0]);
+  const name = doc.querySelector("#catalog-name");
+  name.value = "Neuer Name";
+  name.dispatchEvent(new win.Event("input", {bubbles:true}));
+  await api.saveCatalog("save_category", {category_id:"z", name:name.value}, "categories");
+  assert(api.state().catalogDirty, "Failed save cleared dirty draft");
+  assert(doc.querySelector("#catalog-message").textContent.includes("fehlgeschlagen"), "Failure hidden");
+  assert(doc.querySelector("#catalog-name").value === "Neuer Name", "Failed save lost input");
+  results.push("PASS Failed save retains draft and reports error");
+  fail = false;
+  doc.querySelector("#catalog-back").click();
+  doc.querySelector("#catalog-back").click();
+  doc.querySelector('[aria-label="Bearbeiten: Brot"]').click();
+  assert(doc.querySelector("#edit-category").value === "b", "Item category missing");
+  assert(doc.querySelector("#edit-quantity").value === "1", "Item quantity missing");
+  doc.querySelector("#edit-notes").value = "Geschnitten";
+  doc.querySelector("#edit-item-form").requestSubmit();
+  await Promise.resolve();
+  assert(operations.at(-1).metadata.category_id === "b", "Category not enqueued");
+  assert(operations.at(-1).description === "Geschnitten", "Notes not enqueued");
+  results.push("PASS Item category, quantity and notes use existing offline operation queue");
+  assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, "Mobile horizontal overflow");
+  results.push("PASS No horizontal overflow at 390px");
+  document.querySelector("#results").textContent = results.join("\n");
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent = `FAIL ${error.stack}`;
+  throw error;
+});
+</script>

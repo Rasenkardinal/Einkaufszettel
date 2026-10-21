@@ -2,7 +2,7 @@
 
 Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- und Kategorienlogik sowie Alexa-Anbindung über eine vorhandene HA-To-do-Liste.
 
-> **Projektstatus:** Alpha. Enthält HA-Quelllistenverwaltung mit gemeinsamen App-Anzeigenamen, automatischen Quellabgleich und eine installierbare Offline-PWA. Die Integration erzeugt keine zusätzlichen To-do-Listen. Produktkatalog und Kategorieverwaltung sind noch nicht implementiert; Zusatzdaten können bereits im synchronisierten Modell gespeichert werden.
+> **Projektstatus:** Alpha. Enthält HA-Quelllistenverwaltung, automatischen Quellabgleich, gemeinsame Produktkategorien und Supermärkte mit eigener Kategorienreihenfolge sowie eine installierbare Offline-PWA. Die Integration erzeugt keine zusätzlichen To-do-Listen. Ein eigenständiger Produktkatalog ist noch nicht implementiert.
 
 ## Funktionsumfang
 
@@ -11,7 +11,8 @@ Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- u
 - Ein Button ergänzt später neue, offene Quell-Einträge anhand ihrer Quell-IDs, ohne vorhandene lokale Änderungen zurückzusetzen.
 - Die PWA unterstützt Hinzufügen, Abhaken/Wiederöffnen, Umbenennen und Löschen. Es erscheint keine doppelte Einkaufszettel-Liste in der HA-To-do-Ansicht.
 - Name und Status werden automatisch mit der Quelle abgeglichen; App-Änderungen werden zurückgeschrieben, soweit die Quelle die jeweilige Aktion unterstützt. Zusatzinformationen bleiben in unserem HA-Speicher.
-- Kategorien, Produktkatalog und strukturierte Mengen sind noch nicht implementiert.
+- Produktkategorien werden gemeinsam gespeichert und alphabetisch A–Z verwaltet. Je Supermarkt lassen sich Kategorien auswählen und unabhängig sortieren. Die Hauptliste verwendet dezente Kategorieüberschriften mit Trennlinien.
+- Artikel können eine Kategorie, eine Mengenangabe als Freitext und Zusatzinformationen erhalten. Diese Daten werden mit der vorhandenen Offline-Warteschlange gespeichert; ein Produktkatalog und strukturierte Mengeneinheiten sind noch nicht implementiert.
 - Die Smartphone-Oberfläche wird als PWA von der Integration über Home Assistant ausgeliefert. App-Dateien und Listendaten werden lokal gespeichert; Hinzufügen, Abhaken und Löschen werden offline vorgemerkt und beim nächsten Verbinden synchronisiert.
 
 ## Installation mit HACS
@@ -63,9 +64,12 @@ Das Dreipunkte-App-Menü ist in direkt aufklappbare Untermenüs mit Plus/Minus s
 - **Installation:** HA-Anmeldung, App-Installation sowie Browser-/HA-Links zum Öffnen und Testen.
 - **Design:** Klappt die Farbauswahl direkt im Menü auf, ohne Flyout oder zusätzlichen Dialog. Die acht dunklen Farbschemata sind erst nach dem Aufklappen sichtbar: **Botanical**, **Midnight Plum**, **Market Journal**, **Fresh Signal**, **Mono** (Standard), **Tomato**, **Lime Focus** und **Indigo Pocket**. Farbpunkte zeigen die Akzentfarben; Rahmen und Häkchen markieren die aktive Auswahl. Änderungen sind sofort sichtbar und werden auf diesem Gerät auch offline für alle Listen gespeichert. Die Auswahl lässt das Untermenü geöffnet. Schrift und Aufbau bleiben gleich.
 - **Listenverwaltung:** **Listen verwalten** (Quellen, App-Namen und Sichtbarkeit) und **Quelllisten abgleichen**. Der Abgleich ergänzt die automatische Synchronisation von Name und Status; die kompatible manuelle Kopierfunktion bleibt über den HA-Button verfügbar.
-- **Supermärkte verwalten:** Gemeinsame Supermärkte/Filialen anlegen, umbenennen und nach Bestätigung löschen. Änderungen erfordern HA-Administratorrechte und eine Online-Verbindung; Listen werden dadurch nicht verändert. Die Daten liegen getrennt unter `.storage/einkaufszettel.supermarkets` und werden beim Verbinden bzw. Öffnen der Verwaltung neu geladen.
+- **Supermärkte verwalten:** Eigenständige Übersichts- und Bearbeitungsseiten zum Anlegen, Umbenennen und Löschen nach Bestätigung. **Produktkategorien für diesen Markt bearbeiten** öffnet eine weitere Seite mit Kategorienauswahl aus dem gemeinsamen Speicher, Verschiebegriffen und Hoch-/Runter-Schaltflächen. Griffe unterstützen zusätzlich die Pfeiltasten. Die Auswahl erfolgt auf einer eigenen A–Z-Seite. Entfernen löscht nur die Marktzuordnung; **Speichern** übernimmt die Reihenfolge, **Abbrechen** verwirft den Entwurf.
+- **Produktkategorien verwalten:** Eigenständige A–Z-Übersicht sowie Erstellungs-/Bearbeitungsseite. Eine gelöschte Kategorie wird aus allen Marktzuordnungen entfernt. Artikel bleiben bestehen und erscheinen unter **Ohne Kategorie**. Auch die Listenverwaltung öffnet eine eigene Seite statt eines Dialogs.
 
-Rechts neben **Auf der Liste** lässt sich unabhängig von der Einkaufsliste ein Supermarkt auswählen, alternativ **Ohne Markt**. Die Auswahl öffnet dasselbe kompakte Flyout wie der Listentitel, mit Häkchen am aktiven Markt und derselben Tastaturbedienung. Es ist immer nur eine der beiden Auswahlen geöffnet. Die Auswahl wird je Liste auf diesem Gerät gespeichert. Bereits geladene Märkte stehen auch offline zur Auswahl bereit; Offline-Änderungen an der gemeinsamen Marktverwaltung werden nicht vorgemerkt. Abteilungen, Marktstruktur und eine entsprechende Neusortierung der Artikel sind noch nicht implementiert.
+Der gemeinsame Kategorien- und Marktkatalog liegt unter `.storage/einkaufszettel.supermarkets`; vorhandene Marktdaten bleiben erhalten. Änderungen benötigen HA-Administratorrechte und eine Online-Verbindung. Bereits geladene Daten sind offline lesbar, Verwaltungsänderungen werden jedoch nicht offline vorgemerkt. Ungespeicherte Änderungen werden beim Verlassen abgefragt.
+
+Rechts neben **Auf der Liste** lässt sich unabhängig von der Einkaufsliste ein Supermarkt auswählen, alternativ **Ohne Markt**. Die Auswahl öffnet dasselbe kompakte Flyout wie der Listentitel, mit Häkchen am aktiven Markt und derselben Tastaturbedienung. Es ist immer nur eine der beiden Auswahlen geöffnet. Die Auswahl wird je Liste auf diesem Gerät gespeichert. Die Hauptliste gruppiert Artikel nach der gewählten Marktreihenfolge; weitere Kategorien folgen A–Z, **Ohne Kategorie** steht zuletzt. Ohne Markt werden alle Kategorien A–Z angezeigt. Leere Gruppen werden ausgeblendet. Artikelkarten bleiben im bisherigen Design; optionale Mengen und Zusatzinformationen erscheinen als dezente zweite Zeile. Zum Zuordnen oder Ändern den Artikelnamen antippen.
 
 Die nachfolgenden Verweise auf **Setup → Listen verwalten** meinen **App-Menü → Listenverwaltung → Listen verwalten**; Anmeldung und Installationslinks liegen unter **Installation**.
 
@@ -86,6 +90,8 @@ Die Wiederverbindung verwendet Wartezeiten von 1, 2, 4, 8, 16 und maximal 30 Sek
 Die App verwendet ausschließlich die Adresse, unter der sie geöffnet wurde, ohne automatischen Wechsel zur lokalen IP. Für die installierte App möglichst dieselbe HTTPS-Adresse verwenden. Lokale IP, Nabu-Casa-Adresse und andere Domains haben getrennte Browser-Speicher einschließlich Anmeldung und Offline-Änderungen.
 
 Die Verbindungsregressionen lassen sich ohne zusätzliche Pakete prüfen: Repository per HTTP bereitstellen (z. B. `python -m http.server 8774 --bind 127.0.0.1`) und `/tests/frontend/connection.html` öffnen. Die Seite testet die Verbindungsfunktionen aus dem aktuellen App-Skript mit simulierten Timern, WebSocket und Anmeldung; sie greift nicht auf Home Assistant zu.
+
+`/tests/frontend/categories.html` prüft die neuen Verwaltungsseiten, A–Z-Auswahl, Markt-Reihenfolge, Drag-and-drop/Tastatur, Gruppierung, Zusatzinformationen und Speicherfehler mit isolierten Beispieldaten. `/tests/frontend/sync.html` prüft weiterhin die Offline-Synchronisation. Keine dieser Testseiten ändert echte HA-Daten.
 
 ### Synchronisationsregeln
 

@@ -6,6 +6,7 @@ const DOMAIN = "einkaufszettel";
 const DESIGN_KEY = "einkaufszettel.design";
 const MARKETS_KEY = "einkaufszettel.supermarkets";
 const MARKET_SELECTION_PREFIX = "einkaufszettel.supermarket.";
+const CATALOG_KEY = "einkaufszettel.catalog";
 
 const elements = {
   setup: document.querySelector("#setup"),
@@ -13,11 +14,13 @@ const elements = {
   marketFlyout: document.querySelector("#market-flyout"),
   marketName: document.querySelector("#market-name"),
   manageSupermarkets: document.querySelector("#manage-supermarkets"),
-  supermarketManagement: document.querySelector("#supermarket-management"),
-  supermarketMessage: document.querySelector("#supermarket-message"),
-  supermarketList: document.querySelector("#supermarket-list"),
-  addSupermarketForm: document.querySelector("#add-supermarket-form"),
-  supermarketNewName: document.querySelector("#supermarket-new-name"),
+  catalogPage: document.querySelector("#catalog-page"),
+  catalogTitle: document.querySelector("#catalog-title"),
+  catalogHelp: document.querySelector("#catalog-help"),
+  catalogMessage: document.querySelector("#catalog-message"),
+  catalogContent: document.querySelector("#catalog-content"),
+  catalogBack: document.querySelector("#catalog-back"),
+  manageCategories: document.querySelector("#manage-categories"),
   designOptions: document.querySelector("#design-options"),
   designName: document.querySelector("#design-name"),
   designMessage: document.querySelector("#design-message"),
@@ -36,6 +39,9 @@ const elements = {
   editItem: document.querySelector("#edit-item"),
   editItemForm: document.querySelector("#edit-item-form"),
   editSummary: document.querySelector("#edit-summary"),
+  editCategory: document.querySelector("#edit-category"),
+  editQuantity: document.querySelector("#edit-quantity"),
+  editNotes: document.querySelector("#edit-notes"),
   cancelEdit: document.querySelector("#cancel-edit"),
   connectionDot: document.querySelector("#connection-dot"),
   connectionLabel: document.querySelector("#connection-label"),
@@ -82,15 +88,38 @@ let editingUid;
 let supermarkets = [];
 let selectedMarket = "";
 let managingSupermarkets = false;
+let categories = [];
+let catalogView;
+let catalogDraft;
+let catalogDirty = false;
+let catalogRequest = 0;
+const nameOrder = new Intl.Collator("de", { sensitivity: "base", numeric: true });
 
 function validateSupermarkets(value) {
   if (!Array.isArray(value) || value.some(market =>
     !market || typeof market.id !== "string" || !market.id ||
-    typeof market.name !== "string" || !market.name.trim() || market.name.length > 100
+    typeof market.name !== "string" || !market.name.trim() || market.name.length > 100 ||
+    (market.category_ids !== undefined && (!Array.isArray(market.category_ids) ||
+      market.category_ids.some(id => typeof id !== "string" || !id) ||
+      new Set(market.category_ids).size !== market.category_ids.length))
   ) || new Set(value.map(market => market.id)).size !== value.length) {
     throw new Error("Die Supermarktdaten sind ungültig. Bitte erneut mit Home Assistant verbinden.");
   }
   return value;
+}
+
+function applyCatalog(value) {
+  const nextMarkets = validateSupermarkets(value.supermarkets);
+  const nextCategories = validateSupermarkets(value.categories);
+  if (nextMarkets.some(market => (market.category_ids || []).some(id => !nextCategories.some(c => c.id === id)))) {
+    throw new Error("Der Katalog enthält unbekannte Markt-Kategorien. Bitte erneut laden.");
+  }
+  supermarkets = nextMarkets;
+  categories = nextCategories;
+}
+
+function cacheCatalog() {
+  localStorage.setItem(CATALOG_KEY, JSON.stringify({ supermarkets, categories }));
 }
 
 function renderMarketSelection() {
@@ -100,6 +129,7 @@ function renderMarketSelection() {
       closeFlyout(elements.marketSelect, elements.marketFlyout, true);
       selectedMarket = market.id;
       renderMarketSelection();
+      render();
       try {
         localStorage.setItem(MARKET_SELECTION_PREFIX + entryId, selectedMarket);
       } catch (error) {
@@ -130,8 +160,12 @@ function loadMarketSelection() {
 
 function loadCachedSupermarkets() {
   try {
-    const cached = localStorage.getItem(MARKETS_KEY);
-    if (cached) supermarkets = validateSupermarkets(JSON.parse(cached));
+    const catalog = localStorage.getItem(CATALOG_KEY);
+    if (catalog) applyCatalog(JSON.parse(catalog));
+    else {
+      const cached = localStorage.getItem(MARKETS_KEY);
+      if (cached) supermarkets = validateSupermarkets(JSON.parse(cached));
+    }
   } catch (error) {
     showError(error);
   }
@@ -139,111 +173,323 @@ function loadCachedSupermarkets() {
 }
 
 async function refreshSupermarkets() {
-  supermarkets = validateSupermarkets(await sendCommand(`${DOMAIN}/get_supermarkets`));
+  const catalog = await sendCommand(`${DOMAIN}/get_catalog`);
+  applyCatalog(catalog);
   let cacheError;
   try {
-    localStorage.setItem(MARKETS_KEY, JSON.stringify(supermarkets));
+    cacheCatalog();
   } catch (error) {
     cacheError = new Error(`Supermärkte geladen, aber die Offline-Kopie konnte nicht gespeichert werden: ${error.message}`);
   }
   loadMarketSelection();
-  renderSupermarketManagement();
+  render();
   if (cacheError) throw cacheError;
 }
 
-async function changeSupermarket(command, payload) {
-  if (managingSupermarkets) return;
-  let changed = false;
-  managingSupermarkets = true;
-  elements.supermarketList.inert = true;
-  elements.addSupermarketForm.inert = true;
-  elements.supermarketMessage.textContent = "Wird gespeichert …";
-  try {
-    supermarkets = validateSupermarkets(await sendCommand(`${DOMAIN}/${command}`, payload));
-    changed = true;
-    elements.supermarketMessage.textContent = "In Home Assistant gespeichert.";
-    try {
-      localStorage.setItem(MARKETS_KEY, JSON.stringify(supermarkets));
-    } catch (error) {
-      throw new Error(`In Home Assistant gespeichert, aber die Offline-Kopie konnte nicht gespeichert werden: ${error.message}`);
-    }
-    elements.supermarketNewName.value = "";
-  } catch (error) {
-    elements.supermarketMessage.textContent = error.message;
-  } finally {
-    managingSupermarkets = false;
-    elements.supermarketList.inert = false;
-    elements.addSupermarketForm.inert = false;
-    loadMarketSelection();
-    if (changed) renderSupermarketManagement();
-  }
+function button(text, action, className = "secondary") {
+  const element = document.createElement("button");
+  element.type = "button";
+  element.className = className;
+  element.textContent = text;
+  element.addEventListener("click", action);
+  return element;
 }
 
-function renderSupermarketManagement() {
-  elements.supermarketList.replaceChildren();
-  for (const market of supermarkets) {
-    const form = document.createElement("form");
-    form.className = "supermarket-row";
-    const name = document.createElement("input");
-    name.value = market.name;
-    name.required = true;
-    name.maxLength = 100;
-    name.setAttribute("aria-label", `Name: ${market.name}`);
-    const actions = document.createElement("div");
-    actions.className = "dialog-actions";
-    const save = document.createElement("button");
-    save.type = "submit";
-    save.className = "primary";
-    save.textContent = "Umbenennen";
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "secondary";
-    remove.textContent = "Löschen";
-    remove.setAttribute("aria-label", `Supermarkt löschen: ${market.name}`);
-    remove.addEventListener("click", () => {
-      if (confirm(`Supermarkt „${market.name}“ für alle Nutzer löschen? Die Einkaufslisten bleiben erhalten.`)) {
-        changeSupermarket("delete_supermarket", { market_id: market.id });
-      }
-    });
-    form.addEventListener("submit", event => {
-      event.preventDefault();
-      if (!name.value.trim()) {
-        name.setCustomValidity("Bitte gib einen Namen ein.");
-        name.reportValidity();
-        return;
-      }
-      changeSupermarket("save_supermarket", { market_id: market.id, name: name.value.trim() });
-    });
-    name.addEventListener("input", () => name.setCustomValidity(""));
-    actions.append(save, remove);
-    form.append(name, actions);
-    elements.supermarketList.append(form);
-  }
+function paragraph(text, className = "management-help") {
+  const element = document.createElement("p");
+  element.className = className;
+  element.textContent = text;
+  return element;
 }
 
-elements.manageSupermarkets.addEventListener("click", async () => {
-  elements.supermarketManagement.showModal();
-  renderSupermarketManagement();
-  elements.supermarketMessage.textContent = "Supermärkte werden geladen …";
+function showManagementPage(page) {
+  document.querySelector("main.app").hidden = true;
+  elements.catalogPage.hidden = page !== elements.catalogPage;
+  elements.listManagement.hidden = page !== elements.listManagement;
+  elements.setup.open = false;
+  window.scrollTo(0, 0);
+}
+
+function leaveManagement() {
+  if (managingSupermarkets || (catalogDirty && !confirm("Ungespeicherte Änderungen verwerfen?"))) return;
+  catalogRequest++;
+  catalogDirty = false;
+  catalogView = undefined;
+  elements.catalogPage.hidden = true;
+  elements.listManagement.hidden = true;
+  document.querySelector("main.app").hidden = false;
+  elements.listSelect.focus();
+}
+
+function openCatalog(view, record) {
+  if (managingSupermarkets || (catalogDirty && !confirm("Ungespeicherte Änderungen verwerfen?"))) return;
+  catalogDirty = false;
+  catalogView = view;
+  catalogDraft = record ? { ...record, category_ids: [...(record.category_ids || [])] } : { id: "", name: "", category_ids: [] };
+  showManagementPage(elements.catalogPage);
+  renderCatalogPage();
+}
+
+async function loadCatalogPage(view) {
+  openCatalog(view);
+  const request = ++catalogRequest;
+  elements.catalogMessage.textContent = "Katalog wird geladen …";
   try {
     await refreshSupermarkets();
-    elements.supermarketMessage.textContent = supermarkets.length ? "" : "Noch keine Supermärkte angelegt.";
+    if (request === catalogRequest && catalogView === view && !catalogDirty) {
+      renderCatalogPage();
+      elements.catalogMessage.textContent = "";
+    }
   } catch (error) {
-    elements.supermarketMessage.textContent = `Gespeicherte Offline-Kopie. Verwaltung nur online möglich: ${error.message}`;
+    if (request === catalogRequest) {
+      elements.catalogMessage.textContent = `Offline-Kopie. Änderungen benötigen eine Verbindung und HA-Administratorrechte: ${error.message}`;
+    }
   }
-});
+}
 
-elements.addSupermarketForm.addEventListener("submit", event => {
-  event.preventDefault();
-  const name = elements.supermarketNewName.value.trim();
-  if (!name) {
-    elements.supermarketNewName.setCustomValidity("Bitte gib einen Namen ein.");
-    elements.supermarketNewName.reportValidity();
+async function saveCatalog(command, payload, nextView) {
+  if (managingSupermarkets) return;
+  managingSupermarkets = true;
+  elements.catalogContent.inert = true;
+  elements.catalogBack.disabled = true;
+  elements.catalogMessage.textContent = "Wird gespeichert …";
+  let saved = false;
+  try {
+    const result = await sendCommand(`${DOMAIN}/${command}`, payload);
+    if (command.endsWith("supermarket")) {
+      applyCatalog({ supermarkets: result, categories });
+    } else {
+      applyCatalog(result);
+    }
+    saved = true;
+    catalogDirty = false;
+    catalogView = nextView;
+    cacheCatalog();
+    elements.catalogMessage.textContent = "In Home Assistant gespeichert.";
+  } catch (error) {
+    elements.catalogMessage.textContent = saved
+      ? `In Home Assistant gespeichert, aber Offline-Kopie fehlgeschlagen: ${error.message}`
+      : error.message;
+  } finally {
+    managingSupermarkets = false;
+    elements.catalogContent.inert = false;
+    elements.catalogBack.disabled = false;
+    if (saved) {
+      const message = elements.catalogMessage.textContent;
+      loadMarketSelection();
+      render();
+      renderCatalogPage();
+      elements.catalogMessage.textContent = message;
+    }
+  }
+}
+
+function renderCatalogPage() {
+  const content = elements.catalogContent;
+  content.replaceChildren();
+  elements.catalogMessage.textContent = "";
+  const isMarket = catalogView?.startsWith("market");
+  const isList = catalogView === "markets" || catalogView === "categories";
+  const noun = isMarket ? "Supermarkt" : "Kategorie";
+  elements.catalogBack.textContent = isList ? "← Einkaufsliste"
+    : catalogView === "market-order" ? "← Supermarkt bearbeiten"
+    : catalogView === "market-select" ? "← Marktkategorien"
+    : isMarket ? "← Supermärkte" : "← Produktkategorien";
+  elements.catalogBack.onclick = () => {
+    if (isList) leaveManagement();
+    else if (catalogView === "market-order") openCatalog("market-edit", catalogDraft);
+    else if (catalogView === "market-select") {
+      catalogView = "market-order";
+      renderCatalogPage();
+    } else openCatalog(isMarket ? "markets" : "categories");
+  };
+  elements.catalogHelp.textContent = "Gemeinsamer Katalog für alle Nutzer. Speichern benötigt eine Verbindung und HA-Administratorrechte.";
+  if (isList) {
+    elements.catalogTitle.textContent = isMarket ? "Supermärkte" : "Produktkategorien";
+    content.append(button(`＋ ${noun} hinzufügen`, () => openCatalog(isMarket ? "market-edit" : "category-edit"), "primary full-width"));
+    const records = [...(isMarket ? supermarkets : categories)].sort((a, b) => nameOrder.compare(a.name, b.name));
+    const list = document.createElement("div");
+    list.className = "management-list";
+    for (const record of records) {
+      list.append(button(`${record.name}  ›`, () => openCatalog(isMarket ? "market-edit" : "category-edit", record), "management-link"));
+    }
+    content.append(list);
+    if (!records.length) content.append(paragraph(`Noch keine ${isMarket ? "Supermärkte" : "Produktkategorien"} angelegt.`));
+  } else if (catalogView === "market-order" || catalogView === "market-select") {
+    renderMarketCategories();
+  } else {
+    elements.catalogTitle.textContent = `${noun} ${catalogDraft.id ? "bearbeiten" : "hinzufügen"}`;
+    const form = document.createElement("form");
+    form.className = "management-form";
+    const label = document.createElement("label");
+    label.htmlFor = "catalog-name";
+    label.textContent = isMarket ? "Supermarktname" : "Kategoriename";
+    const input = document.createElement("input");
+    input.id = "catalog-name";
+    input.required = true;
+    input.maxLength = 100;
+    input.autocomplete = "off";
+    input.value = catalogDraft.name;
+    input.addEventListener("input", () => {
+      input.setCustomValidity("");
+      catalogDraft.name = input.value;
+      catalogDirty = true;
+    });
+    form.append(label, input);
+    if (isMarket && catalogDraft.id) {
+      form.append(button("Produktkategorien für diesen Markt bearbeiten  ›", () => {
+        if (catalogDirty && !confirm("Ungespeicherten Namen verwerfen und Produktkategorien öffnen?")) return;
+        catalogDirty = false;
+        catalogDraft = { ...supermarkets.find(m => m.id === catalogDraft.id), category_ids: [...catalogDraft.category_ids] };
+        catalogView = "market-order";
+        renderCatalogPage();
+      }, "management-link category-navigation"));
+    }
+    if (catalogDraft.id) {
+      const danger = document.createElement("section");
+      danger.className = "danger-section";
+      danger.append(paragraph(`${noun} löschen`, "danger-title"));
+      danger.append(paragraph(isMarket
+        ? "Entfernt diesen Markt aus der Marktauswahl. Einkaufslisten bleiben erhalten."
+        : "Entfernt die Kategorie und ihre Marktzuordnungen. Artikel bleiben erhalten und erscheinen ohne Kategorie."));
+      danger.append(button(`${noun} löschen`, () => {
+        if (confirm(`${noun} „${catalogDraft.name}“ endgültig für alle Nutzer löschen?`)) {
+          saveCatalog(isMarket ? "delete_supermarket" : "delete_category",
+            { [isMarket ? "market_id" : "category_id"]: catalogDraft.id }, isMarket ? "markets" : "categories");
+        }
+      }, "secondary danger-button"));
+      form.append(danger);
+    }
+    const actions = document.createElement("div");
+    actions.className = "page-actions";
+    const save = button("Speichern", () => {});
+    save.type = "submit";
+    save.className = "primary";
+    actions.append(button("Abbrechen", () => openCatalog(isMarket ? "markets" : "categories")), save);
+    form.append(actions);
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      if (!input.value.trim()) {
+        input.setCustomValidity("Bitte gib einen Namen ein.");
+        input.reportValidity();
+        return;
+      }
+      saveCatalog(isMarket ? "save_supermarket" : "save_category",
+        { [isMarket ? "market_id" : "category_id"]: catalogDraft.id, name: input.value.trim() },
+        isMarket ? "markets" : "categories");
+    });
+    content.append(form);
+  }
+  content.append(paragraph("Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.", "management-footer"));
+  elements.catalogTitle.focus();
+}
+
+function renderMarketCategories() {
+  const content = elements.catalogContent;
+  const selecting = catalogView === "market-select";
+  elements.catalogTitle.textContent = selecting ? "Kategorien auswählen" : "Produktkategorien bearbeiten";
+  elements.catalogHelp.textContent = `${catalogDraft.name} · ${selecting ? "Aus dem Kategoriespeicher wählen (A–Z)." : "Diese Reihenfolge gilt nur für diesen Markt."}`;
+  if (selecting) {
+    const selected = new Set(catalogDraft.category_ids);
+    for (const category of [...categories].sort((a, b) => nameOrder.compare(a.name, b.name))) {
+      const label = document.createElement("label");
+      label.className = "category-choice";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = selected.has(category.id);
+      checkbox.addEventListener("change", () => {
+        catalogDraft.category_ids = checkbox.checked
+          ? [...catalogDraft.category_ids, category.id]
+          : catalogDraft.category_ids.filter(id => id !== category.id);
+        catalogDirty = true;
+      });
+      label.append(checkbox, document.createTextNode(category.name));
+      content.append(label);
+    }
+    if (!categories.length) content.append(paragraph("Noch keine Kategorien im Speicher. Bitte zuerst unter Produktkategorien verwalten anlegen."));
+    content.append(button("Auswahl übernehmen", () => { catalogView = "market-order"; renderCatalogPage(); }, "primary full-width"));
     return;
   }
-  changeSupermarket("save_supermarket", { market_id: "", name });
+  content.append(button("＋ Kategorien aus dem Speicher auswählen  ›", () => {
+    catalogView = "market-select";
+    renderCatalogPage();
+  }, "primary full-width"));
+  content.append(paragraph("Am Griff ziehen oder mit ↑ / ↓ verschieben. × entfernt nur die Marktzuordnung."));
+  const list = document.createElement("ol");
+  list.className = "category-order";
+  let dragging;
+  const move = (from, to) => {
+    const ids = [...catalogDraft.category_ids];
+    const [id] = ids.splice(from, 1);
+    ids.splice(to, 0, id);
+    catalogDraft.category_ids = ids;
+    catalogDirty = true;
+    renderCatalogPage();
+    elements.catalogContent.querySelectorAll(".move-grip")[to]?.focus();
+  };
+  catalogDraft.category_ids.forEach((id, index) => {
+    const category = categories.find(c => c.id === id);
+    if (!category) return;
+    const row = document.createElement("li");
+    row.className = "category-order-row";
+    const grip = button("⠿", () => {}, "text-button move-grip");
+    grip.draggable = true;
+    grip.setAttribute("aria-label", `${category.name} verschieben; Pfeiltasten hoch und runter`);
+    grip.addEventListener("keydown", event => {
+      const target = event.key === "ArrowUp" ? index - 1 : event.key === "ArrowDown" ? index + 1 : index;
+      if (target !== index) {
+        event.preventDefault();
+        if (target >= 0 && target < catalogDraft.category_ids.length) move(index, target);
+      }
+    });
+    grip.addEventListener("dragstart", event => {
+      dragging = index;
+      event.dataTransfer.setData("text/plain", id);
+      event.dataTransfer.effectAllowed = "move";
+      row.classList.add("dragging");
+    });
+    grip.addEventListener("dragend", () => { dragging = undefined; row.classList.remove("dragging"); });
+    row.addEventListener("dragover", event => { if (dragging !== undefined) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; } });
+    row.addEventListener("drop", event => {
+      event.preventDefault();
+      if (dragging !== undefined && dragging !== index) move(dragging, index);
+      dragging = undefined;
+    });
+    const name = document.createElement("span");
+    name.className = "order-name";
+    name.textContent = `${index + 1}. ${category.name}`;
+    const up = button("↑", () => move(index, index - 1), "secondary move-button");
+    up.disabled = index === 0;
+    up.setAttribute("aria-label", `${category.name} nach oben`);
+    const down = button("↓", () => move(index, index + 1), "secondary move-button");
+    down.disabled = index === catalogDraft.category_ids.length - 1;
+    down.setAttribute("aria-label", `${category.name} nach unten`);
+    const remove = button("×", () => {
+      catalogDraft.category_ids = catalogDraft.category_ids.filter(key => key !== id);
+      catalogDirty = true;
+      renderCatalogPage();
+    }, "text-button move-button");
+    remove.setAttribute("aria-label", `${category.name} aus diesem Markt entfernen`);
+    row.append(grip, name, up, down, remove);
+    list.append(row);
+  });
+  content.append(list);
+  if (!catalogDraft.category_ids.length) content.append(paragraph("Noch keine Kategorien für diesen Markt ausgewählt."));
+  const actions = document.createElement("div");
+  actions.className = "page-actions";
+  actions.append(button("Abbrechen", () => openCatalog("market-edit", supermarkets.find(m => m.id === catalogDraft.id))),
+    button("Speichern", () => saveCatalog("save_market_categories", {
+      market_id: catalogDraft.id, category_ids: catalogDraft.category_ids,
+    }, "markets"), "primary"));
+  content.append(actions);
+}
+
+elements.manageSupermarkets.addEventListener("click", () => loadCatalogPage("markets"));
+elements.manageCategories.addEventListener("click", () => loadCatalogPage("categories"));
+document.querySelector("#lists-back").addEventListener("click", leaveManagement);
+window.addEventListener("beforeunload", event => {
+  if (catalogDirty || managingSupermarkets) { event.preventDefault(); event.returnValue = ""; }
 });
-elements.supermarketNewName.addEventListener("input", () => elements.supermarketNewName.setCustomValidity(""));
 
 function applyDesign(theme) {
   document.body.dataset.theme = theme;
@@ -386,6 +632,34 @@ function render() {
       .map((operation) => operation.uid),
   );
   elements.items.replaceChildren();
+  const order = supermarkets.find(market => market.id === selectedMarket)?.category_ids || [];
+  const sortedCategories = [...categories].sort((a, b) => {
+    const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
+    if (ai >= 0 || bi >= 0) return (ai < 0 ? Infinity : ai) - (bi < 0 ? Infinity : bi);
+    return nameOrder.compare(a.name, b.name);
+  });
+  const groupLists = new Map();
+  for (const category of [...sortedCategories, { id: "", name: "Ohne Kategorie" }]) {
+    const matches = currentItems.filter(item => {
+      const id = item.metadata?.category_id;
+      return category.id ? id === category.id : !categories.some(c => c.id === id);
+    });
+    if (!matches.length) continue;
+    const group = document.createElement("li");
+    group.className = "item-category";
+    const heading = document.createElement("h2");
+    heading.className = "item-category-title";
+    heading.textContent = category.name;
+    const count = document.createElement("span");
+    count.textContent = String(matches.length);
+    count.className = "category-count";
+    heading.append(count);
+    const list = document.createElement("ul");
+    list.className = "items category-items";
+    group.append(heading, list);
+    elements.items.append(group);
+    groupLists.set(category.id, list);
+  }
   for (const item of currentItems) {
     const row = document.createElement("li");
     row.className = `item${item.status === "completed" ? " completed" : ""}`;
@@ -405,11 +679,31 @@ function render() {
     const label = document.createElement("button");
     label.type = "button";
     label.className = "item-name";
-    label.textContent = item.summary;
+    const summary = document.createElement("span");
+    summary.textContent = item.summary;
+    label.append(summary);
+    const details = [item.metadata?.quantity, item.description].filter(Boolean).join(" · ");
+    if (details) {
+      const note = document.createElement("span");
+      note.className = "item-note";
+      note.textContent = details;
+      label.append(note);
+    }
     label.setAttribute("aria-label", `Bearbeiten: ${item.summary}`);
     label.addEventListener("click", () => {
       editingUid = item.uid;
       elements.editSummary.value = item.summary;
+      elements.editQuantity.value = item.metadata?.quantity || "";
+      elements.editNotes.value = item.description || "";
+      elements.editCategory.replaceChildren(new Option("Ohne Kategorie", ""));
+      for (const category of [...categories].sort((a, b) => nameOrder.compare(a.name, b.name))) {
+        elements.editCategory.append(new Option(category.name, category.id));
+      }
+      const categoryId = item.metadata?.category_id || "";
+      if (categoryId && !categories.some(c => c.id === categoryId)) {
+        elements.editCategory.append(new Option("Nicht verfügbare Kategorie", categoryId));
+      }
+      elements.editCategory.value = categoryId;
       elements.editItem.showModal();
     });
     if (pendingIds.has(item.uid)) label.title = "Wird beim nächsten Verbinden übertragen";
@@ -423,7 +717,8 @@ function render() {
       enqueue({ type: "delete_item", uid: item.uid }).catch(showError);
     });
     row.append(main, remove);
-    elements.items.append(row);
+    const categoryId = categories.some(c => c.id === item.metadata?.category_id) ? item.metadata.category_id : "";
+    groupLists.get(categoryId).append(row);
   }
   elements.empty.hidden = currentItems.length > 0;
   elements.syncDetail.textContent = pendingOperations.length
@@ -598,7 +893,14 @@ elements.editItemForm.addEventListener("submit", async (event) => {
     return;
   }
   try {
-    await enqueue({ type: "update_item", uid: editingUid, summary });
+    await enqueue({
+      type: "update_item", uid: editingUid, summary,
+      description: elements.editNotes.value.trim() || null,
+      metadata: {
+        category_id: elements.editCategory.value || null,
+        quantity: elements.editQuantity.value.trim() || null,
+      },
+    });
     elements.editItem.close();
   } catch (error) {
     showError(error);
@@ -1102,7 +1404,8 @@ async function loadRemoteLists() {
 }
 
 elements.manageLists.addEventListener("click", async () => {
-  elements.listManagement.showModal();
+  showManagementPage(elements.listManagement);
+  document.querySelector("#list-management-title").focus();
   elements.managementMessage.textContent = "HA-Listen werden geladen …";
   elements.sourceLists.replaceChildren();
   try {

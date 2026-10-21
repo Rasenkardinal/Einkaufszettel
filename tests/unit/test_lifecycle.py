@@ -870,7 +870,120 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 13
+    assert env.websocket_api.async_register_command.call_count == 17
+
+
+async def test_catalog_shared_persistence_and_market_rename_preserves_categories(
+    integration,
+):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_get_catalog(
+        env.hass, connection, {"id": 1, "type": "einkaufszettel/get_catalog"}
+    )
+    store = env.stores["einkaufszettel.supermarkets"]
+    persisted = {"supermarkets": [{"id": "shop", "name": "Markt"}]}
+    store.async_load.side_effect = lambda: persisted
+
+    async def save(data):
+        nonlocal persisted
+        persisted = data
+
+    store.async_save.side_effect = save
+    await env.websocket.websocket_save_category(
+        env.hass,
+        connection,
+        {
+            "id": 2,
+            "type": "einkaufszettel/save_category",
+            "category_id": "",
+            "name": "Obst",
+        },
+    )
+    uid = persisted["categories"][0]["id"]
+    await env.websocket.websocket_save_market_categories(
+        env.hass,
+        connection,
+        {
+            "id": 3,
+            "type": "einkaufszettel/save_market_categories",
+            "market_id": "shop",
+            "category_ids": [uid],
+        },
+    )
+    await env.websocket.websocket_save_supermarket(
+        env.hass,
+        connection,
+        {
+            "id": 4,
+            "type": "einkaufszettel/save_supermarket",
+            "market_id": "shop",
+            "name": "Neu",
+        },
+    )
+    assert persisted["categories"] == [{"id": uid, "name": "Obst"}]
+    assert persisted["supermarkets"][0] == {
+        "id": "shop",
+        "name": "Neu",
+        "category_ids": [uid],
+    }
+    await env.websocket.websocket_delete_category(
+        env.hass,
+        connection,
+        {
+            "id": 5,
+            "type": "einkaufszettel/delete_category",
+            "category_id": uid,
+        },
+    )
+    assert persisted["categories"] == []
+    assert persisted["supermarkets"][0]["category_ids"] == []
+    env.hass.data.clear()
+    await env.websocket.websocket_get_catalog(
+        env.hass, connection, {"id": 6, "type": "einkaufszettel/get_catalog"}
+    )
+    connection.send_result.assert_called_with(6, persisted)
+    connection.send_error.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "action", ["save_category", "delete_category", "save_market_categories"]
+)
+@pytest.mark.parametrize("user", [None, SimpleNamespace(is_admin=False)])
+async def test_catalog_writes_require_admin(integration, action, user):
+    env = integration
+    connection = Mock(user=user)
+    await getattr(env.websocket, f"websocket_{action}")(
+        env.hass, connection, {"id": 1, "type": f"einkaufszettel/{action}"}
+    )
+    connection.send_error.assert_called_with(
+        1, "unauthorized", "HA-Administratorrechte erforderlich."
+    )
+    assert "einkaufszettel.supermarkets" not in env.stores
+
+
+async def test_catalog_failed_save_reports_error_without_success(integration):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_get_catalog(
+        env.hass, connection, {"id": 1, "type": "einkaufszettel/get_catalog"}
+    )
+    connection.reset_mock()
+    env.stores["einkaufszettel.supermarkets"].async_save.side_effect = OSError(
+        "Disk full"
+    )
+    await env.websocket.websocket_save_category(
+        env.hass,
+        connection,
+        {
+            "id": 2,
+            "type": "einkaufszettel/save_category",
+            "category_id": "",
+            "name": "Obst",
+        },
+    )
+    connection.send_error.assert_called_with(2, "cannot_manage_catalog", "Disk full")
+    connection.send_result.assert_not_called()
 
 
 async def test_supermarkets_shared_crud_and_restart(integration):

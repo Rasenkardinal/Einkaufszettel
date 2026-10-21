@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.0">
+    <link rel="stylesheet" href="./app.css?v=0.4.1">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -69,6 +69,7 @@
               </div>
             </details>
             <button id="manage-supermarkets">Supermärkte verwalten</button>
+            <button id="manage-categories">Produktkategorien verwalten</button>
             <p>Offline gespeichert auf diesem Gerät</p>
           </div>
         </details>
@@ -92,7 +93,7 @@
       <div class="list-heading">
         <h2>Auf der Liste</h2>
         <div class="market-picker">
-          <button id="market-select" type="button" aria-label="Supermarkt auswählen" aria-expanded="false" aria-controls="market-flyout" title="Marktauswahl; Sortierung nach Marktstruktur folgt später" disabled>
+          <button id="market-select" type="button" aria-label="Supermarkt auswählen" aria-expanded="false" aria-controls="market-flyout" title="Marktauswahl und Reihenfolge der Kategorien" disabled>
           <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10M3 10l2-6h14l2 6M3 10c0 3 4 3 4 0 0 3 5 3 5 0 0 3 5 3 5 0 0 3 4 3 4 0M9 20v-6h6v6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
           <span id="market-name">Ohne Markt</span>
           <span class="market-arrow" aria-hidden="true"></span>
@@ -105,32 +106,31 @@
       <p id="empty" class="empty" hidden>Noch nichts auf der Liste.</p>
 
     </main>
-    <dialog id="supermarket-management" aria-labelledby="supermarket-management-title">
-      <h2 id="supermarket-management-title">Supermärkte verwalten</h2>
-      <p class="management-help">Gemeinsame Märkte und Filialen für alle Nutzer. Änderungen benötigen eine Verbindung und HA-Administratorrechte. Marktstruktur und Sortierung folgen später.</p>
-      <p id="supermarket-message" role="status"></p>
-      <div id="supermarket-list"></div>
-      <form id="add-supermarket-form">
-        <label for="supermarket-new-name">Neuer Supermarkt / Filiale</label>
-        <input id="supermarket-new-name" maxlength="100" required autocomplete="off" placeholder="z. B. Edeka Nord">
-        <button class="primary" type="submit">Anlegen</button>
-      </form>
-      <form method="dialog" class="management-close"><button class="secondary">Schließen</button></form>
-    </dialog>
-    <dialog id="list-management" aria-labelledby="list-management-title">
-      <h2 id="list-management-title">Listen verwalten</h2>
+    <section id="catalog-page" class="app management-page" hidden aria-labelledby="catalog-title">
+      <header class="management-header"><span class="page-brand"><img src="./icon.svg" alt="" width="24" height="24"> EINKAUFSZETTEL</span><button id="catalog-back" class="text-button" type="button">← Einkaufsliste</button></header>
+      <h1 id="catalog-title" tabindex="-1"></h1>
+      <p id="catalog-help" class="management-help"></p>
+      <p id="catalog-message" role="status" class="message"></p>
+      <div id="catalog-content"></div>
+    </section>
+    <section id="list-management" class="app management-page" hidden aria-labelledby="list-management-title">
+      <header class="management-header"><span class="page-brand"><img src="./icon.svg" alt="" width="24" height="24"> EINKAUFSZETTEL</span><button id="lists-back" class="text-button" type="button">← Einkaufsliste</button></header>
+      <h1 id="list-management-title" tabindex="-1">Listen verwalten</h1>
       <p class="management-help">HA-Listen für die App auswählen und kurz benennen. Alexa- und HA-Namen bleiben unverändert. Änderungen gelten für alle Nutzer und benötigen HA-Administratorrechte.</p>
       <p id="management-message" role="status"></p>
       <div id="source-lists"></div>
-      <form method="dialog">
-        <button class="secondary">Schließen</button>
-      </form>
-    </dialog>
+    </section>
     <dialog id="edit-item" aria-labelledby="edit-item-title">
       <form id="edit-item-form">
         <h2 id="edit-item-title">Artikel bearbeiten</h2>
         <label for="edit-summary">Artikelname</label>
         <input id="edit-summary" maxlength="200" required autocomplete="off">
+        <label for="edit-category">Produktkategorie</label>
+        <select id="edit-category"></select>
+        <label for="edit-quantity">Menge</label>
+        <input id="edit-quantity" maxlength="100" autocomplete="off" placeholder="z. B. 2 × 1 l">
+        <label for="edit-notes">Zusatzinformation</label>
+        <input id="edit-notes" maxlength="500" autocomplete="off" placeholder="z. B. laktosefrei">
         <div class="dialog-actions">
           <button id="cancel-edit" type="button" class="secondary">Abbrechen</button>
           <button type="submit" class="primary">Speichern</button>
@@ -144,6 +144,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.0" defer></script>
+    <script src="./app.js?v=0.4.1" defer></script>
   </body>
 </html>

@@ -204,5 +204,9 @@ def test_supermarket_picker_and_management_are_separate_from_lists():
     assert 'id="market-flyout" aria-label="Supermarkt auswählen" hidden' in html
     assert '<span id="market-name">Ohne Markt</span>' in heading.group(1)
     assert 'id="manage-supermarkets">Supermärkte verwalten</button>' in html
-    assert 'id="supermarket-management"' in html
-    assert 'id="add-supermarket-form"' in html
+    assert 'id="catalog-page" class="app management-page" hidden' in html
+    assert 'id="manage-categories"' in html
+    assert '<dialog id="supermarket-management"' not in html
+    assert '<dialog id="list-management"' not in html
+    for field in ("edit-category", "edit-quantity", "edit-notes"):
+        assert f'id="{field}"' in html

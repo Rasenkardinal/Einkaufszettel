@@ -153,13 +153,6 @@ input::placeholder { color: var(--muted); opacity: 1; }
 #market-select { display: flex; align-items: center; gap: 7px; max-width: 100%; min-height: 44px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: inherit; text-align: left; }
 #market-select[aria-expanded="true"] .market-arrow { transform: rotate(180deg); }
 #market-flyout { right: 0; width: min(300px, calc(100vw - 32px)); color: #f4f4f4; font-size: 14px; }
-#supermarket-management { width: min(92vw, 520px); max-height: 85dvh; overflow-y: auto; }
-#supermarket-message { color: #ffb4a8; font-size: 13px; margin-bottom: 12px; }
-#supermarket-new-name, .supermarket-row input { min-width: 0; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: #fff; }
-.supermarket-row { padding: 12px 0; border-top: 1px solid var(--line); }
-.supermarket-row .dialog-actions { flex-wrap: wrap; }
-#add-supermarket-form { margin-top: 16px; }
-.management-close { margin-top: 20px; }
 .list-heading h2 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
 .message { margin: 0; color: #ffb4a8; font-size: 13px; }
 .message:not(:empty) { margin-bottom: 12px; }
@@ -180,8 +173,7 @@ dialog::backdrop { background: #000a; }
 dialog form { display: grid; gap: 12px; }
 dialog h2, dialog p { margin: 0; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
-#edit-summary, .source-list input[type="text"] { min-width: 0; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: #fff; }
-#list-management { width: min(92vw, 520px); max-height: 85dvh; overflow-y: auto; }
+#edit-item input, #edit-category, .source-list input[type="text"] { min-width: 0; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: #fff; }
 .management-help { margin: 12px 0; font-size: 13px; color: var(--muted); }
 #management-message { color: #ffb4a8; font-size: 13px; }
 .source-list { display: grid; gap: 10px; padding: 16px 0; border-top: 1px solid var(--line); }
@@ -190,6 +182,47 @@ dialog h2, dialog p { margin: 0; }
 .source-list small { overflow-wrap: anywhere; color: var(--muted); }
 .source-list button { justify-self: end; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+.management-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 20px; margin-bottom: 28px; border-bottom: 1px solid var(--line); }
+.page-brand { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .14em; }
+.text-button { min-height: 44px; border: 0; background: transparent; color: var(--muted); padding: 8px; }
+.management-page h1 { font-size: clamp(25px, 6vw, 32px); }
+.management-help { line-height: 1.6; }
+.management-page .management-help { margin: 12px 0 22px; }
+.full-width { width: 100%; text-align: left; padding: 14px 16px; }
+.management-list { display: grid; gap: 8px; margin-top: 24px; }
+.management-link { display: block; width: 100%; min-height: 58px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: #f4f4f4; text-align: left; overflow-wrap: anywhere; }
+.management-form { display: grid; gap: 12px; margin-top: 24px; }
+.management-form label { color: var(--muted); font-size: 12px; }
+.management-form input { min-width: 0; width: 100%; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: #fff; }
+.category-navigation { margin-top: 20px; }
+.danger-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+.danger-title { font-size: 14px; font-weight: 700; }
+.danger-button { color: #ffb4a8; border: 1px solid #754940; background: transparent; }
+.page-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); }
+.management-footer { margin: 24px 0; font-size: 11px; color: var(--muted); line-height: 1.6; }
+.category-choice { display: flex; gap: 12px; align-items: center; padding: 16px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.category-choice input { width: 20px; height: 20px; accent-color: var(--accent); }
+.category-order { display: grid; gap: 8px; list-style: none; padding: 0; margin: 24px 0; }
+.category-order-row { display: flex; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.order-name { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 14px; }
+.move-grip { cursor: grab; font-size: 22px; padding: 8px; }
+.move-grip:active { cursor: grabbing; }
+.move-button { min-width: 40px; padding: 0 10px; }
+.dragging { opacity: .5; border-style: dashed; }
+.item-category { min-width: 0; margin-bottom: 12px; }
+.item-category-title { display: flex; align-items: center; gap: 10px; margin: 10px 0; color: var(--muted); font-size: 12px; font-weight: 650; }
+.item-category-title::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.category-count { font-size: 10px; font-weight: 400; }
+.item-name { display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.item-note { color: var(--muted); font-size: 11px; line-height: 1.4; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+@media (max-width: 400px) {
+  .management-header { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .category-order-row { gap: 2px; }
+  .move-button { min-width: 36px; padding: 0 6px; }
+}
 
 @media (display-mode: standalone) {
   .app { padding-top: max(24px, env(safe-area-inset-top)); }

@@ -13,6 +13,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 
+from .catalog import change_catalog, validate_catalog
 from .const import CONF_SOURCE, DOMAIN, update_signal
 from .model import ShoppingItem, append_new_items, update_item
 from .source import async_read_source
@@ -33,6 +34,8 @@ async def _market_command(hass: HomeAssistant, connection, msg: dict[str, Any]) 
         store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}.supermarkets")
         try:
             data = await store.async_load()
+            if data is not None:
+                validate_catalog(data)
             markets = [] if data is None else data["supermarkets"]
             if not isinstance(markets, list) or any(
                 not isinstance(market, dict)
@@ -74,7 +77,7 @@ async def _market_command(hass: HomeAssistant, connection, msg: dict[str, Any]) 
                         ]
                     else:
                         markets = [*markets, {"id": uuid4().hex, "name": name}]
-                await store.async_save({"supermarkets": markets})
+                await store.async_save({**(data or {}), "supermarkets": markets})
         except (HomeAssistantError, OSError, ValueError, KeyError, TypeError) as err:
             connection.send_error(msg["id"], "cannot_manage_supermarkets", str(err))
             return
@@ -117,6 +120,90 @@ async def websocket_delete_supermarket(
 ) -> None:
     """Delete a supermarket without changing any shopping list."""
     await _market_command(hass, connection, msg)
+
+
+async def _catalog_command(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    action = msg["type"].rsplit("/", 1)[-1]
+    if action != "get_catalog" and (
+        connection.user is None or not connection.user.is_admin
+    ):
+        connection.send_error(
+            msg["id"], "unauthorized", "HA-Administratorrechte erforderlich."
+        )
+        return
+    lock = hass.data.setdefault(f"{DOMAIN}.supermarkets_lock", asyncio.Lock())
+    async with lock:
+        store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}.supermarkets")
+        try:
+            stored = await store.async_load()
+            data = validate_catalog(stored if stored is not None else {})
+            if action != "get_catalog":
+                data = change_catalog(data, action, msg)
+                await store.async_save(data)
+            connection.send_result(
+                msg["id"],
+                {
+                    "supermarkets": data.get("supermarkets", []),
+                    "categories": data.get("categories", []),
+                },
+            )
+        except (HomeAssistantError, OSError, ValueError, KeyError, TypeError) as err:
+            connection.send_error(msg["id"], "cannot_manage_catalog", str(err))
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_catalog"})
+@websocket_api.async_response
+async def websocket_get_catalog(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Read shared categories and market orders."""
+    await _catalog_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/save_category",
+        vol.Required("category_id"): str,
+        vol.Required("name"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_save_category(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Create or rename a shared category."""
+    await _catalog_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/delete_category",
+        vol.Required("category_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_delete_category(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Delete a category and its market assignments."""
+    await _catalog_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/save_market_categories",
+        vol.Required("market_id"): str,
+        vol.Required("category_ids"): [str],
+    }
+)
+@websocket_api.async_response
+async def websocket_save_market_categories(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Save the ordered category assignments for a market."""
+    await _catalog_command(hass, connection, msg)
 
 
 def _get_entry(hass: HomeAssistant, connection, msg: dict[str, Any]):
