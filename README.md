@@ -2,7 +2,7 @@
 
 Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- und Kategorienlogik sowie Alexa-Anbindung über eine vorhandene HA-To-do-Liste.
 
-> **Projektstatus:** Alpha `0.2.0-alpha.1`. Enthält Konfigurationsflow, initialen Import, manuellen Kopieren-Knopf und eine dauerhaft gespeicherte HA-To-do-Liste. Noch keine automatische Synchronisierung, Produktverwaltung oder eigene Smartphone-UI.
+> **Projektstatus:** Alpha `0.2.0-alpha.1`. Enthält Konfigurationsflow, initialen Import, manuellen Kopieren-Knopf und eine dauerhaft gespeicherte HA-To-do-Liste. Eine Offline-First-PWA, automatische Synchronisierung und Produktverwaltung sind beschlossen, aber noch nicht implementiert.
 
 ## Funktionsumfang
 
@@ -12,6 +12,7 @@ Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- u
 - Die eigene To-do-Liste erscheint in HA und unterstützt Abhaken/Wiederöffnen, Umbenennen, Beschreibung und Fälligkeit.
 - Die Quelle wird nicht verändert; es gibt keinen automatischen oder bidirektionalen Sync.
 - Kategorien, Produktkatalog, strukturierte Mengen und eine eigene UI sind noch nicht implementiert.
+- Die geplante Smartphone-Oberfläche ist eine installierbare Offline-First-PWA. Sie soll von der Integration über Home Assistant ausgeliefert werden, lokal gespeicherte App-Dateien und Listendaten verwenden und Änderungen später synchronisieren. Details und offene Punkte stehen in [ADR 0007](docs/decisions/0007-offline-first-pwa.md).
 
 ## Installation mit HACS
 
@@ -79,3 +80,4 @@ Windows/Python 3.13 hatte für den vorherigen Alpha-Stand 46 lokale Modell-, Pak
 
 - [ADR-Index und offene Fragen](docs/decisions/README.md)
 - [ADR 0006: Marken- und technische Domain-Umbenennung](docs/decisions/0006-project-rename-and-domain.md)
+- [ADR 0007: Offline-First-PWA und Hosting über Home Assistant](docs/decisions/0007-offline-first-pwa.md)
