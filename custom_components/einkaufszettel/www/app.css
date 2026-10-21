@@ -29,7 +29,7 @@ button { cursor: pointer; }
   flex-direction: column;
 }
 
-.topbar, .sync-card, .list-heading, .item {
+.topbar, .brand, .sync-card, .list-heading, .item {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -37,6 +37,8 @@ button { cursor: pointer; }
 }
 
 .topbar { margin-bottom: 20px; }
+.brand { justify-content: flex-start; gap: 12px; min-width: 0; }
+.brand-icon { width: 48px; height: 48px; flex: none; border-radius: 13px; }
 .eyebrow { margin: 0 0 4px; color: #567063; font-size: 11px; font-weight: 800; letter-spacing: .13em; }
 .top-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 h1 { margin: 0; font-size: clamp(25px, 7vw, 34px); line-height: 1.1; }

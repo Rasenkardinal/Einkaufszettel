@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" role="img" aria-labelledby="title description">
+  <title id="title">Acht Logoentwürfe für Einkaufszettel</title>
+  <desc id="description">Acht grüne Logoideen, die Einkaufslisten mit Haus-, Netzwerk- und Automationssymbolen verbinden.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f3f6f3; }
+      .card { fill: #fff; stroke: #dfe7e0; stroke-width: 2; }
+      .green { fill: #146b50; }
+      .green-stroke { fill: none; stroke: #146b50; stroke-linecap: round; stroke-linejoin: round; }
+      .mint { fill: #dff1e7; }
+      .cyan { fill: #42a9a0; }
+      .white-stroke { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; }
+      .dark { fill: #26352d; }
+      .caption { fill: #637168; font: 15px system-ui, sans-serif; }
+      .wordmark { fill: #26352d; font: 700 20px system-ui, sans-serif; }
+      .number { fill: #146b50; font: 700 13px system-ui, sans-serif; }
+      .title { fill: #26352d; font: 700 30px system-ui, sans-serif; }
+      .subtitle { fill: #637168; font: 16px system-ui, sans-serif; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1200" height="820"/>
+  <text class="title" x="48" y="56">Einkaufszettel · Logoideen</text>
+  <text class="subtitle" x="48" y="87">Acht Richtungen zwischen Einkaufsliste, Zuhause und Home Assistant</text>
+
+  <g transform="translate(40 120)">
+    <rect class="card" width="265" height="300" rx="22"/>
+    <text class="number" x="20" y="30">VORSCHLAG 01</text>
+    <g transform="translate(78 55)">
+      <path class="green" d="M7 49 55 11l48 38v52a7 7 0 0 1-7 7H14a7 7 0 0 1-7-7z"/>
+      <path class="white-stroke" stroke-width="5" d="M30 61h7m8 0h28M30 78h7m8 0h28M30 95h7m8 0h20"/>
+      <circle class="cyan" cx="55" cy="11" r="7"/>
+      <circle class="cyan" cx="97" cy="37" r="5"/>
+      <path class="green-stroke" stroke="#42a9a0" stroke-width="3" d="M62 15 91 34"/>
+    </g>
+    <text class="wordmark" x="132.5" y="242" text-anchor="middle">Einkaufszettel</text>
+    <text class="caption" x="132.5" y="270" text-anchor="middle">Checkliste im Haus-Symbol</text>
+  </g>
+
+  <g transform="translate(335 120)">
+    <rect class="card" width="265" height="300" rx="22"/>
+    <text class="number" x="20" y="30">VORSCHLAG 02</text>
+    <g transform="translate(83 55)">
+      <rect class="mint" x="6" y="20" width="92" height="88" rx="12"/>
+      <path class="green-stroke" stroke-width="6" d="M25 20V12a7 7 0 0 1 7-7h40a7 7 0 0 1 7 7v8"/>
+      <path class="green-stroke" stroke-width="5" d="m22 48 6 6 10-12m8 7h31M22 73l6 6 10-12m8 7h31"/>
+      <path class="green" d="m13 27 40-32 40 32H82L53 4 24 27z"/>
+      <circle class="cyan" cx="94" cy="17" r="7"/>
+      <path class="green-stroke" stroke="#42a9a0" stroke-width="3" d="m85 17 5 0"/>
+    </g>
+    <text class="wordmark" x="132.5" y="242" text-anchor="middle">Einkaufszettel</text>
+    <text class="caption" x="132.5" y="270" text-anchor="middle">Klemmbrett mit Hausdach</text>
+  </g>
+
+  <g transform="translate(630 120)">
+    <rect class="card" width="265" height="300" rx="22"/>
+    <text class="number" x="20" y="30">VORSCHLAG 03</text>
+    <g transform="translate(77 55)">
+      <path class="green-stroke" stroke-width="7" d="M8 47 57 8l49 39"/>
+      <path class="green" d="M19 45h76v57a7 7 0 0 1-7 7H26a7 7 0 0 1-7-7z"/>
+      <rect x="33" y="57" width="10" height="10" rx="2" fill="#dff1e7"/>
+      <rect x="33" y="77" width="10" height="10" rx="2" fill="#dff1e7"/>
+      <path class="white-stroke" stroke-width="4" d="m35 61 3 3 5-6m8 5h25m-36 14 3 3 5-6m8 5h25"/>
+      <circle class="cyan" cx="57" cy="8" r="7"/>
+      <circle class="cyan" cx="105" cy="44" r="5"/>
+      <path class="green-stroke" stroke="#42a9a0" stroke-width="3" d="m64 13 36 27"/>
+    </g>
+    <text class="wordmark" x="132.5" y="242" text-anchor="middle">Einkaufszettel</text>
+    <text class="caption" x="132.5" y="270" text-anchor="middle">Haus als Listenblatt</text>
+  </g>
+
+  <g transform="translate(925 120)">
+    <rect class="card" width="265" height="300" rx="22"/>
+    <text class="number" x="20" y="30">VORSCHLAG 04</text>
+    <g transform="translate(78 55)">
+      <circle class="mint" cx="56" cy="58" r="54"/>
+      <path class="green" d="m13 50 43-34 43 34v48a7 7 0 0 1-7 7H20a7 7 0 0 1-7-7z"/>
+      <path class="white-stroke" stroke-width="5" d="m34 61 7 7 12-14m9 8h16m-44 21 7 7 12-14m9 8h16"/>
+      <circle class="cyan" cx="56" cy="16" r="7"/>
+    </g>
+    <text class="wordmark" x="132.5" y="242" text-anchor="middle">Einkaufszettel</text>
+    <text class="caption" x="132.5" y="270" text-anchor="middle">Rundes App-Icon, kompakt</text>
+  </g>
+
+  <g transform="translate(40 455)">
+    <rect class="card" width="265" height="300" rx="22"/>
+    <text class="number" x="20" y="30">VORSCHLAG 05</text>
+    <g transform="translate(78 55)">
+      <path class="green-stroke" stroke-width="7" d="M9 52 56 14l47 38"/>
+      <path class="green-stroke" stroke-width="7" d="M20 48v53h72V48"/>
+      <path class="green-stroke" stroke-width="5" d="M41 66h34M41 82h34"/>
+      <circle class="cyan" cx="56" cy="14" r="8"/>
+      <circle class="cyan" cx="104" cy="52" r="6"/>
+      <circle class="cyan" cx="8" cy="52" r="6"/>
+      <path class="green-stroke" stroke="#42a9a0" stroke-width="3" d="m63 19 34 28M49 19 14 47"/>
+      <path class="green-stroke" stroke-width="5" d="m41 66 5 5 9-11"/>
+    </g>
+    <text class="wordmark" x="132.5" y="242" text-anchor="middle">Einkaufszettel</text>
+    <text class="caption" x="132.5" y="270" text-anchor="middle">Haus &amp; HA-Netzwerkknoten</text>
+  </g>
+
+  <g transform="translate(335 455)">
+    <rect class="card" width="265" height="300" rx="22"/>
+    <text class="number" x="20" y="30">VORSCHLAG 06</text>
+    <g transform="translate(78 55)">
+      <path class="green" d="M18 42h80l-9 48H29z"/>
+      <path class="green-stroke" stroke-width="7" d="m8 22 12 20m78 0 12-20"/>
+      <path class="white-stroke" stroke-width="4" d="m37 59 5 5 9-11m9 7h19"/>
+      <circle class="green" cx="36" cy="105" r="7"/>
+      <circle class="green" cx="81" cy="105" r="7"/>
+      <path class="green-stroke" stroke-width="6" d="M26 38 58 12l32 26"/>
+      <circle class="cyan" cx="58" cy="12" r="7"/>
+      <path class="green-stroke" stroke="#42a9a0" stroke-width="3" d="m65 16 22 17"/>
+    </g>
+    <text class="wordmark" x="132.5" y="242" text-anchor="middle">Einkaufszettel</text>
+    <text class="caption" x="132.5" y="270" text-anchor="middle">Einkaufswagen trifft Haus</text>
+  </g>
+
+  <g transform="translate(630 455)">
+    <rect class="card" width="265" height="300" rx="22"/>
+    <text class="number" x="20" y="30">VORSCHLAG 07</text>
+    <g transform="translate(79 55)">
+      <path class="green" d="M12 23h82v84H12z"/>
+      <path fill="#42a9a0" d="M12 23 53 0l41 23z"/>
+      <circle fill="#fff" cx="53" cy="16" r="5"/>
+      <path class="white-stroke" stroke-width="5" d="M29 48h48M29 64h48M29 80h35"/>
+      <path class="green-stroke" stroke="#146b50" stroke-width="5" d="M20 48h5M20 64h5M20 80h5"/>
+      <circle class="cyan" cx="94" cy="34" r="6"/>
+      <path class="green-stroke" stroke="#42a9a0" stroke-width="3" d="m91 28-20-12"/>
+    </g>
+    <text class="wordmark" x="132.5" y="242" text-anchor="middle">Einkaufszettel</text>
+    <text class="caption" x="132.5" y="270" text-anchor="middle">Moderne Listenkarte</text>
+  </g>
+
+  <g transform="translate(925 455)">
+    <rect class="card" width="265" height="300" rx="22"/>
+    <text class="number" x="20" y="30">VORSCHLAG 08</text>
+    <g transform="translate(78 55)">
+      <circle class="green" cx="56" cy="58" r="54"/>
+      <path class="white-stroke" stroke-width="5" d="M27 43 56 20l29 23M35 42v35h42V42"/>
+      <path class="white-stroke" stroke-width="4" d="m44 55 5 5 8-10m6 5h10m-29 16h29"/>
+      <circle class="cyan" cx="56" cy="20" r="6"/>
+      <circle class="cyan" cx="89" cy="44" r="5"/>
+      <path class="green-stroke" stroke="#42a9a0" stroke-width="3" d="m62 23 22 17"/>
+    </g>
+    <text class="wordmark" x="132.5" y="242" text-anchor="middle">Einkaufszettel</text>
+    <text class="caption" x="132.5" y="270" text-anchor="middle">Emblem mit Assistenz-Knoten</text>
+  </g>
+
+  <text class="caption" x="48" y="795">Entwurfsstand · Farbe, Strichstärke und Schrift sind noch anpassbar</text>
+</svg>

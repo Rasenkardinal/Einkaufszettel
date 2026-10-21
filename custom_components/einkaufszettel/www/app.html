@@ -7,15 +7,19 @@
     <meta name="description" content="Dein Einkaufszettel – auch offline verfügbar.">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="./icon-192.png">
     <link rel="stylesheet" href="./app.css">
     <title>Einkaufszettel</title>
   </head>
   <body>
     <main class="app">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">EINKAUFSZETTEL</p>
-          <h1 id="list-name">Einkaufszettel</h1>
+        <div class="brand">
+          <img class="brand-icon" src="./icon.svg" alt="">
+          <div>
+            <p class="eyebrow">EINKAUFSZETTEL</p>
+            <h1 id="list-name">Einkaufszettel</h1>
+          </div>
         </div>
         <div class="top-actions">
           <button id="connect" class="secondary install">Mit HA verbinden</button>

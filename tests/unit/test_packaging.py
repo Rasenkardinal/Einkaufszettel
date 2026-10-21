@@ -37,3 +37,14 @@ def test_hacs_metadata_and_integration_layout():
     }.issubset({path.name for path in webapp.iterdir()})
     web_manifest = json.loads((webapp / "manifest.json").read_text(encoding="utf-8"))
     assert web_manifest["display"] == "standalone"
+    assert {icon["src"] for icon in web_manifest["icons"]} == {
+        "./icon.svg",
+        "./icon-192.png",
+        "./icon-512.png",
+    }
+    assert 'circle cx="256" cy="256"' in (webapp / "icon.svg").read_text(
+        encoding="utf-8"
+    )
+    assert 'class="brand-icon" src="./icon.svg"' in (webapp / "app.html").read_text(
+        encoding="utf-8"
+    )
