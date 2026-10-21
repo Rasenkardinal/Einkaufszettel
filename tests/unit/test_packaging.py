@@ -131,28 +131,30 @@ def test_named_dark_designs_share_layout_and_storage():
         "lime-focus": "Lime Focus",
         "indigo-pocket": "Indigo Pocket",
     }
-    dialog = re.search(
-        r'<dialog id="design-dialog"[^>]*>(.*?)</dialog>', html, re.DOTALL
+    submenu = re.search(
+        r'<details id="menu-design" class="setup-section">(.*?)</details>',
+        html,
+        re.DOTALL,
     )
-    assert dialog is not None
+    assert submenu is not None
     assert (
         dict(
             re.findall(
                 r'value="([^"]+)"(?: checked)?><span[^>]+></span><span>([^<]+)</span>',
-                dialog.group(1),
+                submenu.group(1),
             )
         )
         == designs
     )
     assert '<body data-theme="mono">' in html
-    assert 'value="mono" checked' in dialog.group(1)
-    assert (
-        'id="menu-design" type="button" aria-haspopup="dialog" aria-controls="design-dialog"'
-        in html
-    )
+    assert 'value="mono" checked' in submenu.group(1)
+    assert 'id="design-dialog"' not in html
     assert 'id="design-select"' not in html
     assert ".design-row:has(input:checked)" in css
-    assert "elements.designDialog.showModal()" in script
+    assert '.setup-section > summary::after { content: "+"' in css
+    assert r'.setup-section[open] > summary::after { content: "\2212"' in css
+    assert ".setup-section > summary::-webkit-details-marker { display: none; }" in css
+    assert "designDialog" not in script
     for theme in designs.keys() - {"mono"}:
         block = re.search(rf'body\[data-theme="{theme}"\]\s*\{{([^}}]+)\}}', css)
         assert block is not None

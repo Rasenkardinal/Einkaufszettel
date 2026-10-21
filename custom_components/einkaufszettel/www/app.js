@@ -18,8 +18,6 @@ const elements = {
   supermarketList: document.querySelector("#supermarket-list"),
   addSupermarketForm: document.querySelector("#add-supermarket-form"),
   supermarketNewName: document.querySelector("#supermarket-new-name"),
-  menuDesign: document.querySelector("#menu-design"),
-  designDialog: document.querySelector("#design-dialog"),
   designOptions: document.querySelector("#design-options"),
   designName: document.querySelector("#design-name"),
   designMessage: document.querySelector("#design-message"),
@@ -257,12 +255,6 @@ function initializeDesign() {
   }
 }
 
-elements.menuDesign.addEventListener("click", () => {
-  elements.designMessage.textContent = "";
-  elements.designDialog.showModal();
-  elements.designOptions.querySelector("input:checked").focus();
-});
-elements.designDialog.addEventListener("close", () => elements.menuDesign.focus());
 elements.designOptions.addEventListener("change", (event) => {
   const theme = event.target.value;
   applyDesign(theme);
@@ -824,13 +816,17 @@ async function connect() {
 const waiters = new Map();
 
 document.addEventListener("click", (event) => {
-  if (!elements.designDialog.open && !elements.setup.contains(event.target)) elements.setup.open = false;
+  if (!elements.setup.contains(event.target)) elements.setup.open = false;
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && elements.designDialog.open) {
-    event.preventDefault();
-    elements.designDialog.close();
-  } else if (event.key === "Escape" && elements.setup.open) {
+  if (event.key === "Escape" && elements.setup.open) {
+    const section = event.target.closest(".setup-section[open]");
+    if (section) {
+      event.preventDefault();
+      section.open = false;
+      section.querySelector("summary").focus();
+      return;
+    }
     elements.setup.open = false;
     elements.setup.querySelector("summary").focus();
   }

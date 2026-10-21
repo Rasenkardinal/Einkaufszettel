@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Einkaufszettel – Untermenüs ohne Pfeile</title>
+<link rel="stylesheet" href="../custom_components/einkaufszettel/www/app.css">
+<style>
+body { background: #101010; }
+main { max-width: 1640px; margin: auto; padding: 32px 24px; }
+header { max-width: 950px; margin-bottom: 28px; }
+header .eyebrow { margin: 0 0 14px; }
+header h1 { font-size: clamp(26px, 4vw, 38px); }
+header p, article > p { color: #aaa; font-size: 13px; line-height: 1.6; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; }
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; }
+article { min-width: 0; }
+article > h2 { font-size: 16px; margin-bottom: 12px; }
+.phone { position: relative; height: 720px; padding: 20px 14px; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: var(--bg); color: #f4f4f4; }
+.brandline { display: flex; gap: 8px; align-items: center; font-size: 9px; letter-spacing: .1em; color: var(--muted); }
+.brandline img { width: 22px; height: 22px; }
+.brandline span { margin-left: auto; font-size: 18px; }
+.phone h3 { font-size: 26px; letter-spacing: -.04em; margin: 28px 0 20px; }
+.mock-item { padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); margin: 10px 0; font-size: 13px; }
+.panel { position: absolute; inset: 62px 12px auto; max-height: calc(100% - 82px); overflow-y: auto; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: 0 15px 40px #000a; scrollbar-width: thin; }
+.panel h4 { margin: 8px 8px 16px; font-size: 15px; }
+.menu-group { border-top: 1px solid var(--line); }
+.group-button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 50px; padding: 10px 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; text-align: left; font-size: 13px; font-weight: 650; }
+.group-button:hover, .action:hover, .theme-choice:hover { background: var(--surface2); }
+.indicator { margin-left: auto; color: var(--muted); font-size: 19px; font-weight: 400; }
+.word .indicator { padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; font-size: 10px; }
+.submenu { margin: 0 4px 12px 12px; padding: 4px 0 4px 10px; border-left: 2px solid var(--line); }
+.action { display: block; width: 100%; min-height: 44px; padding: 10px 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; text-align: left; font-size: 12px; }
+.help { margin: 4px 8px 10px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.footer { border-top: 1px solid var(--line); padding-top: 6px; }
+.feedback { min-height: 36px; margin: 10px 4px 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.theme-options { display: grid; gap: 4px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.theme-choice { display: flex; align-items: center; gap: 8px; padding: 10px 8px; min-height: 44px; border: 1px solid transparent; border-radius: 8px; font-size: 12px; cursor: pointer; }
+.theme-choice:has(input:checked) { border-color: var(--accent); background: var(--surface2); }
+.theme-choice:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+.theme-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.swatch { flex: none; width: 11px; height: 11px; border-radius: 50%; background: var(--swatch); }
+.check { margin-left: auto; visibility: hidden; color: var(--accent); }
+input:checked ~ .check { visibility: visible; }
+.tabbar { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.tabbar .group-button { justify-content: center; padding: 8px 5px; font-size: 11px; min-width: 0; }
+.tabbar [aria-selected="true"] { background: var(--surface2); box-shadow: inset 0 -2px var(--accent); }
+.tabs .submenu, .pages .submenu { margin: 0; padding: 0; border: 0; }
+.tabs .submenu h5, .pages .submenu h5 { margin: 12px 8px; font-size: 13px; }
+.back { min-height: 40px; margin: 0 0 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface2); color: inherit; font-size: 12px; }
+.pages .group-button { display: grid; gap: 5px; padding: 14px 10px; margin-bottom: 6px; border: 1px solid var(--line); }
+.pages .indicator { margin: 0; font-size: 10px; }
+.pages .menu-group { border: 0; }
+@media (max-width: 1200px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { main { padding: 24px 16px; } .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body data-theme="mono">
+<main>
+<header>
+<p class="eyebrow">EINKAUFSZETTEL · MENÜVORSCHAU</p>
+<h1>Untermenüs – ohne Flyout-Pfeile.</h1>
+<p>Kein seitlicher Flyout, keine Dreiecke und keine Richtungspfeile im Menü. Alle Untermenüs öffnen sich innerhalb des Menüfensters. Listen, Installation und Design sind anklickbar; die Farbschemata bleiben bis zum Öffnen von <strong>Design</strong> verborgen. Farbpunkte, Auswahlrahmen und Häkchen bleiben erhalten.</p>
+<p><strong>Meine Empfehlung: 2.</strong> „Öffnen / Schließen“ ist eindeutig und ruhig. Variante 4 bietet die klarste Trennung, wenn du pro Ansicht nur ein Untermenü sehen möchtest. Dies sind ausschließlich Vorschauen – keine Änderungen an der App oder Home Assistant.</p>
+<div class="toolbar"><button class="secondary" id="compare-design">Überall Design anzeigen</button><button class="secondary" id="reset">Zur Startansicht</button></div>
+</header>
+<section class="grid" aria-label="Vier Menüvarianten"></section>
+</main>
+<script>
+const themes = [
+  ["mono", "Mono", "#141414", "#202020", "#2b2b2b", "#383838", "#f5f5f5", "#aaa"],
+  ["botanical", "Botanical", "#111813", "#1b251e", "#26362a", "#304035", "#a3e635", "#aab7ac"],
+  ["midnight-plum", "Midnight Plum", "#15121c", "#211b2b", "#30243e", "#3b3148", "#c4a7ff", "#b9adc8"],
+  ["market-journal", "Market Journal", "#1a1411", "#271d18", "#38281d", "#49382e", "#ffb454", "#c7b3a5"],
+  ["fresh-signal", "Fresh Signal", "#0d171b", "#13242a", "#19343b", "#24444c", "#55e0d0", "#9db8ba"],
+  ["tomato", "Tomato", "#1b1315", "#281c1f", "#382327", "#493137", "#ff8977", "#c2a7a6"],
+  ["lime-focus", "Lime Focus", "#0c0f0c", "#171c16", "#222b1e", "#343e2d", "#d4ff00", "#a9b197"],
+  ["indigo-pocket", "Indigo Pocket", "#101522", "#192033", "#222d49", "#303b56", "#83a7ff", "#aab5ca"]
+];
+const groups = [
+  ["lists", "Listen", "Listen verwalten", "Alexa-Liste kopieren"],
+  ["installation", "Installation", "Mit HA verbinden", "App installieren", "App im Browser öffnen", "Home Assistant öffnen"],
+  ["design", "Design"]
+];
+const variants = [
+  ["plus", "1 · Plus / Minus", "Das Untermenü klappt direkt unter dem Gruppentitel auf. Plus und Minus ersetzen alle Pfeile. Mehrere Gruppen können geöffnet bleiben."],
+  ["word", "2 · Öffnen / Schließen", "Klare Textschaltflächen statt Symbole. Jeweils ein Untermenü ist geöffnet; die anderen Gruppen bleiben sichtbar."],
+  ["tabs", "3 · Reiter im Menü", "Die Untermenüs stehen als Reiter oben. Darunter wechselt nur der Inhalt – ohne Aufklappen und ohne zusätzliche Ebene."],
+  ["pages", "4 · Eigene Menüansicht", "Der Gruppentitel öffnet das Untermenü im selben Fenster. Eine Schaltfläche „Zurück zum Menü“ ersetzt jeden Richtungspfeil."]
+];
+const previews = [];
+variants.forEach(([kind, title, description], index) => {
+  const article = document.createElement("article");
+  article.innerHTML = `<h2>${title}</h2><div class="phone ${kind}"><div class="brandline"><img src="../custom_components/einkaufszettel/www/icon.svg" alt="">EINKAUFSZETTEL<span aria-hidden="true">•••</span></div><h3>Wocheneinkauf</h3><div class="mock-item">Milch</div><div class="mock-item">Haferflocken</div><nav class="panel" aria-label="${title}"><h4>App-Menü</h4><button class="back" hidden>Zurück zum Menü</button><div class="group-list"></div><div class="contents"></div><div class="footer"><button class="action" data-action="Supermärkte verwalten">Supermärkte verwalten</button><p class="help">Offline gespeichert auf diesem Gerät</p></div><p class="feedback" role="status"></p></nav></div><p>${description}</p>`;
+  document.querySelector(".grid").append(article);
+  const phone = article.querySelector(".phone");
+  const list = article.querySelector(".group-list");
+  const contents = article.querySelector(".contents");
+  const back = article.querySelector(".back");
+  const feedback = article.querySelector(".feedback");
+  const buttons = new Map();
+  const panels = new Map();
+  let active = kind === "pages" ? null : "lists";
+  let lastOpened = null;
+  const expanded = new Set(["lists"]);
+  if (kind === "tabs") { list.className = "tabbar"; list.setAttribute("role", "tablist"); list.setAttribute("aria-label", "Untermenüs"); }
+  for (const [key, name, ...actions] of groups) {
+    const container = document.createElement("div");
+    container.className = "menu-group";
+    const button = document.createElement("button");
+    button.className = "group-button";
+    button.id = `trigger-${index}-${key}`;
+    button.innerHTML = `${name}<span class="indicator"></span>`;
+    const panel = document.createElement("section");
+    panel.className = "submenu";
+    panel.id = `submenu-${index}-${key}`;
+    panel.setAttribute("aria-labelledby", button.id);
+    button.setAttribute("aria-controls", panel.id);
+    if (kind === "tabs") { button.setAttribute("role", "tab"); panel.setAttribute("role", "tabpanel"); }
+    panel.innerHTML = `${kind === "tabs" || kind === "pages" ? `<h5>${name}</h5>` : ""}${key === "design" ? `<p class="help">Farbschema auswählen</p><fieldset class="theme-options" aria-label="Farbschema">${themes.map(([id, label,,,,, color]) => `<label class="theme-choice"><input type="radio" name="theme-${index}" value="${id}" ${id === "mono" ? "checked" : ""}><span class="swatch" style="--swatch:${color}" aria-hidden="true"></span><span>${label}</span><span class="check" aria-hidden="true">✓</span></label>`).join("")}</fieldset>` : actions.map(action => `<button class="action" data-action="${action}">${action}</button>`).join("")}`;
+    button.addEventListener("click", () => {
+      lastOpened = key;
+      if (kind === "plus") expanded.has(key) ? expanded.delete(key) : expanded.add(key);
+      else active = kind === "word" && active === key ? null : key;
+      render();
+      if (kind === "pages") back.focus();
+    });
+    if (kind === "tabs") button.addEventListener("keydown", event => {
+      const keys = groups.map(group => group[0]);
+      if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const position = keys.indexOf(key);
+      active = keys[event.key === "Home" ? 0 : event.key === "End" ? keys.length - 1 : (position + (event.key === "ArrowRight" ? 1 : -1) + keys.length) % keys.length];
+      render();
+      buttons.get(active).focus();
+    });
+    container.append(button);
+    list.append(container);
+    (kind === "tabs" || kind === "pages" ? contents : container).append(panel);
+    buttons.set(key, button);
+    panels.set(key, panel);
+  }
+  function render() {
+    for (const [key, button] of buttons) {
+      const open = kind === "plus" ? expanded.has(key) : active === key;
+      panels.get(key).hidden = !open;
+      if (kind === "tabs") { button.setAttribute("aria-selected", String(open)); button.tabIndex = open ? 0 : -1; }
+      else button.setAttribute("aria-expanded", String(open));
+      button.querySelector(".indicator").textContent = kind === "plus" ? open ? "−" : "+" : kind === "word" ? open ? "Schließen" : "Öffnen" : kind === "pages" ? "Untermenü öffnen" : "";
+    }
+    list.hidden = kind === "pages" && active !== null;
+    back.hidden = !(kind === "pages" && active !== null);
+    article.querySelector(".footer").hidden = kind === "pages" && active !== null;
+  }
+  back.addEventListener("click", () => { active = null; render(); buttons.get(lastOpened)?.focus(); });
+  phone.addEventListener("click", event => {
+    const action = event.target.closest("[data-action]");
+    if (action) feedback.textContent = `Vorschau: „${action.dataset.action}“ – keine echte Aktion ausgeführt.`;
+  });
+  phone.addEventListener("change", event => {
+    if (!event.target.matches('input[type="radio"]')) return;
+    const theme = themes.find(([id]) => id === event.target.value);
+    ["--bg", "--surface", "--surface2", "--line", "--accent", "--muted"].forEach((property, i) => phone.style.setProperty(property, theme[i + 2]));
+    feedback.textContent = `${theme[1]} – nur für diese Vorschau.`;
+  });
+  phone.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    if (kind === "pages" && active) back.click();
+    else if (kind === "plus" || kind === "word") {
+      expanded.clear(); active = null; render(); buttons.get(lastOpened || "lists").focus();
+    }
+  });
+  previews.push({
+    design() { expanded.clear(); expanded.add("design"); active = "design"; lastOpened = "design"; render(); },
+    reset() { expanded.clear(); expanded.add("lists"); active = kind === "pages" ? null : "lists"; feedback.textContent = ""; render(); }
+  });
+  render();
+});
+document.querySelector("#compare-design").addEventListener("click", () => previews.forEach(preview => preview.design()));
+document.querySelector("#reset").addEventListener("click", () => previews.forEach(preview => preview.reset()));
+</script>
+</body>
+</html>

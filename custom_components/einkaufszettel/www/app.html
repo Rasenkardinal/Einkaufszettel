@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.3.0-alpha.11">
+    <link rel="stylesheet" href="./app.css?v=0.3.0-alpha.12">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -36,17 +36,37 @@
             <h2>App-Menü</h2>
             <details id="menu-installation" class="setup-section">
               <summary>Installation</summary>
-              <button id="connect">Mit HA verbinden</button>
-              <button id="install">App installieren</button>
-              <a id="open-app-browser" href="#" target="_blank" rel="noopener" hidden>App in eigenem Browserfenster öffnen / installieren</a>
-              <a id="open-homeassistant" href="/">Home Assistant öffnen</a>
+              <div class="setup-submenu">
+                <button id="connect">Mit HA verbinden</button>
+                <button id="install">App installieren</button>
+                <a id="open-app-browser" href="#" target="_blank" rel="noopener" hidden>App in eigenem Browserfenster öffnen / installieren</a>
+                <a id="open-homeassistant" href="/">Home Assistant öffnen</a>
+              </div>
             </details>
-            <button id="menu-design" type="button" aria-haspopup="dialog" aria-controls="design-dialog">Design <span class="current-design"><span class="design-swatch" aria-hidden="true"></span><span id="design-name">Mono</span></span><span aria-hidden="true">›</span></button>
+            <details id="menu-design" class="setup-section">
+              <summary>Design <span class="current-design"><span class="design-swatch" aria-hidden="true"></span><span id="design-name">Mono</span></span></summary>
+              <div class="setup-submenu">
+                <p id="design-help">Farbschema auswählen</p>
+                <fieldset id="design-options" aria-label="Farbschema">
+                  <label class="design-row"><input type="radio" name="design" value="mono" checked><span class="design-swatch" style="--swatch:#f5f5f5" aria-hidden="true"></span><span>Mono</span><span class="design-check" aria-hidden="true">✓</span></label>
+                  <label class="design-row"><input type="radio" name="design" value="botanical"><span class="design-swatch" style="--swatch:#a3e635" aria-hidden="true"></span><span>Botanical</span><span class="design-check" aria-hidden="true">✓</span></label>
+                  <label class="design-row"><input type="radio" name="design" value="midnight-plum"><span class="design-swatch" style="--swatch:#c4a7ff" aria-hidden="true"></span><span>Midnight Plum</span><span class="design-check" aria-hidden="true">✓</span></label>
+                  <label class="design-row"><input type="radio" name="design" value="market-journal"><span class="design-swatch" style="--swatch:#ffb454" aria-hidden="true"></span><span>Market Journal</span><span class="design-check" aria-hidden="true">✓</span></label>
+                  <label class="design-row"><input type="radio" name="design" value="fresh-signal"><span class="design-swatch" style="--swatch:#55e0d0" aria-hidden="true"></span><span>Fresh Signal</span><span class="design-check" aria-hidden="true">✓</span></label>
+                  <label class="design-row"><input type="radio" name="design" value="tomato"><span class="design-swatch" style="--swatch:#ff8977" aria-hidden="true"></span><span>Tomato</span><span class="design-check" aria-hidden="true">✓</span></label>
+                  <label class="design-row"><input type="radio" name="design" value="lime-focus"><span class="design-swatch" style="--swatch:#d4ff00" aria-hidden="true"></span><span>Lime Focus</span><span class="design-check" aria-hidden="true">✓</span></label>
+                  <label class="design-row"><input type="radio" name="design" value="indigo-pocket"><span class="design-swatch" style="--swatch:#83a7ff" aria-hidden="true"></span><span>Indigo Pocket</span><span class="design-check" aria-hidden="true">✓</span></label>
+                </fieldset>
+                <p id="design-message" role="status"></p>
+              </div>
+            </details>
             <details id="menu-lists" class="setup-section">
               <summary>Listenverwaltung</summary>
-              <button id="manage-lists">Listen verwalten</button>
-              <button id="copy-source">Alexa-Liste kopieren</button>
-              <p>HA-Listen auswählen, App-Namen vergeben und die Übernahme aus der Quellliste anstoßen.</p>
+              <div class="setup-submenu">
+                <button id="manage-lists">Listen verwalten</button>
+                <button id="copy-source">Alexa-Liste kopieren</button>
+                <p>HA-Listen auswählen, App-Namen vergeben und die Übernahme aus der Quellliste anstoßen.</p>
+              </div>
             </details>
             <button id="manage-supermarkets">Supermärkte verwalten</button>
             <p>Offline gespeichert auf diesem Gerät</p>
@@ -85,24 +105,6 @@
       <p id="empty" class="empty" hidden>Noch nichts auf der Liste.</p>
 
     </main>
-    <dialog id="design-dialog" aria-labelledby="design-title" aria-describedby="design-help">
-      <div class="design-heading">
-        <h2 id="design-title">Design</h2>
-        <form method="dialog"><button class="secondary" aria-label="Designauswahl schließen">×</button></form>
-      </div>
-      <p id="design-help">Farbschema auswählen</p>
-      <fieldset id="design-options" aria-label="Farbschema">
-        <label class="design-row"><input type="radio" name="design" value="mono" checked><span class="design-swatch" style="--swatch:#f5f5f5" aria-hidden="true"></span><span>Mono</span><span class="design-check" aria-hidden="true">✓</span></label>
-        <label class="design-row"><input type="radio" name="design" value="botanical"><span class="design-swatch" style="--swatch:#a3e635" aria-hidden="true"></span><span>Botanical</span><span class="design-check" aria-hidden="true">✓</span></label>
-        <label class="design-row"><input type="radio" name="design" value="midnight-plum"><span class="design-swatch" style="--swatch:#c4a7ff" aria-hidden="true"></span><span>Midnight Plum</span><span class="design-check" aria-hidden="true">✓</span></label>
-        <label class="design-row"><input type="radio" name="design" value="market-journal"><span class="design-swatch" style="--swatch:#ffb454" aria-hidden="true"></span><span>Market Journal</span><span class="design-check" aria-hidden="true">✓</span></label>
-        <label class="design-row"><input type="radio" name="design" value="fresh-signal"><span class="design-swatch" style="--swatch:#55e0d0" aria-hidden="true"></span><span>Fresh Signal</span><span class="design-check" aria-hidden="true">✓</span></label>
-        <label class="design-row"><input type="radio" name="design" value="tomato"><span class="design-swatch" style="--swatch:#ff8977" aria-hidden="true"></span><span>Tomato</span><span class="design-check" aria-hidden="true">✓</span></label>
-        <label class="design-row"><input type="radio" name="design" value="lime-focus"><span class="design-swatch" style="--swatch:#d4ff00" aria-hidden="true"></span><span>Lime Focus</span><span class="design-check" aria-hidden="true">✓</span></label>
-        <label class="design-row"><input type="radio" name="design" value="indigo-pocket"><span class="design-swatch" style="--swatch:#83a7ff" aria-hidden="true"></span><span>Indigo Pocket</span><span class="design-check" aria-hidden="true">✓</span></label>
-      </fieldset>
-      <p id="design-message" role="status"></p>
-    </dialog>
     <dialog id="supermarket-management" aria-labelledby="supermarket-management-title">
       <h2 id="supermarket-management-title">Supermärkte verwalten</h2>
       <p class="management-help">Gemeinsame Märkte und Filialen für alle Nutzer. Änderungen benötigen eine Verbindung und HA-Administratorrechte. Marktstruktur und Sortierung folgen später.</p>
@@ -142,6 +144,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.3.0-alpha.11" defer></script>
+    <script src="./app.js?v=0.3.0-alpha.12" defer></script>
   </body>
 </html>

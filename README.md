@@ -58,10 +58,10 @@ Unter **Einstellungen → Geräte & Dienste → Einkaufszettel → Entitäten** 
 
 ## Offline-Web-App verwenden
 
-Das Dreipunkte-App-Menü ist in aufklappbare Bereiche gegliedert:
+Das Dreipunkte-App-Menü ist in direkt aufklappbare Untermenüs mit Plus/Minus statt Pfeilen gegliedert. Mehrere Bereiche können gleichzeitig geöffnet bleiben. Escape schließt zunächst den fokussierten Bereich und danach das App-Menü:
 
 - **Installation:** HA-Anmeldung, App-Installation sowie Browser-/HA-Links zum Öffnen und Testen.
-- **Design:** Öffnet einen kompakten, zentrierten Auswahldialog. Die acht dunklen Farbschemata sind erst dort sichtbar: **Botanical**, **Midnight Plum**, **Market Journal**, **Fresh Signal**, **Mono** (Standard), **Tomato**, **Lime Focus** und **Indigo Pocket**. Farbpunkte zeigen die Akzentfarben; Rahmen und Häkchen markieren die aktive Auswahl. Änderungen sind sofort sichtbar und werden auf diesem Gerät auch offline für alle Listen gespeichert. Schließen über × oder Escape führt zurück ins Menü. Schrift und Aufbau bleiben gleich.
+- **Design:** Klappt die Farbauswahl direkt im Menü auf, ohne Flyout oder zusätzlichen Dialog. Die acht dunklen Farbschemata sind erst nach dem Aufklappen sichtbar: **Botanical**, **Midnight Plum**, **Market Journal**, **Fresh Signal**, **Mono** (Standard), **Tomato**, **Lime Focus** und **Indigo Pocket**. Farbpunkte zeigen die Akzentfarben; Rahmen und Häkchen markieren die aktive Auswahl. Änderungen sind sofort sichtbar und werden auf diesem Gerät auch offline für alle Listen gespeichert. Die Auswahl lässt das Untermenü geöffnet. Schrift und Aufbau bleiben gleich.
 - **Listenverwaltung:** **Listen verwalten** (Quellen, App-Namen und Sichtbarkeit) und **Alexa-Liste kopieren**. Der bisherige manuelle Kopiermechanismus bleibt unverändert; automatische oder bidirektionale Alexa-Synchronisation ist damit nicht eingeführt.
 - **Supermärkte verwalten:** Gemeinsame Supermärkte/Filialen anlegen, umbenennen und nach Bestätigung löschen. Änderungen erfordern HA-Administratorrechte und eine Online-Verbindung; Listen werden dadurch nicht verändert. Die Daten liegen getrennt unter `.storage/einkaufszettel.supermarkets` und werden beim Verbinden bzw. Öffnen der Verwaltung neu geladen.
 
