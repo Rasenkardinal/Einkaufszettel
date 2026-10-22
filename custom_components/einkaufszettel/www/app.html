@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.6">
+    <link rel="stylesheet" href="./app.css?v=0.4.7">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -21,6 +21,9 @@
             <div class="list-title">
               <h1><button id="list-select" type="button" aria-label="Einkaufsliste auswählen" aria-expanded="false" aria-controls="list-flyout" disabled><span id="list-name">Liste auswählen</span><span class="list-arrow" aria-hidden="true"></span></button></h1>
               <div id="list-flyout" aria-label="Einkaufsliste auswählen" hidden></div>
+              <button id="mode-toggle" class="mode-button" type="button" aria-label="Einkaufen – aktuell Planungsmodus" title="Planungsmodus · Einkaufen">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h2l3 12h11l2-8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>
+              </button>
               <div class="sync-actions">
                 <button id="sync" class="sync-icon" type="button" aria-label="Jetzt synchronisieren" title="Jetzt synchronisieren">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(24 0) scale(-1 1)"><path d="M11 4a8 8 0 1 0 8 8v-4"/><path d="m15 12 4-4 4 4"/></g></svg>
@@ -177,6 +180,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.6" defer></script>
+    <script src="./app.js?v=0.4.7" defer></script>
   </body>
 </html>

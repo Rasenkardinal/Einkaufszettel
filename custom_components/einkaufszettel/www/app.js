@@ -7,6 +7,7 @@ const DESIGN_KEY = "einkaufszettel.design";
 const MARKETS_KEY = "einkaufszettel.supermarkets";
 const MARKET_SELECTION_PREFIX = "einkaufszettel.supermarket.";
 const CATALOG_KEY = "einkaufszettel.catalog";
+const MODE_KEY = "einkaufszettel.mode";
 
 const elements = {
   setup: document.querySelector("#setup"),
@@ -29,6 +30,7 @@ const elements = {
   managementMessage: document.querySelector("#management-message"),
   sourceLists: document.querySelector("#source-lists"),
   addForm: document.querySelector("#add-form"),
+  modeToggle: document.querySelector("#mode-toggle"),
   newItem: document.querySelector("#new-item"),
   items: document.querySelector("#items"),
   empty: document.querySelector("#empty"),
@@ -99,37 +101,51 @@ let deletedUids = new Set();
 let pendingOperations = [];
 let busy = false;
 let longPressTouchPointerId = null;
-let releasedLongPressTouchPointerId = null;
+let suppressLongPressClick = false;
 
 document.addEventListener("pointerdown", event => {
   if (longPressTouchPointerId !== null) {
-    if (event.pointerId !== longPressTouchPointerId) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
     return;
   }
-  releasedLongPressTouchPointerId = null;
+  suppressLongPressClick = false;
 }, true);
 
-window.addEventListener("pointerup", event => {
-  if (event.pointerId !== longPressTouchPointerId) return;
-  releasedLongPressTouchPointerId = longPressTouchPointerId;
-  longPressTouchPointerId = null;
-}, true);
-
-window.addEventListener("pointercancel", event => {
-  if (event.pointerId !== longPressTouchPointerId) return;
-  longPressTouchPointerId = null;
-  releasedLongPressTouchPointerId = null;
-}, true);
-
-document.addEventListener("click", event => {
-  if (event.pointerId !== releasedLongPressTouchPointerId) return;
-  releasedLongPressTouchPointerId = null;
+document.addEventListener("pointermove", event => {
+  if (longPressTouchPointerId === null) return;
   event.preventDefault();
   event.stopImmediatePropagation();
 }, true);
+
+document.addEventListener("pointerup", event => {
+  if (longPressTouchPointerId === null) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (event.pointerId !== longPressTouchPointerId) return;
+  longPressTouchPointerId = null;
+  suppressLongPressClick = true;
+}, true);
+
+document.addEventListener("pointercancel", event => {
+  if (event.pointerId !== longPressTouchPointerId) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  longPressTouchPointerId = null;
+  suppressLongPressClick = false;
+}, true);
+
+document.addEventListener("click", event => {
+  if (event.detail === 0 || (longPressTouchPointerId === null && !suppressLongPressClick)) return;
+  suppressLongPressClick = false;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, true);
+
+window.addEventListener("blur", () => {
+  longPressTouchPointerId = null;
+  suppressLongPressClick = false;
+});
 let syncPromise;
 let syncRequested = false;
 let fullSyncRequested = false;
@@ -142,6 +158,7 @@ let editingCategory;
 let editingTrigger;
 let supermarkets = [];
 let selectedMarket = "";
+let planningMode = true;
 let managingSupermarkets = false;
 let categories = [];
 let products = [];
@@ -782,6 +799,41 @@ window.addEventListener("beforeunload", event => {
   if (catalogDirty || managingSupermarkets) { event.preventDefault(); event.returnValue = ""; }
 });
 
+function updateModeView() {
+  elements.addForm.hidden = !planningMode;
+  const action = planningMode ? "Einkaufen" : "Weiter planen";
+  const mode = planningMode ? "Planungsmodus" : "Einkaufsmodus";
+  elements.modeToggle.setAttribute("aria-label", `${action} – aktuell ${mode}`);
+  elements.modeToggle.title = `${mode} · ${action}`;
+  elements.modeToggle.querySelector("svg").innerHTML = planningMode
+    ? '<path d="M3 3h2l3 12h11l2-8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/>'
+    : '<path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/>';
+}
+
+function initializeMode() {
+  try {
+    const mode = localStorage.getItem(MODE_KEY) || "planning";
+    if (!["planning", "shopping"].includes(mode)) {
+      throw new Error("Der gespeicherte Ansichtsmodus ist unbekannt. Bitte wähle den Modus erneut.");
+    }
+    planningMode = mode === "planning";
+  } catch (error) {
+    showError(error);
+  }
+  updateModeView();
+}
+
+elements.modeToggle.addEventListener("click", () => {
+  planningMode = !planningMode;
+  updateModeView();
+  render();
+  try {
+    localStorage.setItem(MODE_KEY, planningMode ? "planning" : "shopping");
+  } catch (error) {
+    showError(new Error(`Der Ansichtsmodus konnte nicht auf diesem Gerät gespeichert werden: ${error.message}`));
+  }
+});
+
 function applyDesign(theme) {
   document.body.dataset.theme = theme;
   for (const option of elements.designOptions.querySelectorAll("input")) {
@@ -1021,7 +1073,11 @@ function render() {
     return nameOrder.compare(a.name, b.name);
   });
   const groupLists = new Map();
-  for (const category of [...sortedCategories, { id: "", name: "Ohne Kategorie" }]) {
+  const uncategorized = { id: "", name: "Ohne Kategorie" };
+  const displayCategories = planningMode
+    ? [uncategorized, ...sortedCategories]
+    : [...sortedCategories, uncategorized];
+  for (const category of displayCategories) {
     const matches = currentItems.filter(item => {
       const id = item.metadata?.category_id;
       return category.id ? id === category.id : !categories.some(c => c.id === id);
@@ -2339,6 +2395,7 @@ elements.install.addEventListener("click", async () => {
 });
 
 async function start() {
+  initializeMode();
   window.setInterval(() => {
     if (authenticated && !busy && document.visibilityState === "visible") {
       synchronize().catch(showError);

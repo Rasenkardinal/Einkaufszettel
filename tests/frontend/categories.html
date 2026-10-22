@@ -45,7 +45,7 @@ async function runTests() {
     ];
     selectedMarket = "m";
     render();
-    return { openCatalog, render, saveCatalog, refreshSupermarkets, loadCachedSupermarkets,
+    return { openCatalog, render, saveCatalog, refreshSupermarkets, loadCachedSupermarkets, initializeMode,
       state: () => ({categories, supermarkets, products, currentItems, selectedMarket, catalogDraft, catalogDirty}),
       withoutMarket: () => { selectedMarket = ""; render(); },
       reset: () => { categories = test.state.categories; supermarkets = test.state.supermarkets; },
@@ -66,6 +66,38 @@ async function runTests() {
   const results = [];
   function test(name, action) { action(); results.push(`PASS ${name}`); }
   const headingNames = () => [...doc.querySelectorAll(".item-category-title")].map(h => h.firstChild.textContent);
+  api.initializeMode();
+  const modeToggle = doc.querySelector("#mode-toggle");
+  test("Planning is the default and keeps uncategorized articles at the top", () => {
+    assert(!doc.querySelector("#add-form").hidden, "Planning input missing");
+    assert(headingNames().join("|") === "Ohne Kategorie|Zwiebeln|Backwaren", "Planning order incorrect");
+    assert(modeToggle.getAttribute("aria-label").includes("Einkaufen"), "Shopping action missing");
+  });
+  const originalItems = JSON.stringify(api.state().currentItems);
+  modeToggle.click();
+  test("Shopping hides the input, restores market order and saves only a local preference", () => {
+    assert(doc.querySelector("#add-form").hidden, "Shopping input still visible");
+    assert(headingNames().join("|") === "Zwiebeln|Backwaren|Ohne Kategorie", "Shopping order incorrect");
+    assert(storage.get("einkaufszettel.mode") === "shopping", "Mode not persisted");
+    assert(modeToggle.getAttribute("aria-label").includes("Weiter planen"), "Planning action missing");
+    assert(JSON.stringify(api.state().currentItems) === originalItems && !operations.length && !messages.length, "Mode changed shopping data or sent a command");
+  });
+  modeToggle.click();
+  api.initializeMode();
+  api.render();
+  test("Planning selection survives reinitialization without losing a typed draft", () => {
+    const input = doc.querySelector("#new-item");
+    input.value = "Neue Milch";
+    modeToggle.click();
+    api.initializeMode();
+    api.render();
+    assert(doc.querySelector("#add-form").hidden, "Saved shopping mode not restored");
+    modeToggle.click();
+    assert(input.value === "Neue Milch", "Mode switching lost the input draft");
+    assert(headingNames()[0] === "Ohne Kategorie", "Planning order not restored");
+    input.value = "";
+  });
+  modeToggle.click();
   test("Shopping list follows market order; missing categories appear last", () => {
     assert(headingNames().join("|") === "Zwiebeln|Backwaren|Ohne Kategorie", "Wrong grouping");
     assert(doc.querySelectorAll(".item-note").length === 1, "Optional notes missing");
@@ -95,8 +127,11 @@ async function runTests() {
     assert(Math.abs(actions.getBoundingClientRect().right - title.getBoundingClientRect().right) < 1, "Sync controls are not right-aligned with the list title");
     const syncArrow = doc.querySelector(".sync-details-arrow");
     const syncToggle = doc.querySelector("#sync-details-toggle");
-    assert(win.getComputedStyle(syncArrow).right === "0px", "Sync flyout arrow is not flush with the right edge");
-    assert(Math.abs(syncArrow.getBoundingClientRect().right - syncToggle.getBoundingClientRect().right) < 1, "Sync flyout arrow is not right-aligned in its button");
+    assert(Math.abs(syncArrow.getBoundingClientRect().left - syncToggle.getBoundingClientRect().left) < 1, "Sync flyout arrow is not close to the circle");
+    assert(syncArrow.getBoundingClientRect().left - doc.querySelector("#sync svg").getBoundingClientRect().right <= 7, "Gap beside sync circle too large");
+    const app = doc.querySelector("main.app");
+    assert(Math.abs(actions.getBoundingClientRect().right - (app.getBoundingClientRect().right - parseFloat(win.getComputedStyle(app).paddingRight))) < 1, "Controls are not at the right content edge");
+    assert(modeToggle.getBoundingClientRect().right <= actions.getBoundingClientRect().left, "Mode and sync overlap");
     assert(syncStyles.includes("animation: sync-spin-clockwise 1.1s linear infinite"), "Sync animation direction is not clockwise");
     assert(/@keyframes sync-spin-clockwise\s*\{\s*to\s*\{\s*transform:\s*rotate\(360deg\)/.test(syncStyles), "Sync animation does not rotate clockwise");
     assert(!doc.querySelector(".sync-card"), "Variable-height sync card remains in the page flow");
@@ -215,24 +250,37 @@ async function runTests() {
   editDialog.close();
   itemPointer("pointerdown");
   await pause(550);
+  const releaseTarget = doc.querySelector("#edit-category-trigger");
   const cancelEdit = doc.querySelector("#cancel-edit");
   let releaseClickHandled = false;
-  cancelEdit.addEventListener("click", () => { releaseClickHandled = true; });
+  let releasePointerUpHandled = false;
+  let releasePointerMoveHandled = false;
+  releaseTarget.addEventListener("click", () => { releaseClickHandled = true; });
+  releaseTarget.addEventListener("pointerup", () => { releasePointerUpHandled = true; });
+  releaseTarget.addEventListener("pointermove", () => { releasePointerMoveHandled = true; });
   const prematureTouch = new win.PointerEvent("pointerdown", {
     pointerId:82, pointerType:"touch", isPrimary:false, button:0, bubbles:true, cancelable:true,
   });
-  cancelEdit.dispatchEvent(prematureTouch);
+  releaseTarget.dispatchEvent(prematureTouch);
   assert(prematureTouch.defaultPrevented, "A second touch was accepted before the long-press finger was released");
-  cancelEdit.dispatchEvent(new win.PointerEvent("pointerup", {
-    pointerId:81, pointerType:"touch", isPrimary:true, button:0, bubbles:true,
-  }));
-  const releaseClick = new win.PointerEvent("click", {
-    pointerId:81, pointerType:"touch", isPrimary:true, button:0, detail:1, bubbles:true, cancelable:true,
+  const releasePointerMove = new win.PointerEvent("pointermove", {
+    pointerId:81, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,
   });
-  cancelEdit.dispatchEvent(releaseClick);
+  releaseTarget.dispatchEvent(releasePointerMove);
+  const releasePointerUp = new win.PointerEvent("pointerup", {
+    pointerId:81, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,
+  });
+  releaseTarget.dispatchEvent(releasePointerUp);
+  const releaseClick = new win.PointerEvent("click", {
+    pointerId:-1, pointerType:"mouse", isPrimary:true, button:0, detail:1, bubbles:true, cancelable:true,
+  });
+  releaseTarget.dispatchEvent(releaseClick);
   test("Touch release after long press cannot activate the newly opened dialog", () => {
     assert(editDialog.open, "Release click closed the article dialog");
+    assert(releasePointerMove.defaultPrevented && !releasePointerMoveHandled, "Pointer movement reached a dialog control");
+    assert(releasePointerUp.defaultPrevented && !releasePointerUpHandled, "Release pointerup reached the dialog");
     assert(releaseClick.defaultPrevented && !releaseClickHandled, "Release click was not suppressed");
+    assert(doc.querySelector("#edit-category-flyout").hidden, "Release opened the category flyout");
   });
   const nextTouch = new win.PointerEvent("pointerdown", {
     pointerId:83, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,
@@ -244,9 +292,13 @@ async function runTests() {
   cancelEdit.dispatchEvent(new win.PointerEvent("pointerup", {
     pointerId:83, pointerType:"touch", isPrimary:true, button:0, bubbles:true,
   }));
-  cancelEdit.dispatchEvent(new win.PointerEvent("click", {
-    pointerId:83, pointerType:"touch", isPrimary:true, button:0, detail:1, bubbles:true, cancelable:true,
-  }));
+  let nextTouchClickHandled = false;
+  cancelEdit.addEventListener("click", () => { nextTouchClickHandled = true; }, {once:true});
+  const nextTouchClick = new win.PointerEvent("click", {
+    pointerId:-1, pointerType:"mouse", isPrimary:true, button:0, detail:1, bubbles:true, cancelable:true,
+  });
+  cancelEdit.dispatchEvent(nextTouchClick);
+  assert(!nextTouchClick.defaultPrevented && nextTouchClickHandled, "Next touch click was suppressed");
   itemLabel.click();
   test("Keyboard and assistive activation still open article details", () => {
     assert(editDialog.open, "Accessible activation failed");
@@ -380,12 +432,31 @@ async function runTests() {
   assert(operations.at(-1).description === "Geschnitten", "Notes not enqueued");
   results.push("PASS Item category, quantity and notes use existing offline operation queue");
   assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, "Mobile horizontal overflow");
-  frame.style.width = "320px";
-  await pause(50);
-  assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, "320px horizontal overflow");
-  assert(doc.querySelector(".sync-actions").getBoundingClientRect().right <= doc.documentElement.clientWidth, "Sync controls overflow at 320px");
+  const listName = doc.querySelector("#list-name");
+  const originalName = listName.textContent;
+  listName.textContent = "Wocheneinkauf für die ganze Familie";
+  for (const width of [320, 390, 700]) {
+    frame.style.width = `${width}px`;
+    await pause(50);
+    for (let mode = 0; mode < 2; mode++) {
+      modeToggle.click();
+      const rect = selector => doc.querySelector(selector).getBoundingClientRect();
+      const app = doc.querySelector("main.app");
+      const edge = app.getBoundingClientRect().right - parseFloat(win.getComputedStyle(app).paddingRight);
+      assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, `${width}px horizontal overflow`);
+      assert(Math.abs(rect(".sync-actions").right - edge) < 1, `${width}px sync not at content edge`);
+      assert(rect(".list-title h1").right <= rect("#mode-toggle").left, `${width}px title overlaps mode`);
+      assert(rect("#mode-toggle").right <= rect(".sync-actions").left, `${width}px mode overlaps sync`);
+      assert(rect("#mode-toggle").width === 44 && rect("#mode-toggle").height === 44, "Mode touch target too small");
+      const before = doc.querySelector("#items").getBoundingClientRect().top;
+      doc.querySelector("#sync-details-toggle").click();
+      assert(doc.querySelector("#items").getBoundingClientRect().top === before, "Sync flyout shifted the list");
+      doc.querySelector("#sync-details-toggle").click();
+    }
+  }
+  listName.textContent = originalName;
   frame.style.width = "390px";
-  results.push("PASS No horizontal overflow at 320px or 390px");
+  results.push("PASS Both modes keep long names and right-aligned controls separate at 320/390/700px");
   // Step the animation clock explicitly, including in headless virtual-time runs.
   const requestFrame = win.requestAnimationFrame, cancelFrame = win.cancelAnimationFrame;
   const frames = new Map();
