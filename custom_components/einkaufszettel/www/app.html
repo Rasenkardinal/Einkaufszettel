@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.10">
+    <link rel="stylesheet" href="./app.css?v=0.4.12">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -114,12 +114,28 @@
           <span id="market-name">Ohne Markt</span>
           <span class="market-arrow" aria-hidden="true"></span>
           </button>
+          <button id="market-bonus-card" class="market-bonus-card-button" type="button" aria-label="Bonuskarte anzeigen" title="Bonuskarte anzeigen" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM19 14h2v2h-2zM19 19h2v2h-2zM17 19v2h-3v-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          </button>
           <div id="market-flyout" aria-label="Supermarkt auswählen" hidden></div>
         </div>
       </div>
       <p id="message" class="message" role="status"></p>
       <button id="resolve-sync-conflicts" class="secondary" type="button" hidden>Sync-Konflikte auflösen</button>
       <ul id="items" class="items"></ul>
+      <template id="end-shopping-action-template">
+        <li class="end-shopping-item">
+          <button class="end-shopping-action" type="button" aria-label="Einkauf beenden" aria-description="Zum Beenden des Einkaufs lange drücken oder mit der Tastatur bestätigen.">
+            <span class="end-shopping-sequence" aria-hidden="true">
+              <svg class="end-shopping-cart-filled" viewBox="0 0 24 24"><path fill="currentColor" d="M2 3h2.7l2.2 11.1a2 2 0 0 0 2 1.6h9.2a2 2 0 0 0 1.9-1.4L22 7H6.1l-.5-2.5A2 2 0 0 0 3.7 3H2zm6.2 14.2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm9.2 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>
+              <svg class="end-shopping-arrow" viewBox="0 0 28 18"><path d="M1 9h22M16 2l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg class="end-shopping-cart-empty" viewBox="0 0 24 24"><path d="M2 3h2.7l2.2 11.1a2 2 0 0 0 2 1.6h9.2a2 2 0 0 0 1.9-1.4L22 7H6.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8.2" cy="19.2" r="1.5"/><circle cx="17.4" cy="19.2" r="1.5"/></svg>
+            </span>
+            <span class="end-shopping-label">Einkauf beenden</span>
+            <span class="end-shopping-tail" aria-hidden="true"></span>
+          </button>
+        </li>
+      </template>
       <p id="empty" class="empty" hidden>Diese App-Liste ist leer. Wähle oben ggf. eine andere Liste oder füge einen Artikel hinzu.</p>
 
     </main>
@@ -183,6 +199,36 @@
         </div>
       </form>
     </dialog>
+    <dialog id="end-shopping-confirm" aria-labelledby="end-shopping-confirm-title" aria-describedby="end-shopping-confirm-description">
+      <form method="dialog">
+        <h2 id="end-shopping-confirm-title">Einkauf beenden?</h2>
+        <p id="end-shopping-confirm-description">Dies löscht alle abgehakten Artikel aus der Liste!</p>
+        <div class="dialog-actions">
+          <button id="cancel-end-shopping" class="secondary" value="cancel" autofocus>Abbrechen</button>
+          <button id="end-shopping-confirm-button" class="primary" value="confirm">OK</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="cashier-reminder" aria-labelledby="cashier-reminder-title" aria-describedby="cashier-reminder-description">
+      <form method="dialog">
+        <h2 id="cashier-reminder-title">Pfandbon nicht vergessen!</h2>
+        <p id="cashier-reminder-description">Denk vor dem Bezahlen an deinen Pfandbon.</p>
+        <figure id="cashier-bonus-card" class="cashier-bonus-card" hidden>
+          <figcaption>Bonuskarte / APP-Code</figcaption>
+          <img id="cashier-bonus-card-image" alt="">
+        </figure>
+        <div class="dialog-actions">
+          <button id="cashier-reminder-ok" class="primary" value="continue" autofocus>OK</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="bonus-card-dialog" aria-labelledby="bonus-card-dialog-title">
+      <form method="dialog">
+        <h2 id="bonus-card-dialog-title">Bonuskarte / APP-Code</h2>
+        <img id="bonus-card-dialog-image" class="bonus-card-viewer-image" alt="">
+        <div class="dialog-actions"><button class="secondary" value="close" autofocus>Schließen</button></div>
+      </form>
+    </dialog>
     <dialog id="install-help">
       <form method="dialog">
         <h2>Zum Startbildschirm hinzufügen</h2>
@@ -190,6 +236,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.10" defer></script>
+    <script src="./app.js?v=0.4.12" defer></script>
   </body>
 </html>

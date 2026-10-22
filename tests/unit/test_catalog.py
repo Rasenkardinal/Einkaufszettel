@@ -84,6 +84,62 @@ def test_market_order_accepts_uncategorized_position():
     assert result["supermarkets"][0]["category_ids"] == ["fruit", "", "bread"]
 
 
+def test_market_bonus_card_is_saved_and_removed_without_affecting_other_markets():
+    old = sample()
+    old["supermarkets"].append({"id": "other", "name": "Anderer Markt"})
+    image = "data:image/png;base64," + "AA=="
+    result = catalog.change_catalog(
+        old,
+        "save_market_bonus_card",
+        {"market_id": "shop", "bonus_card": image},
+    )
+    assert result["supermarkets"][0]["bonus_card"] == image
+    assert "bonus_card" not in result["supermarkets"][1]
+    removed = catalog.change_catalog(
+        result,
+        "save_market_bonus_card",
+        {"market_id": "shop", "bonus_card": ""},
+    )
+    assert "bonus_card" not in removed["supermarkets"][0]
+    assert "bonus_card" not in old["supermarkets"][0]
+
+
+@pytest.mark.parametrize(
+    "image",
+    [
+        "data:image/svg+xml;base64,PHN2Zy8+",
+        "data:image/png;base64,not-base64",
+        "data:image/jpeg;base64,",
+    ],
+)
+def test_market_bonus_card_rejects_invalid_images(image):
+    with pytest.raises(ValueError, match="Bonuskartenbild"):
+        catalog.change_catalog(
+            sample(),
+            "save_market_bonus_card",
+            {"market_id": "shop", "bonus_card": image},
+        )
+
+
+def test_market_bonus_card_rejects_oversized_images():
+    image = "data:image/webp;base64," + (
+        "AAAA" * (catalog.MAX_BONUS_CARD_BYTES // 3 + 1)
+    )
+    with pytest.raises(ValueError, match="Bonuskartenbild"):
+        catalog.change_catalog(
+            sample(),
+            "save_market_bonus_card",
+            {"market_id": "shop", "bonus_card": image},
+        )
+
+
+def test_catalog_validation_rejects_invalid_persisted_bonus_card():
+    data = sample()
+    data["supermarkets"][0]["bonus_card"] = "data:image/png;base64,invalid"
+    with pytest.raises(ValueError, match="Bonuskartenbild"):
+        catalog.validate_catalog(data)
+
+
 @pytest.mark.parametrize("ids", [["missing"], ["fruit", "fruit"], ["", ""], [None]])
 def test_invalid_orders_do_not_modify_input(ids):
     old = sample()

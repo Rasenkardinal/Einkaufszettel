@@ -12,6 +12,9 @@ const MODE_KEY = "einkaufszettel.mode";
 const elements = {
   setup: document.querySelector("#setup"),
   marketSelect: document.querySelector("#market-select"),
+  marketBonusCard: document.querySelector("#market-bonus-card"),
+  bonusCardDialog: document.querySelector("#bonus-card-dialog"),
+  bonusCardDialogImage: document.querySelector("#bonus-card-dialog-image"),
   marketFlyout: document.querySelector("#market-flyout"),
   marketName: document.querySelector("#market-name"),
   manageSupermarkets: document.querySelector("#manage-supermarkets"),
@@ -33,6 +36,14 @@ const elements = {
   modeToggle: document.querySelector("#mode-toggle"),
   newItem: document.querySelector("#new-item"),
   items: document.querySelector("#items"),
+  endShoppingTemplate: document.querySelector("#end-shopping-action-template"),
+  cashierReminder: document.querySelector("#cashier-reminder"),
+  cashierReminderOk: document.querySelector("#cashier-reminder-ok"),
+  cashierBonusCard: document.querySelector("#cashier-bonus-card"),
+  cashierBonusCardImage: document.querySelector("#cashier-bonus-card-image"),
+  endShoppingDialog: document.querySelector("#end-shopping-confirm"),
+  endShoppingCancel: document.querySelector("#cancel-end-shopping"),
+  endShoppingConfirm: document.querySelector("#end-shopping-confirm-button"),
   empty: document.querySelector("#empty"),
   message: document.querySelector("#message"),
   resolveSyncConflicts: document.querySelector("#resolve-sync-conflicts"),
@@ -72,6 +83,8 @@ const elements = {
   openHomeassistant: document.querySelector("#open-homeassistant"),
   openAppBrowser: document.querySelector("#open-app-browser"),
 };
+const MAX_BONUS_CARD_BYTES = 512 * 1024;
+const MAX_BONUS_CARD_INPUT_BYTES = 12 * 1024 * 1024;
 
 const queryEntryId = new URLSearchParams(location.search).get("entry_id");
 let entryId = queryEntryId;
@@ -103,12 +116,20 @@ let busy = false;
 let longPressTouchPointerId = null;
 let suppressLongPressClick = false;
 let touchGateTimer;
+let longPressTouchDialog = null;
 
 function releaseLongPressTouchGate(restoreFocus = true) {
   window.clearTimeout(touchGateTimer);
-  elements.editItem.inert = false;
-  elements.editItem.classList.remove("touch-gated");
-  if (restoreFocus && elements.editItem.open) elements.editItemTitle.focus({ preventScroll: true });
+  const dialog = longPressTouchDialog;
+  longPressTouchDialog = null;
+  if (!dialog) return;
+  dialog.inert = false;
+  dialog.classList.remove("touch-gated");
+  if (!restoreFocus || !dialog.open) return;
+  (dialog === elements.editItem ? elements.editItemTitle
+    : dialog === elements.cashierReminder ? elements.cashierReminderOk
+      : elements.endShoppingCancel)
+    .focus({ preventScroll: true });
 }
 
 document.addEventListener("pointerdown", event => {
@@ -117,7 +138,7 @@ document.addEventListener("pointerdown", event => {
     event.stopImmediatePropagation();
     return;
   }
-  if (elements.editItem.inert) releaseLongPressTouchGate();
+  if (longPressTouchDialog?.inert) releaseLongPressTouchGate();
   suppressLongPressClick = false;
 }, true);
 
@@ -185,6 +206,11 @@ function validateSupermarkets(value) {
   if (!Array.isArray(value) || value.some(market =>
     !market || typeof market.id !== "string" || !market.id ||
     typeof market.name !== "string" || !market.name.trim() || market.name.length > 100 ||
+    (market.bonus_card !== undefined && (
+      typeof market.bonus_card !== "string" ||
+      !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(market.bonus_card) ||
+      market.bonus_card.length > 4 * Math.ceil(MAX_BONUS_CARD_BYTES / 3) + 32
+    )) ||
     (market.category_ids !== undefined && (!Array.isArray(market.category_ids) ||
       market.category_ids.some(id => typeof id !== "string") ||
       new Set(market.category_ids).size !== market.category_ids.length))
@@ -253,7 +279,17 @@ function renderMarketSelection() {
   elements.marketName.textContent = market?.name || "Ohne Markt";
   elements.marketSelect.setAttribute("aria-label", `Supermarkt auswählen, aktuell ${elements.marketName.textContent}`);
   elements.marketSelect.disabled = busy || !entryId;
+  elements.marketBonusCard.hidden = !market?.bonus_card;
+  elements.marketBonusCard.setAttribute("aria-label", `Bonuskarte / APP-Code für ${market?.name || "Supermarkt"} anzeigen`);
 }
+
+elements.marketBonusCard.addEventListener("click", () => {
+  const market = supermarkets.find(value => value.id === selectedMarket);
+  if (!market?.bonus_card) return;
+  elements.bonusCardDialogImage.src = market.bonus_card;
+  elements.bonusCardDialogImage.alt = `Bonuskarte oder APP-Code für ${market.name}`;
+  elements.bonusCardDialog.showModal();
+});
 
 function loadMarketSelection() {
   selectedMarket = "";
@@ -469,12 +505,13 @@ function renderCatalogPage() {
   elements.catalogBack.querySelector("span").textContent = isList ? "Zurück zur Liste"
     : catalogView === "market-order" ? "Supermarkt bearbeiten"
     : catalogView === "market-select" ? "Marktkategorien"
+    : catalogView === "market-bonus-card" ? "Bonuskarten oder APP-Codes"
     : catalogView === "category-products" ? "Kategorie bearbeiten"
     : isMarket ? "Supermärkte" : "Produktkategorien";
   elements.catalogBack.onclick = () => {
     if (isList) leaveManagement();
     else if (catalogView === "category-products") openCatalog("category-edit", catalogDraft);
-    else if (catalogView === "market-order") openCatalog("market-edit", catalogDraft);
+    else if (catalogView === "market-order" || catalogView === "market-bonus-card") openCatalog("market-edit", catalogDraft);
     else if (catalogView === "market-select") {
       catalogView = "market-order";
       renderCatalogPage();
@@ -516,6 +553,8 @@ function renderCatalogPage() {
     if (!assigned.length) content.append(paragraph("Dieser Kategorie sind noch keine Produkte zugeordnet."));
   } else if (catalogView === "market-order" || catalogView === "market-select") {
     renderMarketCategories();
+  } else if (catalogView === "market-bonus-card") {
+    renderMarketBonusCard();
   } else {
     elements.catalogTitle.textContent = `${noun} ${catalogDraft.id ? "bearbeiten" : "hinzufügen"}`;
     const form = document.createElement("form");
@@ -557,6 +596,13 @@ function renderCatalogPage() {
         renderCatalogPage();
       };
       form.append(button("Produktkategorien für diesen Markt bearbeiten  ›", openMarketOrder, "management-link category-navigation"));
+      form.append(button("Bonuskarten oder APP-Codes einbinden  ›", () => {
+        if (catalogDirty) {
+          requestDiscardChanges(() => openCatalog("market-bonus-card", supermarkets.find(m => m.id === catalogDraft.id)));
+          return;
+        }
+        openCatalog("market-bonus-card", supermarkets.find(m => m.id === catalogDraft.id));
+      }, "management-link category-navigation"));
     }
     if (catalogDraft.id) {
       const danger = document.createElement("section");
@@ -595,6 +641,115 @@ function renderCatalogPage() {
   }
   content.append(paragraph("Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.", "management-footer"));
   elements.catalogTitle.focus();
+}
+
+function renderMarketBonusCard() {
+  const content = elements.catalogContent;
+  const market = supermarkets.find(value => value.id === catalogDraft.id);
+  if (!market) {
+    elements.catalogMessage.textContent = "Der Supermarkt wurde inzwischen entfernt. Bitte die Übersicht neu öffnen.";
+    return;
+  }
+  elements.catalogTitle.textContent = "Bonuskarten oder APP-Codes einbinden";
+  elements.catalogHelp.textContent = `${catalogDraft.name} · Ein Bild wird gemeinsam in Home Assistant gespeichert und ist auf allen Geräten verfügbar.`;
+  const form = document.createElement("form");
+  form.className = "management-form bonus-card-form";
+  const upload = document.createElement("input");
+  upload.type = "file";
+  upload.accept = "image/png,image/jpeg,image/webp";
+  upload.className = "visually-hidden";
+  upload.tabIndex = -1;
+  const camera = document.createElement("input");
+  camera.type = "file";
+  camera.accept = "image/*";
+  camera.setAttribute("capture", "environment");
+  camera.className = "visually-hidden";
+  camera.tabIndex = -1;
+  const preview = document.createElement("img");
+  preview.className = "bonus-card-preview";
+  preview.alt = `Bonuskarte oder APP-Code für ${catalogDraft.name}`;
+  preview.hidden = !catalogDraft.bonus_card;
+  if (catalogDraft.bonus_card) preview.src = catalogDraft.bonus_card;
+  const previewLabel = paragraph("Aktuell gespeichertes Bild", "management-help");
+  previewLabel.hidden = !catalogDraft.bonus_card;
+  const status = paragraph("PNG, JPEG oder WebP · maximal 512 KiB nach Bildoptimierung.", "management-help");
+  const choose = button("Bild aus Dateien auswählen", () => upload.click(), "primary full-width");
+  const takePhoto = button("QR-Code fotografieren", () => camera.click(), "secondary full-width");
+  const remove = button("Bild entfernen", () => {
+    delete catalogDraft.bonus_card;
+    preview.removeAttribute("src");
+    preview.hidden = true;
+    previewLabel.hidden = true;
+    remove.hidden = true;
+    catalogDirty = true;
+    status.textContent = "Bild entfernt. Speichere, um die Änderung zu übernehmen.";
+  }, "secondary");
+  remove.hidden = !catalogDraft.bonus_card;
+  const processFile = async file => {
+    if (!file) return;
+    try {
+      const image = await prepareBonusCardImage(file);
+      catalogDraft.bonus_card = image;
+      preview.src = image;
+      preview.hidden = false;
+      previewLabel.hidden = false;
+      remove.hidden = false;
+      catalogDirty = true;
+      status.textContent = "Bild bereit. Speichere, um es auf allen Geräten verfügbar zu machen.";
+      elements.catalogMessage.textContent = "";
+    } catch (error) {
+      elements.catalogMessage.textContent = error.message;
+    }
+  };
+  upload.addEventListener("change", () => processFile(upload.files[0]));
+  camera.addEventListener("change", () => processFile(camera.files[0]));
+  const actions = document.createElement("div");
+  actions.className = "page-actions";
+  actions.append(
+    button("Abbrechen", () => openCatalog("market-edit", supermarkets.find(value => value.id === catalogDraft.id))),
+    button("Speichern", () => saveCatalog("save_market_bonus_card", {
+      market_id: catalogDraft.id, bonus_card: catalogDraft.bonus_card || "",
+    }, "market-edit"), "primary"),
+  );
+  form.append(upload, camera, choose, takePhoto, previewLabel, preview, status, remove, actions);
+  content.append(form);
+}
+
+async function prepareBonusCardImage(file) {
+  if (!/^image\/(?:png|jpeg|webp)$/.test(file.type) || file.size > MAX_BONUS_CARD_INPUT_BYTES) {
+    throw new Error("Bitte wähle ein PNG-, JPEG- oder WebP-Bild bis maximal 12 MiB.");
+  }
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+    const sourceDimension = Math.max(bitmap.width, bitmap.height);
+    const dimensions = [...new Set([1280, 1024, 768, 512].map(limit =>
+      Math.max(1, Math.min(sourceDimension, limit))))];
+    for (const dimension of dimensions) {
+      const scale = dimension / sourceDimension;
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Bildverarbeitung ist in diesem Browser nicht verfügbar.");
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const candidates = [
+        canvas.toDataURL("image/png"),
+        ...[0.92, 0.86, 0.8].map(quality => canvas.toDataURL("image/webp", quality)),
+      ];
+      const image = candidates.find(value =>
+        Math.ceil((value.length - value.indexOf(",") - 1) * 3 / 4) <= MAX_BONUS_CARD_BYTES);
+      if (image) return image;
+    }
+    throw new Error("Das Bild ist nach der Optimierung noch zu groß. Bitte wähle ein kleineres Bild.");
+  } catch (error) {
+    if (error instanceof Error && (
+      error.message.includes("zu groß") || error.message.includes("nicht verfügbar")
+    )) throw error;
+    throw new Error("Das Bild konnte nicht gelesen oder optimiert werden.");
+  } finally {
+    bitmap?.close();
+  }
 }
 
 function renderMarketCategories() {
@@ -1075,6 +1230,85 @@ function enableItemLongPress(label, openDetails) {
   });
 }
 
+function openEndShoppingConfirmation(touchGated = false) {
+  if (elements.endShoppingDialog.open) return;
+  const gateDialog = touchGated && longPressTouchPointerId !== null;
+  elements.endShoppingDialog.returnValue = "";
+  elements.endShoppingDialog.inert = gateDialog;
+  elements.endShoppingDialog.classList.toggle("touch-gated", gateDialog);
+  elements.endShoppingDialog.showModal();
+  longPressTouchDialog = gateDialog ? elements.endShoppingDialog : null;
+  if (!gateDialog) elements.endShoppingCancel.focus({ preventScroll: true });
+}
+
+function openCashierReminder(touchGated = false) {
+  if (elements.cashierReminder.open) return;
+  const gateDialog = touchGated && longPressTouchPointerId !== null;
+  const market = supermarkets.find(value => value.id === selectedMarket);
+  elements.cashierBonusCard.hidden = !market?.bonus_card;
+  if (market?.bonus_card) {
+    elements.cashierBonusCardImage.src = market.bonus_card;
+    elements.cashierBonusCardImage.alt = `Bonuskarte oder APP-Code für ${market.name}`;
+  } else {
+    elements.cashierBonusCardImage.removeAttribute("src");
+  }
+  elements.cashierReminder.returnValue = "";
+  elements.cashierReminder.inert = gateDialog;
+  elements.cashierReminder.classList.toggle("touch-gated", gateDialog);
+  elements.cashierReminder.showModal();
+  longPressTouchDialog = gateDialog ? elements.cashierReminder : null;
+  if (!gateDialog) elements.cashierReminderOk.focus({ preventScroll: true });
+}
+
+elements.cashierReminder.addEventListener("close", () => {
+  elements.cashierReminder.classList.remove("touch-gated");
+  elements.cashierReminder.inert = false;
+});
+
+elements.cashierReminderOk.addEventListener("click", event => {
+  event.preventDefault();
+  elements.cashierReminder.close();
+  openEndShoppingConfirmation();
+});
+
+function enableEndShoppingLongPress(button) {
+  let press = null;
+  function cancelPress() {
+    if (press) window.clearTimeout(press.timer);
+    press = null;
+  }
+  button.addEventListener("pointerdown", event => {
+    cancelPress();
+    if (busy || planningMode || event.button !== 0 || !event.isPrimary) return;
+    press = { id: event.pointerId, type: event.pointerType, x: event.clientX, y: event.clientY };
+    press.timer = window.setTimeout(() => {
+      const { id, type } = press;
+      cancelPress();
+      if (!button.isConnected || busy || planningMode || document.hidden) return;
+      suppressLongPressClick = true;
+      if (type === "touch") longPressTouchPointerId = id;
+      openCashierReminder(type === "touch");
+    }, 550);
+  });
+  button.addEventListener("pointermove", event => {
+    if (press && event.pointerId === press.id &&
+        Math.hypot(event.clientX - press.x, event.clientY - press.y) >= 10) cancelPress();
+  });
+  for (const type of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
+    button.addEventListener(type, cancelPress);
+  }
+  button.addEventListener("contextmenu", event => event.preventDefault());
+}
+
+elements.endShoppingConfirm.addEventListener("click", () => {
+  const completedItems = currentItems
+    .filter(item => item.status === "completed")
+    .map(item => ({ type: "delete_item", uid: item.uid }));
+  (async () => {
+    for (const operation of completedItems) await enqueue(operation);
+  })().catch(showError);
+});
+
 function enableItemSwipeDelete(row, uid, listId = entryId) {
   let pointer = null;
   let suppressClick = false;
@@ -1274,6 +1508,7 @@ function render() {
       elements.editItem.inert = touchGated;
       elements.editItem.classList.toggle("touch-gated", touchGated);
       elements.editItem.showModal();
+      longPressTouchDialog = touchGated ? elements.editItem : null;
       if (!touchGated) elements.editItemTitle.focus({ preventScroll: true });
     });
     label.addEventListener("keydown", event => {
@@ -1289,6 +1524,20 @@ function render() {
     groupLists.get(categoryId).append(row);
   }
   elements.empty.hidden = currentItems.length > 0;
+  if (!planningMode) {
+    const endShoppingItem = elements.endShoppingTemplate.content.cloneNode(true);
+    const endShoppingAction = endShoppingItem.querySelector(".end-shopping-action");
+    enableEndShoppingLongPress(endShoppingAction);
+    endShoppingAction.addEventListener("click", event => {
+      if (busy || planningMode) return;
+      if (event.detail !== 0) {
+        event.preventDefault();
+        return;
+      }
+      openCashierReminder();
+    });
+    elements.items.append(endShoppingItem);
+  }
   elements.syncDetail.textContent = pendingOperations.length
     ? `${pendingOperations.length} Änderung${pendingOperations.length === 1 ? "" : "en"} ausstehend`
     : syncPromise ? "Listen werden im Hintergrund abgeglichen. Du kannst weiter einkaufen."

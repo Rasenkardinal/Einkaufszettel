@@ -5,6 +5,7 @@
 <pre id="results">Running...</pre>
 <iframe id="fixture" title="Testoberfläche" style="width:390px;height:844px;border:0"></iframe>
 <script>
+const results = [];
 async function runTests() {
   const base = "../../custom_components/einkaufszettel/www/";
   const [markup, script, syncStyles] = await Promise.all([
@@ -23,7 +24,10 @@ async function runTests() {
   const assert = (condition, text) => { if (!condition) throw Error(text); };
   const state = {
     categories: [{ id: "z", name: "Zwiebeln" }, { id: "b", name: "Backwaren" }, { id: "a", name: "Äpfel" }],
-    supermarkets: [{ id: "m", name: "Markt", category_ids: ["z", "b"] }],
+    supermarkets: [{
+      id: "m", name: "Markt", category_ids: ["z", "b"],
+      bonus_card: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/LQAAAABJRU5ErkJggg=="
+    }],
     products: [
       {key:"zwieback",name:"Zwieback",category_id:"b"},
       {key:"brot",name:"Brot",category_id:"b"},
@@ -45,7 +49,8 @@ async function runTests() {
     ];
     selectedMarket = "m";
     render();
-    return { openCatalog, render, saveCatalog, refreshSupermarkets, loadCachedSupermarkets, initializeMode,
+    return { openCatalog, render, saveCatalog, prepareBonusCardImage, refreshSupermarkets, loadCachedSupermarkets, initializeMode,
+      renderMarketSelection,
       state: () => ({categories, supermarkets, products, currentItems, selectedMarket, catalogDraft, catalogDirty}),
       withoutMarket: () => { selectedMarket = ""; render(); },
       reset: () => { categories = test.state.categories; supermarkets = test.state.supermarkets; },
@@ -57,13 +62,16 @@ async function runTests() {
       messages.push({ command, payload });
       if (fail) throw Error("Test: Speichern fehlgeschlagen");
       if (command === "save_market_categories") state.supermarkets[0].category_ids = [...payload.category_ids];
+      if (command === "save_market_bonus_card") {
+        if (payload.bonus_card) state.supermarkets[0].bonus_card = payload.bonus_card;
+        else delete state.supermarkets[0].bonus_card;
+      }
       if (command === "save_category") state.categories = state.categories.map(c => c.id === payload.category_id ? {...c, name:payload.name} : c);
       if (command === "remove_category_product") state.products = state.products.map(product =>
         product.key === payload.product_key ? {...product, category_id:null} : product);
       return structuredClone(state);
     }
   }, { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) });
-  const results = [];
   function test(name, action) { action(); results.push(`PASS ${name}`); }
   const headingNames = () => [...doc.querySelectorAll(".item-category-title")].map(h => h.firstChild.textContent);
   api.initializeMode();
@@ -355,6 +363,102 @@ async function runTests() {
   test("Left swipe queues item deletion", () => {
     assert(operations.some(operation => operation.type === "delete_item" && operation.uid === "two"), "Swipe did not queue deletion");
   });
+  const cashierReminder = doc.querySelector("#cashier-reminder");
+  const endShoppingDialog = doc.querySelector("#end-shopping-confirm");
+  const imageCanvas = doc.createElement("canvas");
+  imageCanvas.width = imageCanvas.height = 2;
+  imageCanvas.getContext("2d").fillRect(0, 0, 2, 2);
+  const imageBlob = await new Promise(resolve => imageCanvas.toBlob(resolve, "image/png"));
+  const optimizedBonusCard = await api.prepareBonusCardImage(new win.File([imageBlob], "bonus.png", {type:"image/png"}));
+  test("Bonus-card image preparation produces a bounded supported data URL", () => {
+    assert(/^data:image\/(?:png|webp);base64,/.test(optimizedBonusCard), "Prepared image format is unsupported");
+    assert(optimizedBonusCard.length < 700000, "Prepared image exceeded the shared storage limit");
+  });
+  api.renderMarketSelection();
+  const bonusCardButton = doc.querySelector("#market-bonus-card");
+  test("The selected market bonus card can be opened separately from checkout", () => {
+    assert(!bonusCardButton.hidden, "Bonus-card shortcut is hidden for the selected market");
+    bonusCardButton.click();
+    assert(doc.querySelector("#bonus-card-dialog").open, "Bonus-card viewer did not open");
+    assert(doc.querySelector("#bonus-card-dialog-image").src.includes("data:image/png;base64,"), "Viewer did not display the selected market image");
+    doc.querySelector("#bonus-card-dialog [value='close']").click();
+    assert(!doc.querySelector("#bonus-card-dialog").open, "Bonus-card viewer did not close");
+  });
+  const waitForDeletionDialog = () => new Promise(resolve => {
+    let attempts = 0;
+    const check = () => {
+      if (endShoppingDialog.open || attempts++ >= 50) resolve();
+      else win.setTimeout(check, 20);
+    };
+    check();
+  });
+  const endShoppingAction = doc.querySelector("#items > li:last-child .end-shopping-action");
+  test("Shopping mode adds the end-shopping action as the final list row", () => {
+    assert(endShoppingAction && endShoppingAction.closest("li") === doc.querySelector("#items > li:last-child"), "End-shopping action is not the last row");
+    assert(endShoppingAction.querySelectorAll(".end-shopping-cart-filled,.end-shopping-arrow,.end-shopping-cart-empty").length === 3, "Variant 08 cart sequence missing");
+  });
+  modeToggle.click();
+  assert(!doc.querySelector("#items .end-shopping-action"), "End-shopping action appeared in planning mode");
+  modeToggle.click();
+  const activeEndShoppingAction = doc.querySelector("#items > li:last-child .end-shopping-action");
+  activeEndShoppingAction.dispatchEvent(new win.MouseEvent("click", {detail:1, bubbles:true, cancelable:true}));
+  assert(!endShoppingDialog.open, "A regular tap opened end-shopping confirmation");
+  api.state().currentItems.push(
+    {uid:"four", summary:"Kaffee", status:"completed"},
+    {uid:"five", summary:"Tee", status:"needs_action"},
+  );
+  api.render();
+  const touchAction = doc.querySelector("#items > li:last-child .end-shopping-action");
+  touchAction.dispatchEvent(new win.PointerEvent("pointerdown", {
+    pointerId:91, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,
+  }));
+  await pause(575);
+  test("Long press opens the Pfandbon reminder with the market bonus card and gates it until release", () => {
+    assert(cashierReminder.open, "Long press did not open the Pfandbon reminder");
+    assert(cashierReminder.inert && cashierReminder.classList.contains("touch-gated"), "Reminder controls were not gated before release");
+    assert(doc.querySelector("#cashier-reminder-title").textContent === "Pfandbon nicht vergessen!", "Pfandbon reminder text changed");
+    assert(!doc.querySelector("#cashier-bonus-card").hidden, "Market bonus card was not shown");
+    assert(doc.querySelector("#cashier-bonus-card-image").src.includes("data:image/png;base64,"), "Bonus card image missing");
+    assert(doc.querySelector("#cashier-reminder-ok").textContent === "OK", "Reminder confirmation missing");
+  });
+  touchAction.dispatchEvent(new win.PointerEvent("pointerup", {
+    pointerId:91, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,
+  }));
+  await pause(0);
+  const endReleaseClick = new win.MouseEvent("click", {detail:1, bubbles:true, cancelable:true});
+  touchAction.dispatchEvent(endReleaseClick);
+  assert(endReleaseClick.defaultPrevented && cashierReminder.open, "Long-press release activated or closed the reminder");
+  assert(!cashierReminder.inert, "Reminder stayed inert after releasing the touch");
+  doc.querySelector("#cashier-reminder-ok").click();
+  await waitForDeletionDialog();
+  test("Confirming the Pfandbon reminder opens the existing deletion confirmation", () => {
+    assert(!cashierReminder.open && endShoppingDialog.open, "Reminder OK did not continue to the deletion confirmation");
+    assert(doc.querySelector("#end-shopping-confirm-description").textContent === "Dies löscht alle abgehakten Artikel aus der Liste!", "Warning text changed");
+    assert(doc.querySelector("#cancel-end-shopping").textContent === "Abbrechen", "Cancel button missing");
+    assert(doc.querySelector("#end-shopping-confirm-button").textContent === "OK", "OK button missing");
+  });
+  const countBeforeCancel = operations.length;
+  doc.querySelector("#cancel-end-shopping").click();
+  assert(!endShoppingDialog.open && operations.length === countBeforeCancel, "Cancel deleted checked articles");
+  const actionButton = doc.querySelector("#items > li:last-child .end-shopping-action");
+  actionButton.click();
+  assert(cashierReminder.open, "Keyboard activation did not open the Pfandbon reminder");
+  doc.querySelector("#cashier-reminder-ok").click();
+  await waitForDeletionDialog();
+  assert(endShoppingDialog.open, "Keyboard confirmation did not open the deletion dialog");
+  doc.querySelector("#cancel-end-shopping").click();
+  actionButton.click();
+  doc.querySelector("#cashier-reminder-ok").click();
+  await waitForDeletionDialog();
+  doc.querySelector("#end-shopping-confirm-button").click();
+  await pause(50);
+  test("Confirm queues deletion only for checked articles", () => {
+    const deleted = operations.slice(countBeforeCancel).filter(operation => operation.type === "delete_item").map(operation => operation.uid).sort();
+    assert(deleted.join("|") === "four|three", `Confirmation deleted [${deleted.join("|")}], expected [four|three]`);
+    assert(endShoppingDialog.returnValue === "confirm", "OK did not confirm the safety dialog");
+  });
+  api.state().currentItems.splice(-2);
+  api.render();
   test("Without a market groups follow A-Z, with uncategorized items last", () => {
     api.withoutMarket();
     assert(headingNames().join("|") === "Backwaren|Zwiebeln|Ohne Kategorie", "Wrong no-market order");
@@ -453,9 +557,28 @@ async function runTests() {
   assert(state.supermarkets[0].category_ids.join() === "b,,a", "Order not saved");
   assert(storage.has("einkaufszettel.catalog"), "Atomic offline catalog cache missing");
   results.push("PASS Saving persists order and offline cache");
+  api.openCatalog("market-edit", state.supermarkets[0]);
+  [...doc.querySelectorAll(".category-navigation")].find(button =>
+    button.textContent.includes("Bonuskarten oder APP-Codes")).click();
+  test("Bonus-card setup offers file selection and camera capture", () => {
+    assert(doc.querySelector("#catalog-title").textContent === "Bonuskarten oder APP-Codes einbinden", "Bonus-card page missing");
+    assert(doc.querySelector('input[type="file"][accept="image/png,image/jpeg,image/webp"]'), "Upload input missing");
+    assert(doc.querySelector('input[type="file"][capture="environment"]'), "Camera input missing");
+    assert(!doc.querySelector(".bonus-card-preview").hidden, "Saved image preview missing");
+  });
+  const replacementCard = "data:image/png;base64,AA==";
+  api.state().catalogDraft.bonus_card = replacementCard;
+  api.state().catalogDirty = true;
+  doc.querySelector("#catalog-content .page-actions .primary").click();
+  await pause(0);
+  assert(state.supermarkets[0].bonus_card === replacementCard, "Bonus-card image was not saved for its market");
+  assert(messages.some(message => message.command === "save_market_bonus_card" &&
+    message.payload.bonus_card === replacementCard), "Bonus-card save command missing");
+  results.push("PASS Bonus-card image persists through the shared market catalog");
   api.loadCachedSupermarkets();
   assert(api.state().supermarkets[0].category_ids.join() === "b,,a", "Cached order lost");
   assert(api.state().categories.length === 3, "Cached categories lost");
+  assert(api.state().supermarkets[0].bonus_card === replacementCard, "Cached bonus-card image lost");
   results.push("PASS Atomic offline catalog reload preserves categories and order");
   fail = true;
   api.openCatalog("category-edit", state.categories[0]);
@@ -628,7 +751,7 @@ async function runTests() {
   document.querySelector("#results").textContent = results.join("\n");
 }
 runTests().catch(error => {
-  document.querySelector("#results").textContent = `FAIL ${error.stack}`;
+  document.querySelector("#results").textContent = `${results.join("\n")}\nFAIL ${error.stack}`;
   throw error;
 });
 </script>

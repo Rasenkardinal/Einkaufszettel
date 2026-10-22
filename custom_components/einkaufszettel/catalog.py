@@ -1,13 +1,40 @@
 """Shared categories and market-specific category order."""
 
+import base64
+import binascii
 from copy import deepcopy
 from typing import Any
 from uuid import uuid4
+
+MAX_BONUS_CARD_BYTES = 512 * 1024
+BONUS_CARD_PREFIXES = (
+    "data:image/png;base64,",
+    "data:image/jpeg;base64,",
+    "data:image/webp;base64,",
+)
 
 
 def product_key(name: str) -> str:
     """Match spelling variants without merging different product names."""
     return " ".join(name.split()).lower().replace("ß", "ss").replace("ς", "σ")
+
+
+def _validate_bonus_card(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    prefix = next(
+        (prefix for prefix in BONUS_CARD_PREFIXES if value.startswith(prefix)), None
+    )
+    if prefix is None:
+        return False
+    encoded = value[len(prefix) :]
+    if not encoded or len(encoded) > ((MAX_BONUS_CARD_BYTES + 2) // 3) * 4:
+        return False
+    try:
+        image = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        return False
+    return 0 < len(image) <= MAX_BONUS_CARD_BYTES
 
 
 def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
@@ -55,6 +82,10 @@ def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
     ):
         raise ValueError("Ungültige Produktbestätigungen.")
     for market in data.get("supermarkets", []):
+        if "bonus_card" in market and not _validate_bonus_card(market["bonus_card"]):
+            raise ValueError(
+                "Ungültiges Bonuskartenbild (maximal 512 KiB, PNG/JPEG/WebP)."
+            )
         order = market.get("category_ids", [])
         if (
             not isinstance(order, list)
@@ -90,6 +121,19 @@ def change_catalog(
         if market is None:
             raise ValueError("Der Supermarkt wurde nicht gefunden. Bitte neu laden.")
         market["category_ids"] = list(msg["category_ids"])
+    elif action == "save_market_bonus_card":
+        market = next((m for m in markets if m["id"] == msg["market_id"]), None)
+        if market is None:
+            raise ValueError("Der Supermarkt wurde nicht gefunden. Bitte neu laden.")
+        bonus_card = msg["bonus_card"]
+        if bonus_card:
+            if not _validate_bonus_card(bonus_card):
+                raise ValueError(
+                    "Ungültiges Bonuskartenbild (maximal 512 KiB, PNG/JPEG/WebP)."
+                )
+            market["bonus_card"] = bonus_card
+        else:
+            market.pop("bonus_card", None)
     else:
         uid = msg["category_id"]
         if uid and not any(c["id"] == uid for c in categories):

@@ -871,7 +871,7 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 19
+    assert env.websocket_api.async_register_command.call_count == 20
 
 
 async def test_catalog_shared_persistence_and_market_rename_preserves_categories(
@@ -922,28 +922,41 @@ async def test_catalog_shared_persistence_and_market_rename_preserves_categories
             "name": "Neu",
         },
     )
+    image = "data:image/png;base64,AA=="
+    await env.websocket.websocket_save_market_bonus_card(
+        env.hass,
+        connection,
+        {
+            "id": 5,
+            "type": "einkaufszettel/save_market_bonus_card",
+            "market_id": "shop",
+            "bonus_card": image,
+        },
+    )
     assert persisted["categories"] == [{"id": uid, "name": "Obst"}]
     assert persisted["supermarkets"][0] == {
         "id": "shop",
         "name": "Neu",
         "category_ids": [uid],
+        "bonus_card": image,
     }
     await env.websocket.websocket_delete_category(
         env.hass,
         connection,
         {
-            "id": 5,
+            "id": 6,
             "type": "einkaufszettel/delete_category",
             "category_id": uid,
         },
     )
     assert persisted["categories"] == []
     assert persisted["supermarkets"][0]["category_ids"] == []
+    assert persisted["supermarkets"][0]["bonus_card"] == image
     env.hass.data.clear()
     await env.websocket.websocket_get_catalog(
-        env.hass, connection, {"id": 6, "type": "einkaufszettel/get_catalog"}
+        env.hass, connection, {"id": 7, "type": "einkaufszettel/get_catalog"}
     )
-    connection.send_result.assert_called_with(6, {**persisted, "products": []})
+    connection.send_result.assert_called_with(7, {**persisted, "products": []})
     connection.send_error.assert_not_called()
 
 

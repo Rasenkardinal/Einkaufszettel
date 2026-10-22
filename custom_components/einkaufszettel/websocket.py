@@ -222,6 +222,21 @@ async def websocket_save_market_categories(
     await _catalog_command(hass, connection, msg)
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/save_market_bonus_card",
+        vol.Required("market_id"): str,
+        vol.Required("bonus_card"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_save_market_bonus_card(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Save or remove the shared bonus-card image for a market."""
+    await _catalog_command(hass, connection, msg)
+
+
 def _get_entry(hass: HomeAssistant, connection, msg: dict[str, Any]):
     entry = hass.config_entries.async_get_entry(msg["entry_id"])
     if (
