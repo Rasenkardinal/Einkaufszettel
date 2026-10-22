@@ -59,7 +59,7 @@ Unter **Einstellungen → Geräte & Dienste → Einkaufszettel → Entitäten** 
 
 ## Offline-Web-App verwenden
 
-Das Dreipunkte-App-Menü ist in direkt aufklappbare Untermenüs mit Plus/Minus statt Pfeilen gegliedert. Mehrere Bereiche können gleichzeitig geöffnet bleiben. Escape schließt zunächst den fokussierten Bereich und danach das App-Menü:
+Das Dreipunktmenü trägt die Überschrift **Einstellungen** und ist in direkt aufklappbare Untermenüs mit Plus/Minus statt Pfeilen gegliedert. Mehrere Bereiche können gleichzeitig geöffnet bleiben. Escape schließt zunächst den fokussierten Bereich und danach das Menü:
 
 Auch **Supermärkte verwalten** und **Produktkategorien verwalten** verwenden dieselben Gruppenüberschriften, Schrift und Plus/Minus-Anzeigen. Im aufgeklappten Bereich öffnet **Supermarktverwaltung öffnen** bzw. **Kategorieverwaltung öffnen** die jeweilige Verwaltungsseite.
 
@@ -75,7 +75,9 @@ Rechts neben **Auf der Liste** lässt sich unabhängig von der Einkaufsliste ein
 
 **Planen / Einkaufen:** Rechts neben dem Listennamen, unmittelbar vor dem Sync-Pfeil, wechselt ein umrandeter Iconbutton den Ansichtsmodus. Der Warenkorb startet den **Einkaufsmodus**: Die Eingabeleiste verschwindet und **Ohne Kategorie** steht regulär zuletzt. Der Stift führt zurück zum **Planungsmodus**: Die Eingabeleiste ist sichtbar und **Ohne Kategorie** steht immer ganz oben. Standard ist Planen. Die Auswahl gilt auf diesem Gerät für alle Listen, wird auch offline gespeichert und verändert keine Artikel, Kategorien oder gemeinsamen Listeneinstellungen. Ein bereits eingetippter Artikel bleibt beim Wechsel erhalten. Abhaken, Wischen und Bearbeiten per Longpress funktionieren in beiden Modi. Tooltip und zugängliche Buttonbeschriftung nennen aktuellen Modus und Zielaktion.
 
-Die nachfolgenden Verweise auf **Setup → Listen verwalten** meinen **App-Menü → Listenverwaltung → Listen verwalten**; Anmeldung und Installationslinks liegen unter **Installation**.
+Die nachfolgenden Verweise auf **Setup → Listen verwalten** meinen **Einstellungen → Listenverwaltung → Listen verwalten**; Anmeldung und Installationslinks liegen unter **Installation**.
+
+Beim Verlassen ungespeicherter Katalogänderungen fragt ein Dialog im App-Design mit **Weiter bearbeiten** und **Änderungen verwerfen** nach. Escape bricht das Verlassen ab; beim Schließen des Browserfensters bleibt aus technischen Gründen die browserseitige Warnung bestehen. In der Hauptliste sind Artikelname und Checkbox vertikal zentriert. Zusatzinformationen erscheinen mit 22 px in einer weiter links beginnenden Spalte; lange Texte werden weiterhin gekürzt und sind im Artikeldialog vollständig lesbar.
 
 Zum Übernehmen gemeinsamer Listeneinstellungen muss die App mit einem HA-Administrator angemeldet sein. Ohne diese Berechtigung wird eine ausdrückliche Fehlermeldung angezeigt; bestehende Einstellungen bleiben unverändert.
 

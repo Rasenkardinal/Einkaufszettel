@@ -315,8 +315,25 @@ function showManagementPage(page) {
   window.scrollTo(0, 0);
 }
 
+function requestDiscardChanges(action) {
+  const dialog = document.querySelector("#discard-changes");
+  if (dialog.open) return;
+  dialog.returnValue = "";
+  dialog.addEventListener("close", () => {
+    if (dialog.returnValue !== "discard") return;
+    catalogDirty = false;
+    action();
+  }, { once: true });
+  dialog.showModal();
+}
+
 function leaveManagement() {
-  if (managingSupermarkets || (catalogDirty && !confirm("Ungespeicherte Änderungen verwerfen?"))) return;
+  if (managingSupermarkets) return;
+  cancelCategoryDrag?.();
+  if (catalogDirty) {
+    requestDiscardChanges(leaveManagement);
+    return;
+  }
   cancelCategoryDrag?.();
   catalogRequest++;
   catalogDirty = false;
@@ -328,7 +345,12 @@ function leaveManagement() {
 }
 
 function openCatalog(view, record) {
-  if (managingSupermarkets || (catalogDirty && !confirm("Ungespeicherte Änderungen verwerfen?"))) return;
+  if (managingSupermarkets) return;
+  cancelCategoryDrag?.();
+  if (catalogDirty) {
+    requestDiscardChanges(() => openCatalog(view, record));
+    return;
+  }
   cancelCategoryDrag?.();
   catalogDirty = false;
   catalogView = view;
@@ -338,6 +360,12 @@ function openCatalog(view, record) {
 }
 
 async function loadCatalogPage(view) {
+  if (managingSupermarkets) return;
+  cancelCategoryDrag?.();
+  if (catalogDirty) {
+    requestDiscardChanges(() => loadCatalogPage(view));
+    return;
+  }
   openCatalog(view);
   const request = ++catalogRequest;
   elements.catalogMessage.textContent = "Katalog wird geladen …";
@@ -355,6 +383,12 @@ async function loadCatalogPage(view) {
 }
 
 async function openCategoryProducts(category) {
+  if (managingSupermarkets) return;
+  cancelCategoryDrag?.();
+  if (catalogDirty) {
+    requestDiscardChanges(() => openCategoryProducts(category));
+    return;
+  }
   openCatalog("category-products", category);
   if (catalogView !== "category-products" || catalogDraft.id !== category.id) return;
   const request = ++catalogRequest;
@@ -499,13 +533,17 @@ function renderCatalogPage() {
       }, "management-link category-navigation"));
     }
     if (isMarket && catalogDraft.id) {
-      form.append(button("Produktkategorien für diesen Markt bearbeiten  ›", () => {
-        if (catalogDirty && !confirm("Ungespeicherten Namen verwerfen und Produktkategorien öffnen?")) return;
+      const openMarketOrder = () => {
+        if (catalogDirty) {
+          requestDiscardChanges(openMarketOrder);
+          return;
+        }
         catalogDirty = false;
         catalogDraft = { ...supermarkets.find(m => m.id === catalogDraft.id), category_ids: [...catalogDraft.category_ids] };
         catalogView = "market-order";
         renderCatalogPage();
-      }, "management-link category-navigation"));
+      };
+      form.append(button("Produktkategorien für diesen Markt bearbeiten  ›", openMarketOrder, "management-link category-navigation"));
     }
     if (catalogDraft.id) {
       const danger = document.createElement("section");

@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.7">
+    <link rel="stylesheet" href="./app.css?v=0.4.8">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -48,7 +48,7 @@
             </svg>
           </summary>
           <div class="setup-actions">
-            <h2>App-Menü</h2>
+            <h2>Einstellungen</h2>
             <details id="menu-installation" class="setup-section">
               <summary>Installation</summary>
               <div class="setup-submenu">
@@ -173,6 +173,16 @@
         </div>
       </form>
     </dialog>
+    <dialog id="discard-changes" aria-labelledby="discard-title" aria-describedby="discard-description">
+      <form method="dialog">
+        <h2 id="discard-title">Änderungen verwerfen?</h2>
+        <p id="discard-description">Deine Änderungen wurden noch nicht gespeichert. Möchtest du weiter bearbeiten oder die Änderungen verwerfen?</p>
+        <div class="dialog-actions">
+          <button class="secondary" value="cancel" autofocus>Weiter bearbeiten</button>
+          <button class="primary" value="discard">Änderungen verwerfen</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="install-help">
       <form method="dialog">
         <h2>Zum Startbildschirm hinzufügen</h2>
@@ -180,6 +190,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.7" defer></script>
+    <script src="./app.js?v=0.4.8" defer></script>
   </body>
 </html>
