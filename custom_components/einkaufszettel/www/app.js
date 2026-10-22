@@ -836,14 +836,31 @@ function renderMarketCategories() {
     elements.catalogFixedActions.hidden = false;
     return;
   }
-  content.append(button("＋ Kategorien aus dem Speicher auswählen  ›", () => {
+  const categorySelection = button("Kategorienauswahl", () => {
     marketSelectionSnapshot = {
       categoryIds: [...catalogDraft.category_ids],
       dirty: catalogDirty,
     };
     catalogView = "market-select";
     renderCatalogPage();
-  }, "primary full-width"));
+  }, "category-selection-button");
+  const categorySelectionIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  categorySelectionIcon.setAttribute("viewBox", "0 0 24 24");
+  categorySelectionIcon.setAttribute("fill", "none");
+  categorySelectionIcon.setAttribute("stroke", "currentColor");
+  categorySelectionIcon.setAttribute("stroke-width", "1.8");
+  categorySelectionIcon.setAttribute("stroke-linecap", "round");
+  categorySelectionIcon.setAttribute("stroke-linejoin", "round");
+  categorySelectionIcon.setAttribute("aria-hidden", "true");
+  categorySelectionIcon.innerHTML = '<rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 17.5h7M17.5 14v7"></path>';
+  const categorySelectionLabel = document.createElement("span");
+  categorySelectionLabel.className = "category-selection-label";
+  categorySelectionLabel.textContent = "Kategorienauswahl";
+  const categorySelectionArrow = document.createElement("span");
+  categorySelectionArrow.className = "category-selection-arrow";
+  categorySelectionArrow.setAttribute("aria-hidden", "true");
+  categorySelection.replaceChildren(categorySelectionIcon, categorySelectionLabel, categorySelectionArrow);
+  content.append(categorySelection);
   content.append(paragraph("Am Griff ziehen oder mit ↑ / ↓ verschieben. „Ohne Kategorie“ lässt sich sortieren, aber nicht entfernen."));
   if (!catalogDraft.category_ids.includes("")) catalogDraft.category_ids.push("");
   const list = document.createElement("ol");

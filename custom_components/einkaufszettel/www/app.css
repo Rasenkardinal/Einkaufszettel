@@ -271,6 +271,11 @@ dialog h2, dialog p { margin: 0; }
 .management-fixed-actions button { min-width: 120px; min-height: 46px; }
 .management-fixed-actions .primary { min-width: 160px; }
 .full-width { width: 100%; text-align: left; padding: 14px 16px; }
+.category-selection-button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 54px; padding: 0 14px; border: 2px solid color-mix(in srgb,var(--accent) 60%,var(--line)); border-radius: 9px; background: var(--surface); color: #f4f4f4; font-weight: 700; text-align: left; }
+.category-selection-button:hover { background: var(--surface); }
+.category-selection-button svg { width: 18px; height: 18px; flex: none; color: var(--accent); }
+.category-selection-label { min-width: 0; flex: 1; }
+.category-selection-arrow { width: 8px; height: 8px; flex: none; border-top: 2px solid var(--accent); border-right: 2px solid var(--accent); transform: rotate(45deg); opacity: .75; }
 .management-list { display: grid; gap: 8px; margin-top: 24px; }
 .management-link { display: block; width: 100%; min-height: 58px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: #f4f4f4; text-align: left; overflow-wrap: anywhere; }
 .management-form { display: grid; gap: 12px; margin-top: 24px; }

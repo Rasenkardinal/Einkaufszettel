@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Einkaufszettel · Kategorienauswahl · Designvorschläge</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #141414;
+      color: #f4f4f4;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 30px 18px 56px; }
+    header, .gallery { width: min(100%, 1240px); margin-inline: auto; }
+    .kicker { margin: 0 0 8px; color: #aaa; font-size: 11px; font-weight: 700; letter-spacing: .15em; }
+    h1 { margin: 0; font-size: clamp(25px, 5vw, 36px); letter-spacing: -.035em; }
+    .intro { max-width: 850px; margin: 12px 0 26px; color: #aaa; font-size: 14px; line-height: 1.6; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr)); gap: 18px; }
+    .card {
+      --bg: #141414;
+      --surface: #202020;
+      --surface2: #2b2b2b;
+      --line: #383838;
+      --accent: #f5f5f5;
+      --muted: #aaa;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--bg);
+      color: #f4f4f4;
+    }
+    .card[data-theme="botanical"] { --bg: #111813; --surface: #1b251e; --surface2: #26362a; --line: #304035; --accent: #a3e635; --muted: #aab7ac; }
+    .card[data-theme="midnight-plum"] { --bg: #15121c; --surface: #211b2b; --surface2: #30243e; --line: #3b3148; --accent: #c4a7ff; --muted: #b9adc8; }
+    .card[data-theme="market-journal"] { --bg: #1a1411; --surface: #271d18; --surface2: #38281d; --line: #49382e; --accent: #ffb454; --muted: #c7b3a5; }
+    .card[data-theme="fresh-signal"] { --bg: #0d171b; --surface: #13242a; --surface2: #19343b; --line: #24444c; --accent: #55e0d0; --muted: #9db8ba; }
+    .card[data-theme="tomato"] { --bg: #1b1315; --surface: #281c1f; --surface2: #382327; --line: #493137; --accent: #ff8977; --muted: #c2a7a6; }
+    .card[data-theme="lime-focus"] { --bg: #0c0f0c; --surface: #171c16; --surface2: #222b1e; --line: #343e2d; --accent: #d4ff00; --muted: #a9b197; }
+    .card[data-theme="indigo-pocket"] { --bg: #101522; --surface: #192033; --surface2: #222d49; --line: #303b56; --accent: #83a7ff; --muted: #aab5ca; }
+    .card-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .number { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .card-head h2 { flex: 1; margin: 0; font-size: 14px; }
+    .card-head small { color: var(--muted); font-size: 10px; }
+    .preview { display: grid; place-items: center; min-height: 370px; padding: 18px 14px; background: radial-gradient(ellipse at 50% 0, color-mix(in srgb, var(--accent) 7%, transparent), transparent 65%); }
+    .screen { width: min(100%, 350px); min-height: 334px; padding: 18px 20px 20px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: 0 12px 36px #0007; }
+    .screen-top { display: flex; align-items: center; justify-content: space-between; padding-bottom: 13px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .12em; }
+    .back { color: #f4f4f4; font-size: 10px; font-weight: 600; letter-spacing: 0; }
+    .screen h3 { margin: 18px 0 5px; font-size: 20px; letter-spacing: -.03em; }
+    .help { min-height: 34px; margin: 0 0 13px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .select-button {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      min-height: 54px;
+      padding: 0 14px;
+      border: 2px solid color-mix(in srgb, var(--accent) 60%, var(--line));
+      border-radius: 9px;
+      background: var(--surface);
+      color: #f4f4f4;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      text-align: left;
+    }
+    .select-button svg { width: 18px; height: 18px; flex: none; }
+    .select-button .label { min-width: 0; flex: 1; }
+    .select-button .chevron { width: 8px; height: 8px; border-top: 2px solid currentColor; border-right: 2px solid currentColor; transform: rotate(45deg); opacity: .75; }
+    .rows { display: grid; gap: 7px; margin-top: 16px; }
+    .row { display: flex; align-items: center; gap: 9px; min-height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface2); font-size: 11px; }
+    .grip { color: var(--muted); font-size: 16px; letter-spacing: -3px; }
+    .row small { margin-left: auto; color: var(--muted); font-size: 9px; }
+    .caption { min-height: 67px; margin: 0; padding: 12px 16px 15px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .caption strong { color: #f4f4f4; }
+    .select-button svg, .select-button .chevron { color: var(--accent); }
+    @media (max-width: 420px) {
+      body { padding: 22px 12px 40px; }
+      .screen { padding-inline: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="kicker">EINKAUFSZETTEL · SUPERMARKTVERWALTUNG</p>
+    <h1>„Kategorienauswahl“ – Variante 07 in 8 Farbschemata</h1>
+    <p class="intro">Der Button bleibt in allen Vorschauen gleich: dunkle Fläche, feine Kontur und Akzentfarbe für Icon und Flyoutpfeil. Nur das App-Farbschema wechselt zwischen Mono und den farbigen Designs.</p>
+  </header>
+  <main id="gallery" class="gallery" aria-label="Acht Designvorschläge für den Kategorienauswahl-Knopf"></main>
+  <script>
+    const proposals = [
+      { theme: "mono", name: "Mono", description: "Neutrale Variante mit weißem Akzent.", accent: "#f5f5f5" },
+      { theme: "botanical", name: "Botanical", description: "Grüne Naturtöne mit kräftigem Lime-Akzent.", accent: "#a3e635" },
+      { theme: "midnight-plum", name: "Midnight Plum", description: "Dunkles Violett mit sanftem Flieder-Akzent.", accent: "#c4a7ff" },
+      { theme: "market-journal", name: "Market Journal", description: "Warme Braunflächen mit orangefarbenem Akzent.", accent: "#ffb454" },
+      { theme: "fresh-signal", name: "Fresh Signal", description: "Kühles Blaugrün mit türkisfarbenem Akzent.", accent: "#55e0d0" },
+      { theme: "tomato", name: "Tomato", description: "Dunkle Rotnuancen mit korallfarbenem Akzent.", accent: "#ff8977" },
+      { theme: "lime-focus", name: "Lime Focus", description: "Sehr dunkles Grün mit leuchtendem Lime-Akzent.", accent: "#d4ff00" },
+      { theme: "indigo-pocket", name: "Indigo Pocket", description: "Dunkles Blau mit klarem Indigo-Akzent.", accent: "#83a7ff" },
+    ];
+    const gallery = document.querySelector("#gallery");
+    const icon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 17.5h7M17.5 14v7"></path></svg>';
+    for (const [index, proposal] of proposals.entries()) {
+      const card = document.createElement("article");
+      card.className = "card";
+      card.dataset.theme = proposal.theme;
+      const head = document.createElement("div");
+      head.className = "card-head";
+      head.innerHTML = `<span class="number">${String(index + 1).padStart(2, "0")}</span><h2>${proposal.name}</h2><small>${proposal.accent}</small>`;
+      const preview = document.createElement("div");
+      preview.className = "preview";
+      preview.innerHTML = `<section class="screen" aria-label="Vorschau Supermarktverwaltung">
+        <div class="screen-top"><span>EINKAUFSZETTEL</span><span class="back">← Zurück</span></div>
+        <h3>Produktkategorien bearbeiten</h3>
+        <p class="help">REWE · Diese Reihenfolge gilt nur für diesen Markt.</p>
+        <button type="button" class="select-button">${icon}<span class="label">Kategorienauswahl</span><span class="chevron" aria-hidden="true"></span></button>
+        <div class="rows" aria-hidden="true"><div class="row"><span class="grip">⠿</span><span>Obst &amp; Gemüse</span><small>↕</small></div><div class="row"><span class="grip">⠿</span><span>Backwaren</span><small>↕</small></div><div class="row"><span class="grip">⠿</span><span>Getränke</span><small>↕</small></div></div>
+      </section>`;
+      const caption = document.createElement("p");
+      caption.className = "caption";
+      caption.innerHTML = `<strong>Variante 07 · ${proposal.name}.</strong> ${proposal.description}`;
+      card.append(head, preview, caption);
+      gallery.append(card);
+    }
+  </script>
+</body>
+</html>

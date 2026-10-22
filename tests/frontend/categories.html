@@ -484,6 +484,10 @@ async function runTests() {
     api.openCatalog("market-edit", state.supermarkets[0]);
     doc.querySelector(".category-navigation").click();
     assert(doc.querySelector("#catalog-title").textContent === "Produktkategorien bearbeiten", "Wrong destination");
+    const categorySelection = doc.querySelector(".category-selection-button");
+    assert(categorySelection.textContent === "Kategorienauswahl", "Category-selection button label is incorrect");
+    assert(categorySelection.querySelector("svg[aria-hidden='true']") && categorySelection.querySelector(".category-selection-arrow[aria-hidden='true']"), "Category-selection button icon or arrow missing");
+    assert(syncStyles.includes(".category-selection-button") && syncStyles.includes("color-mix(in srgb,var(--accent) 60%,var(--line))"), "Category-selection button does not use the theme accent outline");
     assert(doc.querySelectorAll(".move-grip").length === 3, "Uncategorized sorting row missing");
     assert(doc.querySelector(".category-order-row[data-category-id=''] .order-name").textContent === "3. Ohne Kategorie", "Uncategorized row was not appended by default");
     assert(!doc.querySelector(".category-order-row[data-category-id=''] [aria-label='Ohne Kategorie aus diesem Markt entfernen']"), "Uncategorized row was removable");
@@ -537,7 +541,7 @@ async function runTests() {
   test("Selection comes from A-Z store, does not reset existing order", () => {
     doc.querySelector('[aria-label="Ohne Kategorie nach oben"]').click();
     assert(api.state().catalogDraft.category_ids.join() === "b,,z", "Could not set an intermediate uncategorized position");
-    doc.querySelector("#catalog-content > .primary").click();
+    doc.querySelector("#catalog-content > .category-selection-button").click();
     const fixedActions = doc.querySelector("#catalog-fixed-actions");
     assert(!fixedActions.hidden && [...fixedActions.querySelectorAll("button")].map(button => button.textContent).join("|") === "Zurück|Auswahl übernehmen", "Category selection actions are not fixed in the footer");
     const choices = [...doc.querySelectorAll(".category-choice")];
@@ -545,7 +549,7 @@ async function runTests() {
     choices[0].querySelector("input").click();
     fixedActions.querySelector(".primary").click();
     assert(api.state().catalogDraft.category_ids.join() === "b,,z,a", "Selection reset order or moved the uncategorized position");
-    doc.querySelector("#catalog-content > .primary").click();
+    doc.querySelector("#catalog-content > .category-selection-button").click();
     doc.querySelector(".category-choice input").click();
     doc.querySelector("#catalog-fixed-actions button:first-child").click();
     assert(api.state().catalogDraft.category_ids.join() === "b,,z,a", "Going back from category selection did not discard its temporary changes");
@@ -682,7 +686,7 @@ async function runTests() {
   assert(!orderFooter.hidden && [...orderFooter.querySelectorAll("button")].map(button => button.textContent).join("|") === "Abbrechen|Speichern", "Market-order actions are not in the fixed footer");
   assert(orderContent.scrollHeight > orderContent.clientHeight, "Long category order does not scroll independently");
   assert(Math.abs(orderFooter.getBoundingClientRect().bottom - win.innerHeight) < 2, "Market-order footer is not anchored to the viewport bottom");
-  doc.querySelector("#catalog-content > .primary").click();
+  doc.querySelector("#catalog-content > .category-selection-button").click();
   const selectionContent = doc.querySelector("#catalog-content");
   const selectionFooter = doc.querySelector("#catalog-fixed-actions");
   assert(!selectionFooter.hidden, "Category selection lost its fixed footer with a long list");
