@@ -35,6 +35,7 @@ const elements = {
   addForm: document.querySelector("#add-form"),
   modeToggle: document.querySelector("#mode-toggle"),
   newItem: document.querySelector("#new-item"),
+  productSuggestions: document.querySelector("#product-suggestions"),
   items: document.querySelector("#items"),
   endShoppingTemplate: document.querySelector("#end-shopping-action-template"),
   cashierReminder: document.querySelector("#cashier-reminder"),
@@ -229,7 +230,9 @@ function applyCatalog(value) {
   const nextProducts = value.products === undefined ? [] : value.products;
   if (!Array.isArray(nextProducts) || nextProducts.some(product =>
     !product || typeof product.name !== "string" || !productNameKey(product.name) ||
-    product.key !== productNameKey(product.name) ||
+    product.key !== productNameKey(product.name) || !validProductUsage(product.usage === undefined ? {} : product.usage) ||
+    (product.category_known !== undefined && typeof product.category_known !== "boolean") ||
+    (product.category_known === false && product.category_id !== null) ||
     (product.category_id !== null && !nextCategories.some(category => category.id === product.category_id))
   ) || new Set(nextProducts.map(product => product.key)).size !== nextProducts.length) {
     throw new Error("Die Produktzuordnungen sind ungültig. Bitte erneut laden.");
@@ -243,16 +246,27 @@ function productNameKey(name) {
   return name.trim().replace(/\s+/gu, " ").toLowerCase().replace(/ß/gu, "ss").replace(/ς/gu, "σ");
 }
 
-function rememberProduct(name, categoryId) {
+function validProductUsage(usage) {
+  return !!usage && typeof usage === "object" && !Array.isArray(usage) &&
+    Object.entries(usage).every(([id, stats]) => id && stats &&
+      Number.isSafeInteger(stats.added) && stats.added >= 0 &&
+      Number.isFinite(stats.last_added) && stats.last_added >= 0 &&
+      stats.weeks && typeof stats.weeks === "object" && !Array.isArray(stats.weeks) &&
+      Object.entries(stats.weeks).every(([week, count]) =>
+        /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/u.test(week) && Number.isSafeInteger(count) && count >= 0));
+}
+
+function rememberProduct(name, categoryId, categoryKnown = true) {
   const key = productNameKey(name);
-  const product = { key, name, category_id: categoryId };
+  const product = { ...products.find(item => item.key === key), key, name, category_id: categoryId, category_known: categoryKnown };
   products = [...products.filter(item => item.key !== key), product];
 }
 
 function applyProductCategories() {
   currentItems = currentItems.map(item => {
     const product = products.find(record => record.key === productNameKey(item.summary));
-    return product ? { ...item, metadata: { ...item.metadata, category_id: product.category_id } } : item;
+    return product && product.category_known !== false
+      ? { ...item, metadata: { ...item.metadata, category_id: product.category_id } } : item;
   });
 }
 
@@ -333,6 +347,10 @@ async function refreshSupermarkets() {
 
 function replayProductAssignments(operations) {
   for (const operation of operations) {
+    if (operation.type === "add_item" && operation.summary) {
+      const known = products.find(product => product.key === productNameKey(operation.summary));
+      rememberProduct(operation.summary, known?.category_id ?? null, known ? known.category_known !== false : false);
+    }
     if (operation.product_name && Object.hasOwn(operation.metadata || {}, "category_id")) {
       rememberProduct(operation.product_name, operation.metadata.category_id);
     }
@@ -368,11 +386,14 @@ function requestDiscardChanges(action) {
   const dialog = document.querySelector("#discard-changes");
   if (dialog.open) return;
   dialog.returnValue = "";
-  dialog.addEventListener("close", () => {
-    if (dialog.returnValue !== "discard") return;
+  const form = dialog.querySelector("form");
+  const handleSubmit = event => {
+    if (event.submitter?.value !== "discard") return;
     catalogDirty = false;
     action();
-  }, { once: true });
+  };
+  form.addEventListener("submit", handleSubmit);
+  dialog.addEventListener("close", () => form.removeEventListener("submit", handleSubmit), { once: true });
   dialog.showModal();
 }
 
@@ -1025,6 +1046,7 @@ window.addEventListener("beforeunload", event => {
 
 function updateModeView() {
   elements.addForm.hidden = !planningMode;
+  closeProductSuggestions();
   const action = planningMode ? "Einkaufen" : "Weiter planen";
   const mode = planningMode ? "Planungsmodus" : "Einkaufsmodus";
   elements.modeToggle.setAttribute("aria-label", `${action} – aktuell ${mode}`);
@@ -1170,6 +1192,8 @@ async function enqueue(operation, listId = entryId) {
 function applyLocalOperation(operation) {
   if (deletedUids.has(operation.uid)) return;
   if (operation.type === "add_item") {
+    const known = products.find(product => product.key === productNameKey(operation.summary));
+    rememberProduct(operation.summary, known?.category_id ?? null, known ? known.category_known !== false : false);
     if (!currentItems.some((item) => item.uid === operation.uid)) {
       currentItems.push({
         uid: operation.uid,
@@ -1543,10 +1567,12 @@ function render() {
     : syncPromise ? "Listen werden im Hintergrund abgeglichen. Du kannst weiter einkaufen."
       : "Liste ist auf diesem Gerät gespeichert.";
   setBusy(busy);
+  renderProductSuggestions();
 }
 
 function setBusy(value) {
   busy = value;
+  if (value) closeProductSuggestions();
   const blocked = value;
   elements.listSelect.disabled = blocked || !availableLists.length;
   if (elements.listSelect.disabled) closeFlyout(elements.listSelect, elements.listFlyout);
@@ -2653,16 +2679,118 @@ elements.manageLists.addEventListener("click", async () => {
   }
 });
 
-elements.addForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const summary = elements.newItem.value.trim();
-  if (!summary) return;
-  elements.newItem.value = "";
-  try {
-    await enqueue({ type: "add_item", uid: crypto.randomUUID(), summary });
-  } catch (error) {
-    showError(error);
+let suggestionIndex = -1;
+let suggestionMatches = [];
+const addingProducts = new Set();
+
+function closeProductSuggestions() {
+  elements.productSuggestions.hidden = true;
+  elements.newItem.setAttribute("aria-expanded", "false");
+  elements.newItem.removeAttribute("aria-activedescendant");
+  suggestionIndex = -1;
+}
+
+function renderProductSuggestions() {
+  if (document.activeElement !== elements.newItem || elements.addForm.hidden || busy || !entryId) {
+    closeProductSuggestions();
+    return;
   }
+  const query = productNameKey(elements.newItem.value);
+  if (!query) {
+    closeProductSuggestions();
+    return;
+  }
+  const open = new Set(currentItems.filter(item => item.status === "needs_action").map(item => productNameKey(item.summary)));
+  const pending = new Map();
+  for (const operation of pendingOperations) {
+    if (operation.type !== "add_item") continue;
+    const key = productNameKey(operation.summary);
+    const previous = pending.get(key) || { added: 0, last_added: 0 };
+    pending.set(key, { added: previous.added + 1, last_added: Math.max(previous.last_added, operation.created_at) });
+  }
+  const rank = product => {
+    const stored = product.usage?.[entryId];
+    const local = pending.get(product.key);
+    return { added: (stored?.added || 0) + (local?.added || 0),
+      last: Math.max(stored?.last_added || 0, local?.last_added || 0) };
+  };
+  suggestionMatches = products.filter(product => product.key.startsWith(query) && !open.has(product.key))
+    .sort((a, b) => rank(b).added - rank(a).added || rank(b).last - rank(a).last || nameOrder.compare(a.name, b.name));
+  suggestionIndex = -1;
+  elements.newItem.removeAttribute("aria-activedescendant");
+  elements.productSuggestions.replaceChildren();
+  suggestionMatches.forEach((product, index) => {
+    const option = button(product.name, () => addSuggestedProduct(product.name), "product-suggestion");
+    option.id = `product-suggestion-${index}`;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", "false");
+    option.tabIndex = -1;
+    option.title = product.name;
+    option.addEventListener("pointerdown", event => {
+      if (event.button === 0) event.preventDefault();
+    });
+    elements.productSuggestions.append(option);
+  });
+  elements.productSuggestions.hidden = !suggestionMatches.length;
+  elements.newItem.setAttribute("aria-expanded", String(!!suggestionMatches.length));
+}
+
+async function addSuggestedProduct(name) {
+  const summary = name.trim();
+  const listId = entryId;
+  const identity = `${listId}:${productNameKey(summary)}`;
+  if (!summary || busy || addingProducts.has(identity)) return;
+  if (currentItems.some(item => item.status === "needs_action" && productNameKey(item.summary) === productNameKey(summary))) {
+    closeProductSuggestions();
+    showError(new Error(`„${summary}“ steht bereits offen auf der Liste.`));
+    return;
+  }
+  addingProducts.add(identity);
+  const original = elements.newItem.value;
+  elements.newItem.value = "";
+  closeProductSuggestions();
+  try {
+    await enqueue({ type: "add_item", uid: crypto.randomUUID(), summary }, listId);
+  } catch (error) {
+    if (entryId === listId && !elements.newItem.value) elements.newItem.value = original || summary;
+    showError(error);
+  } finally {
+    addingProducts.delete(identity);
+    if (entryId === listId && !elements.addForm.hidden) elements.newItem.focus();
+  }
+}
+
+elements.newItem.addEventListener("input", renderProductSuggestions);
+elements.newItem.addEventListener("focus", renderProductSuggestions);
+elements.newItem.addEventListener("blur", closeProductSuggestions);
+elements.newItem.addEventListener("keydown", event => {
+  if (event.isComposing) return;
+  if (event.key === "Escape") {
+    if (!elements.productSuggestions.hidden) event.stopPropagation();
+    closeProductSuggestions();
+    return;
+  }
+  if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+    if (elements.productSuggestions.hidden) renderProductSuggestions();
+    if (!suggestionMatches.length || elements.productSuggestions.hidden) return;
+    event.preventDefault();
+    suggestionIndex = event.key === "ArrowDown"
+      ? (suggestionIndex + 1) % suggestionMatches.length
+      : (suggestionIndex <= 0 ? suggestionMatches.length : suggestionIndex) - 1;
+    const options = [...elements.productSuggestions.children];
+    options.forEach((option, index) => option.setAttribute("aria-selected", String(index === suggestionIndex)));
+    elements.newItem.setAttribute("aria-activedescendant", options[suggestionIndex].id);
+    options[suggestionIndex].scrollIntoView({ block: "nearest" });
+  } else if (event.key === "Enter" && suggestionIndex >= 0 && !elements.productSuggestions.hidden) {
+    event.preventDefault();
+    addSuggestedProduct(suggestionMatches[suggestionIndex].name);
+  }
+});
+
+elements.addForm.addEventListener("submit", event => {
+  event.preventDefault();
+  if (event.isComposing) return;
+  addSuggestedProduct(elements.newItem.value);
 });
 
 elements.sync.addEventListener("click", () => {

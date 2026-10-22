@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.12">
+    <link rel="stylesheet" href="./app.css?v=0.4.13">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -102,7 +102,8 @@
 
       <form id="add-form" class="add-form">
         <label class="visually-hidden" for="new-item">Neuer Artikel</label>
-        <input id="new-item" name="item" autocomplete="off" maxlength="200" placeholder="Was fehlt noch?" required>
+        <input id="new-item" name="item" autocomplete="off" maxlength="200" placeholder="Was fehlt noch?" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="product-suggestions" required>
+        <div id="product-suggestions" class="product-suggestions" role="listbox" aria-label="Produktvorschläge" hidden></div>
         <button type="submit" class="primary" aria-label="Hinzufügen" title="Artikel hinzufügen">＋</button>
       </form>
 
@@ -127,9 +128,9 @@
         <li class="end-shopping-item">
           <button class="end-shopping-action" type="button" aria-label="Einkauf beenden" aria-description="Zum Beenden des Einkaufs lange drücken oder mit der Tastatur bestätigen.">
             <span class="end-shopping-sequence" aria-hidden="true">
-              <svg class="end-shopping-cart-filled" viewBox="0 0 24 24"><path fill="currentColor" d="M2 3h2.7l2.2 11.1a2 2 0 0 0 2 1.6h9.2a2 2 0 0 0 1.9-1.4L22 7H6.1l-.5-2.5A2 2 0 0 0 3.7 3H2zm6.2 14.2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm9.2 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg>
+              <svg class="end-shopping-cart-filled" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5h2.3l2.1 10.7c.2 1.1 1.1 1.8 2.2 1.8h8.5c1.1 0 2-.7 2.3-1.8L22 7H6"/><path d="M9.1 10h2.1v3H9.1zm3.4-1h2.1v4h-2.1zm3.4 1h2.1v3h-2.1z" fill="#fff" stroke="none"/><circle cx="9.8" cy="20" r="1.45"/><circle cx="18.3" cy="20" r="1.45"/></svg>
               <svg class="end-shopping-arrow" viewBox="0 0 28 18"><path d="M1 9h22M16 2l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              <svg class="end-shopping-cart-empty" viewBox="0 0 24 24"><path d="M2 3h2.7l2.2 11.1a2 2 0 0 0 2 1.6h9.2a2 2 0 0 0 1.9-1.4L22 7H6.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="8.2" cy="19.2" r="1.5"/><circle cx="17.4" cy="19.2" r="1.5"/></svg>
+              <svg class="end-shopping-cart-empty" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5h2.3l2.1 10.7c.2 1.1 1.1 1.8 2.2 1.8h8.5c1.1 0 2-.7 2.3-1.8L22 7H6"/><circle cx="9.8" cy="20" r="1.45"/><circle cx="18.3" cy="20" r="1.45"/></svg>
             </span>
             <span class="end-shopping-label">Einkauf beenden</span>
             <span class="end-shopping-tail" aria-hidden="true"></span>
@@ -236,6 +237,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.12" defer></script>
+    <script src="./app.js?v=0.4.13" defer></script>
   </body>
 </html>

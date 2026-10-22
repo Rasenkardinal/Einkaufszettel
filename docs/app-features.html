@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#141414">
+  <title>Einkaufszettel · App-Funktionen im Überblick</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #101010;
+      color: #f4f4f4;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at 50% 0, #ffffff08, transparent 620px), #101010; }
+    .page-header, .gallery, .page-footer { width: min(1320px, calc(100% - 36px)); margin-inline: auto; }
+    .page-header { padding: 52px 0 30px; }
+    .eyebrow { margin: 0 0 10px; color: #a3e635; font-size: 11px; font-weight: 750; letter-spacing: .16em; }
+    h1 { margin: 0; font-size: clamp(30px, 5vw, 48px); letter-spacing: -.045em; line-height: 1.08; }
+    .lead { max-width: 760px; margin: 15px 0 0; color: #aaa; font-size: 15px; line-height: 1.65; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr)); align-items: start; gap: 24px; padding-bottom: 44px; }
+    .feature { overflow: hidden; border: 1px solid #303030; border-radius: 16px; background: #181818; box-shadow: 0 18px 50px #0004; }
+    .feature-heading { display: flex; align-items: center; gap: 11px; padding: 17px 18px 14px; border-bottom: 1px solid #303030; }
+    .feature-number { display: grid; width: 30px; height: 30px; flex: none; place-items: center; border: 1px solid #3d3d3d; border-radius: 50%; color: #bbb; font-size: 12px; font-weight: 700; }
+    .feature-heading h2 { flex: 1; margin: 0; font-size: 16px; letter-spacing: -.01em; }
+    .screen-label { color: #888; font-size: 10px; font-weight: 700; letter-spacing: .12em; white-space: nowrap; }
+    .screen {
+      --bg: #141414; --surface: #202020; --surface2: #2b2b2b; --line: #383838;
+      --accent: #f5f5f5; --accent-text: #171717; --muted: #aaa; --glow: #ffffff0d;
+      width: min(100%, 420px); min-height: 488px; margin: 18px auto; padding: 20px 18px;
+      border: 1px solid #353535; border-radius: 15px; background: radial-gradient(ellipse at 50% 0, var(--glow), transparent 60%), var(--bg);
+      color: #f4f4f4; font-size: 13px;
+    }
+    .screen[data-theme="botanical"] { --bg:#111813; --surface:#1b251e; --surface2:#26362a; --line:#304035; --accent:#a3e635; --accent-text:#17220d; --muted:#aab7ac; --glow:#6fbd3414; }
+    .screen[data-theme="plum"] { --bg:#15121c; --surface:#211b2b; --surface2:#30243e; --line:#3b3148; --accent:#c4a7ff; --accent-text:#20152f; --muted:#b9adc8; --glow:#a987f520; }
+    .screen[data-theme="journal"] { --bg:#1a1411; --surface:#271d18; --surface2:#38281d; --line:#49382e; --accent:#ffb454; --accent-text:#38200b; --muted:#c7b3a5; --glow:#ff96301b; }
+    .screen[data-theme="fresh"] { --bg:#0d171b; --surface:#13242a; --surface2:#19343b; --line:#24444c; --accent:#55e0d0; --accent-text:#06201d; --muted:#9db8ba; --glow:#27cfc51c; }
+    .screen[data-theme="tomato"] { --bg:#1b1315; --surface:#281c1f; --surface2:#382327; --line:#493137; --accent:#ff8977; --accent-text:#351512; --muted:#c2a7a6; --glow:#f46c571c; }
+    .screen[data-theme="lime"] { --bg:#0c0f0c; --surface:#171c16; --surface2:#222b1e; --line:#343e2d; --accent:#d4ff00; --accent-text:#161b00; --muted:#a9b197; --glow:#c4ec0021; }
+    .screen[data-theme="indigo"] { --bg:#101522; --surface:#192033; --surface2:#222d49; --line:#303b56; --accent:#83a7ff; --accent-text:#111b34; --muted:#aab5ca; --glow:#6688f71e; }
+    .shot-top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:22px; }
+    .shot-brand { min-width:0; }
+    .shot-kicker { margin:0 0 5px; color:var(--muted); font-size:9px; font-weight:750; letter-spacing:.15em; }
+    .shot-title { display:flex; align-items:center; gap:7px; min-width:0; font-size:24px; font-weight:750; letter-spacing:-.045em; }
+    .shot-title .chevron { color:var(--muted); font-size:13px; }
+    .menu-dots { width:32px; height:32px; flex:none; border-radius:50%; background:var(--surface2); color:var(--muted); text-align:center; line-height:27px; font-size:19px; letter-spacing:1px; }
+    .toolbar { display:flex; align-items:center; gap:7px; }
+    .icon-button { display:grid; width:36px; height:36px; flex:none; place-items:center; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--accent); font-size:18px; }
+    .sync-row { display:flex; align-items:center; gap:3px; }
+    .sync-fly { margin:8px 0 0 auto; width:min(100%,290px); padding:12px; border:1px solid var(--line); border-radius:11px; background:var(--surface); box-shadow:0 12px 28px #0007; }
+    .status-line { display:flex; align-items:center; gap:8px; font-weight:700; font-size:12px; }
+    .dot { width:8px; height:8px; flex:none; border-radius:50%; background:#35d885; box-shadow:0 0 10px #35d88555; }
+    .dot.pending { background:#f2b84b; box-shadow:0 0 10px #f2b84b55; }
+    .small-copy { margin:6px 0 0 16px; color:var(--muted); font-size:11px; line-height:1.5; }
+    .input-row { display:flex; gap:8px; margin-bottom:20px; }
+    .fake-input { flex:1; padding:12px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--muted); }
+    .plus-button { width:44px; border:0; border-radius:8px; background:var(--accent); color:var(--accent-text); font-size:22px; }
+    .list-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:11px; }
+    .list-heading strong { font-size:14px; }
+    .market-chip { display:flex; align-items:center; gap:6px; max-width:65%; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--muted); font-size:11px; }
+    .market-chip .qr { color:var(--accent); }
+    .category-title { display:flex; justify-content:space-between; margin:14px 1px 7px; color:var(--muted); font-size:10px; font-weight:750; letter-spacing:.1em; }
+    .item-row { display:flex; align-items:center; gap:11px; min-height:48px; margin:0 0 6px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; background:var(--surface); }
+    .check { width:18px; height:18px; flex:none; border:1.5px solid #888; border-radius:5px; }
+    .check.checked { display:grid; place-items:center; border-color:#888; background:#888; color:#171717; font-size:13px; font-weight:800; }
+    .item-name { min-width:0; flex:1; font-weight:650; }
+    .item-note { color:var(--muted); font-size:11px; white-space:nowrap; }
+    .item-row.done { opacity:.46; }
+    .item-row.done .item-name { text-decoration:line-through; }
+    .finish-button { position:relative; display:flex; align-items:center; gap:9px; width:100%; min-height:58px; margin-top:13px; padding:10px; border:1px solid var(--line); border-top:2px solid #777; border-radius:10px; background:var(--surface); color:inherit; }
+    .cart-sequence { display:flex; align-items:center; gap:4px; color:var(--accent); font-size:19px; }
+    .cart-sequence .mini-cart { font-size:22px; }
+    .finish-button strong { flex:1; font-size:12px; }
+    .manage-heading { margin:7px 0 10px; font-size:25px; letter-spacing:-.035em; }
+    .manage-help { margin:8px 0 15px; color:var(--muted); font-size:11px; line-height:1.5; }
+    .back-link { display:flex; align-items:center; gap:8px; margin-bottom:20px; color:var(--muted); font-size:11px; }
+    .menu-panel { padding:7px; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:0 10px 28px #0006; }
+    .menu-panel h3 { margin:5px 9px 8px; font-size:14px; }
+    .menu-section { padding:9px 10px; border-top:1px solid var(--line); font-size:12px; font-weight:700; }
+    .menu-section .sign { float:right; color:var(--muted); font-size:18px; font-weight:400; line-height:12px; }
+    .menu-sub { margin:1px 8px 9px 10px; padding:6px 0 6px 9px; border-left:2px solid var(--line); }
+    .menu-action { padding:9px 10px; border-radius:7px; color:var(--accent); font-size:11px; }
+    .menu-foot { margin:8px 10px 4px; color:var(--muted); font-size:10px; }
+    .design-options { display:grid; gap:4px; }
+    .design-choice { display:flex; align-items:center; gap:9px; min-height:34px; padding:6px 8px; border:1px solid transparent; border-radius:7px; font-size:11px; }
+    .design-choice.active { border-color:var(--accent); background:var(--surface2); }
+    .swatch { width:11px; height:11px; flex:none; border-radius:50%; background:var(--swatch); }
+    .tick { margin-left:auto; color:var(--accent); }
+    .management-list { display:grid; gap:7px; }
+    .manage-row, .source-row, .order-row, .product-row { display:flex; align-items:center; gap:9px; min-height:43px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+    .manage-row { color:var(--accent); }
+    .manage-row .arrow-right { margin-left:auto; color:var(--muted); }
+    .source-row { align-items:flex-start; min-height:63px; }
+    .source-row .source-text { min-width:0; flex:1; }
+    .source-row strong { display:block; font-size:11px; }
+    .source-row small { display:block; margin-top:4px; color:var(--muted); font-size:10px; }
+    .toggle { width:31px; height:18px; flex:none; padding:2px; border-radius:12px; background:#4a4a4a; }
+    .toggle::after { content:""; display:block; width:14px; height:14px; border-radius:50%; background:#bbb; }
+    .toggle.on { background:var(--accent); }
+    .toggle.on::after { margin-left:13px; background:var(--accent-text); }
+    .order-row { min-height:45px; }
+    .grip { color:var(--muted); font-size:16px; }
+    .order-label { flex:1; }
+    .move { color:var(--muted); font-size:15px; }
+    .field-label { display:block; margin:14px 0 6px; font-size:11px; font-weight:650; }
+    .field { min-height:39px; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:#fff; font-size:11px; }
+    .field-select { display:flex; justify-content:space-between; align-items:center; }
+    .form-actions { display:flex; justify-content:space-between; gap:8px; margin-top:18px; }
+    .action-button { min-height:38px; padding:9px 14px; border:1px solid var(--line); border-radius:8px; background:var(--surface2); color:inherit; font-size:11px; font-weight:650; }
+    .action-button.primary { border-color:var(--accent); background:var(--accent); color:var(--accent-text); }
+    .action-button.full { width:100%; margin-top:8px; }
+    .card-list { display:grid; gap:7px; }
+    .product-row { min-height:38px; font-size:11px; }
+    .product-row span:first-child { flex:1; }
+    .tag { padding:3px 6px; border-radius:12px; background:var(--surface2); color:var(--muted); font-size:9px; }
+    .dialog { width:100%; margin:8px auto; padding:18px; border:1px solid var(--line); border-radius:13px; background:var(--surface); box-shadow:0 12px 40px #0007; }
+    .dialog h3 { margin:0 0 9px; font-size:17px; }
+    .dialog p { margin:0 0 13px; color:var(--muted); font-size:11px; line-height:1.55; }
+    .dialog-backdrop { padding:14px; border-radius:11px; background:#0008; }
+    .dialog-actions { display:flex; justify-content:flex-end; gap:7px; margin-top:15px; }
+    .category-picker { position:relative; }
+    .search { margin-bottom:5px; color:var(--muted); }
+    .option { display:flex; align-items:center; gap:8px; min-height:31px; padding:6px 8px; border-radius:6px; font-size:10px; }
+    .option.selected { background:var(--surface2); }
+    .option .checkmark { margin-left:auto; color:var(--accent); }
+    .option.disabled { color:#858585; }
+    .warning { color:#f0c36d!important; }
+    .note-box { display:flex; align-items:center; justify-content:center; min-height:108px; margin:10px 0; border:1px dashed var(--line); border-radius:9px; background:var(--bg); color:var(--accent); font-size:31px; letter-spacing:5px; }
+    .conflict { margin:9px 0; padding:10px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+    .conflict strong { display:block; margin-bottom:5px; font-size:11px; }
+    .conflict p { margin:0; color:var(--muted); font-size:10px; line-height:1.45; }
+    .caption { min-height:67px; margin:0; padding:14px 18px 17px; border-top:1px solid #303030; color:#b8b8b8; font-size:12px; line-height:1.55; }
+    .page-footer { padding:0 0 38px; color:#777; font-size:11px; }
+    @media (min-width: 1180px) { .gallery { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+    @media (max-width: 520px) { .page-header,.gallery,.page-footer{width:calc(100% - 24px)} .page-header{padding-top:32px} .gallery{gap:15px} .screen{min-height:470px;margin:12px auto;padding:17px 14px} .screen-label{font-size:8px} }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <p class="eyebrow">EINKAUFSZETTEL · FUNKTIONSÜBERSICHT</p>
+    <h1>Die App im Überblick</h1>
+    <p class="lead">Ein visueller Rundgang durch die wichtigsten Listenansichten, Einstellungen und Dialoge. Die eingebetteten App-Ansichten verwenden ausschließlich illustrative Beispieldaten; das Installationsmenü ist absichtlich ausgelassen.</p>
+  </header>
+
+  <main class="gallery">
+    <article class="feature">
+      <header class="feature-heading"><span class="feature-number">01</span><h2>Planen und einkaufen</h2><span class="screen-label">BOTANICAL</span></header>
+      <div class="screen" data-theme="botanical">
+        <div class="shot-top"><div class="shot-brand"><p class="shot-kicker">EINKAUFSZETTEL</p><div class="shot-title">Wocheneinkauf <span class="chevron">⌄</span></div></div><div class="toolbar"><div class="icon-button">✎</div><div class="icon-button">⟳</div><div class="menu-dots">•••</div></div></div>
+        <div class="input-row"><div class="fake-input">Was fehlt noch?</div><button class="plus-button">＋</button></div>
+        <div class="list-heading"><strong>Auf der Liste</strong><span class="market-chip">▱ <span>Edeka</span><span>⌄</span></span></div>
+        <div class="category-title"><span>OHNE KATEGORIE</span><span>2</span></div>
+        <div class="item-row"><span class="check"></span><span class="item-name">Kaffeebohnen</span><span class="item-note">1 Packung</span></div>
+        <div class="item-row"><span class="check"></span><span class="item-name">Hafermilch</span><span class="item-note">2 × 1 l</span></div>
+        <div class="category-title"><span>OBST &amp; GEMÜSE</span><span>1</span></div>
+        <div class="item-row done"><span class="check checked">✓</span><span class="item-name">Äpfel</span><span class="item-note">Bio</span></div>
+        <div class="finish-button"><span class="cart-sequence"><span class="mini-cart">🛒</span>→<span class="mini-cart">🛒</span></span><strong>Einkauf beenden</strong><span>›</span></div>
+      </div>
+      <p class="caption">Im Planungsmodus Artikel hinzufügen, Menge und Zusatzinfo notieren sowie erledigte Artikel abhaken. Der Wechsel zum Einkaufsmodus blendet die Eingabe aus und sortiert die Kategorien nach dem gewählten Markt.</p>
+    </article>
+
+    <article class="feature">
+      <header class="feature-heading"><span class="feature-number">02</span><h2>Synchronisation und Onlinestatus</h2><span class="screen-label">FRESH SIGNAL</span></header>
+      <div class="screen" data-theme="fresh">
+        <div class="shot-top"><div class="shot-brand"><p class="shot-kicker">EINKAUFSZETTEL</p><div class="shot-title">Wocheneinkauf <span class="chevron">⌄</span></div></div><div class="toolbar"><div class="icon-button">🛒</div><div class="sync-row"><div class="icon-button">⟳</div><div class="icon-button">⌄</div></div></div></div>
+        <div class="sync-fly">
+          <div class="status-line"><span class="dot"></span><strong>Mit Home Assistant verbunden</strong></div>
+          <p class="small-copy">Alle Änderungen sind synchronisiert.</p>
+        </div>
+        <div style="height:24px"></div>
+        <div class="list-heading"><strong>Auf der Liste</strong><span class="market-chip">▱ <span>Fresh Market</span><span>⌄</span></span></div>
+        <div class="category-title"><span>GETRÄNKE</span><span>2</span></div>
+        <div class="item-row"><span class="check"></span><span class="item-name">Mineralwasser</span><span class="item-note">6 Flaschen</span></div>
+        <div class="item-row"><span class="check"></span><span class="item-name">Orangensaft</span></div>
+        <div class="category-title"><span>BACKWAREN</span><span>1</span></div>
+        <div class="item-row"><span class="check"></span><span class="item-name">Baguette</span></div>
+      </div>
+      <p class="caption">Der kompakte Sync-Kreis startet die Synchronisation. Der Pfeil öffnet den Status-Flyout, ohne die Liste zu verschieben. Farbpunkt und Hinweistext zeigen Verbindung sowie ausstehende Änderungen.</p>
+    </article>
+
+    <article class="feature">
+      <header class="feature-heading"><span class="feature-number">03</span><h2>Einstellungen</h2><span class="screen-label">MIDNIGHT PLUM</span></header>
+      <div class="screen" data-theme="plum">
+        <div class="shot-top"><div class="shot-brand"><p class="shot-kicker">EINKAUFSZETTEL</p><div class="shot-title">Wocheneinkauf <span class="chevron">⌄</span></div></div><div class="menu-dots">•••</div></div>
+        <div class="menu-panel">
+          <h3>Einstellungen</h3>
+          <div class="menu-section">Design <span class="sign">−</span></div>
+          <div class="menu-sub">
+            <p class="small-copy" style="margin:4px 0 8px">Farbschema auswählen</p>
+            <div class="design-options">
+              <div class="design-choice"><span class="swatch" style="--swatch:#a3e635"></span>Botanical</div>
+              <div class="design-choice active"><span class="swatch" style="--swatch:#c4a7ff"></span>Midnight Plum <span class="tick">✓</span></div>
+              <div class="design-choice"><span class="swatch" style="--swatch:#ffb454"></span>Market Journal</div>
+              <div class="design-choice"><span class="swatch" style="--swatch:#55e0d0"></span>Fresh Signal</div>
+              <div class="design-choice"><span class="swatch" style="--swatch:#f5f5f5"></span>Mono</div>
+              <div class="design-choice"><span class="swatch" style="--swatch:#ff8977"></span>Tomato</div>
+              <div class="design-choice"><span class="swatch" style="--swatch:#d4ff00"></span>Lime Focus</div>
+              <div class="design-choice"><span class="swatch" style="--swatch:#83a7ff"></span>Indigo Pocket</div>
+            </div>
+          </div>
+          <div class="menu-section">Listenverwaltung <span class="sign">+</span></div>
+          <div class="menu-section">Supermärkte verwalten <span class="sign">+</span></div>
+          <div class="menu-section">Produktkategorien verwalten <span class="sign">+</span></div>
+          <p class="menu-foot">Offline gespeichert auf diesem Gerät</p>
+        </div>
+      </div>
+      <p class="caption">Das Einstellungsmenü gruppiert Design, Listen, Märkte und Produktkategorien. Die Farbauswahl passt den App-Akzent direkt an und wird lokal auf dem Gerät gespeichert. Das Installationsmenü ist hier ausgelassen.</p>
+    </article>
+
+    <article class="feature">
+      <header class="feature-heading"><span class="feature-number">04</span><h2>Listenverwaltung</h2><span class="screen-label">MONO</span></header>
+      <div class="screen">
+        <div class="back-link">← <span>Zurück zur Liste</span></div>
+        <p class="shot-kicker">EINKAUFSZETTEL</p>
+        <h3 class="manage-heading">Listen verwalten</h3>
+        <p class="manage-help">HA-Listen für die App auswählen und kurz benennen. Einstellungen gelten für alle Haushaltsmitglieder.</p>
+        <div class="card-list">
+          <div class="source-row"><div class="source-text"><strong>Wocheneinkauf</strong><small>Quelle: Einkaufsliste · Anzeigename bearbeiten</small></div><span class="toggle on"></span></div>
+          <div class="source-row"><div class="source-text"><strong>Vorrat</strong><small>Quelle: Pantry · Anzeigename bearbeiten</small></div><span class="toggle on"></span></div>
+          <div class="source-row"><div class="source-text"><strong>Garten</strong><small>Quelle: To-do · nicht in der App sichtbar</small></div><span class="toggle"></span></div>
+        </div>
+        <button class="action-button primary full">Quelllisten abgleichen</button>
+        <p class="manage-help" style="margin-top:12px">Sichtbarkeit und kurze Namen zentral in Home Assistant verwalten.</p>
+      </div>
+      <p class="caption">HA-To-do-Listen einblenden oder ausblenden und ihnen eigene Anzeigenamen geben. Der manuelle Quellabgleich ergänzt die laufende Synchronisation.</p>
+    </article>
+
+    <article class="feature">
+      <header class="feature-heading"><span class="feature-number">05</span><h2>Supermärkte und Bonuskarte</h2><span class="screen-label">MARKET JOURNAL</span></header>
+      <div class="screen" data-theme="journal">
+        <div class="back-link">← <span>Zurück zur Liste</span></div>
+        <p class="shot-kicker">EINKAUFSZETTEL</p>
+        <h3 class="manage-heading">Supermarkt bearbeiten</h3>
+        <p class="manage-help">Gemeinsamer Katalog · Änderungen benötigen eine HA-Administratorfreigabe.</p>
+        <label class="field-label">Supermarktname</label><div class="field">Edeka am Markt</div>
+        <div class="management-list" style="margin-top:12px">
+          <div class="manage-row">Produktkategorien für diesen Markt bearbeiten <span class="arrow-right">›</span></div>
+          <div class="manage-row">Bonuskarten oder APP-Codes einbinden <span class="arrow-right">›</span></div>
+        </div>
+        <div style="height:12px"></div>
+        <div class="dialog" style="margin-top:0;padding:12px">
+          <strong style="font-size:12px">Bonuskarte / APP-Code</strong>
+          <div class="note-box">▦ ▦<br>▦ ▦</div>
+          <button class="action-button">Bild aus Dateien auswählen</button>
+          <button class="action-button" style="margin-left:5px">QR-Code fotografieren</button>
+        </div>
+        <div class="form-actions"><button class="action-button">Abbrechen</button><button class="action-button primary">Speichern</button></div>
+      </div>
+      <p class="caption">Märkte pflegen ihre eigene Kategorienreihenfolge und optional einen Bonuskarten- oder APP-Code. Das Bild lässt sich hochladen oder mit der Kamera aufnehmen und wird gemeinsam in Home Assistant gespeichert.</p>
+    </article>
+
+    <article class="feature">
+      <header class="feature-heading"><span class="feature-number">06</span><h2>Kategorien und Marktreihenfolge</h2><span class="screen-label">INDIGO POCKET</span></header>
+      <div class="screen" data-theme="indigo">
+        <div class="back-link">← <span>Supermarkt bearbeiten</span></div>
+        <p class="shot-kicker">EINKAUFSZETTEL · EDEKA AM MARKT</p>
+        <h3 class="manage-heading" style="font-size:21px">Produktkategorien bearbeiten</h3>
+        <p class="manage-help">Am Griff ziehen oder mit ↑ / ↓ verschieben. Diese Reihenfolge gilt nur für diesen Markt.</p>
+        <button class="action-button primary full">＋ Kategorien aus dem Speicher auswählen　›</button>
+        <div class="card-list" style="margin-top:12px">
+          <div class="order-row"><span class="grip">⠿</span><span class="order-label">1. Obst &amp; Gemüse</span><span class="move">↑</span><span class="move">↓</span><span class="move">×</span></div>
+          <div class="order-row"><span class="grip">⠿</span><span class="order-label">2. Ohne Kategorie</span><span class="move">↑</span><span class="move">↓</span></div>
+          <div class="order-row"><span class="grip">⠿</span><span class="order-label">3. Kühlung</span><span class="move">↑</span><span class="move">↓</span><span class="move">×</span></div>
+          <div class="order-row"><span class="grip">⠿</span><span class="order-label">4. Backwaren</span><span class="move">↑</span><span class="move">↓</span><span class="move">×</span></div>
+        </div>
+        <div class="form-actions"><button class="action-button">Abbrechen</button><button class="action-button primary">Speichern</button></div>
+      </div>
+      <p class="caption">Kategorien aus dem zentralen Speicher auswählen und je Markt sortieren. „Ohne Kategorie“ kann verschoben, aber nicht entfernt werden. Ziehen, Griff-Tastatursteuerung und Pfeiltasten werden unterstützt.</p>
+    </article>
+
+    <article class="feature">
+      <header class="feature-heading"><span class="feature-number">07</span><h2>Produktkategorien und Zuordnungen</h2><span class="screen-label">TOMATO</span></header>
+      <div class="screen" data-theme="tomato">
+        <div class="back-link">← <span>Zurück zur Liste</span></div>
+        <p class="shot-kicker">EINKAUFSZETTEL</p>
+        <h3 class="manage-heading">Produktkategorien</h3>
+        <p class="manage-help">Gemeinsame Kategorien für alle Listen. Produkte können dauerhaft einer Kategorie zugeordnet werden.</p>
+        <button class="action-button primary full">＋ Kategorie hinzufügen</button>
+        <div class="management-list" style="margin-top:11px">
+          <div class="manage-row">Backwaren <span class="arrow-right">›</span></div>
+          <div class="manage-row">Getränke <span class="arrow-right">›</span></div>
+          <div class="manage-row">Obst &amp; Gemüse <span class="arrow-right">›</span></div>
+          <div class="manage-row">Kühlung <span class="arrow-right">›</span></div>
+        </div>
+        <div class="dialog" style="margin-top:13px;padding:12px">
+          <strong style="font-size:12px">Zugeordnete Produkte · Backwaren</strong>
+          <div class="product-row" style="margin-top:8px"><span>Brot</span><span class="tag">zugeordnet</span></div>
+          <div class="product-row"><span>Brötchen</span><span class="tag">zugeordnet</span></div>
+          <div class="product-row"><span>Vollkornbrot</span><span class="tag">zugeordnet</span></div>
+        </div>
+      </div>
+      <p class="caption">Kategorien werden zentral verwaltet. Die Produktübersicht zeigt dauerhafte Zuordnungen auch dann, wenn ein Artikel gerade nicht auf der Einkaufsliste steht.</p>
+    </article>
+
+    <article class="feature">
+      <header class="feature-heading"><span class="feature-number">08</span><h2>Artikeldetails</h2><span class="screen-label">LIME FOCUS</span></header>
+      <div class="screen" data-theme="lime">
+        <div class="shot-top"><div class="shot-brand"><p class="shot-kicker">EINKAUFSZETTEL</p><div class="shot-title">Wocheneinkauf <span class="chevron">⌄</span></div></div><div class="menu-dots">•••</div></div>
+        <div class="dialog-backdrop">
+          <div class="dialog">
+            <h3>Artikel bearbeiten</h3>
+            <label class="field-label">Artikelname</label><div class="field">Hafermilch</div>
+            <label class="field-label">Produktkategorie</label>
+            <div class="field field-select">Getränke <span>⌃</span></div>
+            <div class="category-picker" style="margin-top:7px">
+              <div class="field search">Kategorie suchen …</div>
+              <div class="option selected">Getränke <span class="checkmark">✓</span></div>
+              <div class="option">Backwaren</div>
+              <div class="option">Obst &amp; Gemüse</div>
+              <div class="option disabled">Alte Kategorie (nicht verfügbar)</div>
+            </div>
+            <label class="field-label">Menge</label><div class="field">2 × 1 l</div>
+            <label class="field-label">Zusatzinformation</label><div class="field">ungesüßt</div>
+            <div class="dialog-actions"><button class="action-button">Abbrechen</button><button class="action-button primary">Speichern</button></div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">Artikelname, Kategorie, Freitextmenge und Zusatzinformation lassen sich bearbeiten. Die Kategorieauswahl ist durchsuchbar; Änderungen laufen über die Offline-Warteschlange.</p>
+    </article>
+
+    <article class="feature">
+      <header class="feature-heading"><span class="feature-number">09</span><h2>Checkout und Bonuskarte</h2><span class="screen-label">BOTANICAL</span></header>
+      <div class="screen" data-theme="botanical">
+        <div class="shot-top"><div class="shot-brand"><p class="shot-kicker">EINKAUFSZETTEL</p><div class="shot-title">Wocheneinkauf <span class="chevron">⌄</span></div></div><div class="toolbar"><div class="icon-button">🛒</div><div class="menu-dots">•••</div></div></div>
+        <div class="dialog-backdrop">
+          <div class="dialog">
+            <h3>Pfandbon nicht vergessen!</h3>
+            <p>Denk vor dem Bezahlen an deinen Pfandbon.</p>
+            <div class="dialog" style="margin:10px 0;padding:10px;background:var(--bg)">
+              <strong style="font-size:11px">Bonuskarte / APP-Code</strong>
+              <div class="note-box">▦ ▦<br>▦ ▦</div>
+            </div>
+            <div class="dialog-actions"><button class="action-button primary">OK</button></div>
+          </div>
+        </div>
+        <div class="dialog" style="margin:12px 0 0;padding:13px">
+          <h3 style="font-size:14px">Einkauf beenden?</h3>
+          <p class="warning">Dies löscht alle abgehakten Artikel aus der Liste!</p>
+          <div class="dialog-actions"><button class="action-button">Abbrechen</button><button class="action-button primary">OK</button></div>
+        </div>
+      </div>
+      <p class="caption">Long-Press auf „Einkauf beenden“ öffnet zuerst den Pfandbon-Hinweis mit dem Markt-QR-Code. Nach OK folgt eine Sicherheitsabfrage; erst deren Bestätigung löscht abgehakte Artikel.</p>
+    </article>
+
+    <article class="feature">
+      <header class="feature-heading"><span class="feature-number">10</span><h2>Quellkonflikte lösen</h2><span class="screen-label">MARKET JOURNAL</span></header>
+      <div class="screen" data-theme="journal">
+        <div class="shot-top"><div class="shot-brand"><p class="shot-kicker">EINKAUFSZETTEL</p><div class="shot-title">Wocheneinkauf <span class="chevron">⌄</span></div></div><div class="icon-button">⟳</div></div>
+        <div class="dialog">
+          <h3>Artikel mit verbundener Liste abgleichen</h3>
+          <p>Unsere App-Liste und die verbundene HA-/Alexa-Liste sind getrennte Listen. Prüfe, ob ein unklarer Artikel bereits in der Quellliste steht.</p>
+          <div class="conflict">
+            <strong>Wocheneinkauf: Hafermilch</strong>
+            <p>Mehrere neue Einträge könnten dazugehören. Wähle nur den Quellartikel, der wirklich passt.</p>
+            <div class="field field-select" style="margin-top:8px">Quellartikel auswählen <span>⌄</span></div>
+          </div>
+          <div class="conflict">
+            <strong>Joghurt</strong>
+            <p>Der Abgleich ist noch unklar. Andere Artikel werden weiterhin synchronisiert.</p>
+          </div>
+          <div class="dialog-actions"><button class="action-button">Später entscheiden</button><button class="action-button primary">Zuordnung speichern</button></div>
+        </div>
+      </div>
+      <p class="caption">Bei mehrdeutigen Importen ordnet die App nichts automatisch zu. Der Nutzer kann einen passenden Quelleintrag wählen oder später entscheiden; übrige Änderungen synchronisieren weiter.</p>
+    </article>
+  </main>
+
+  <footer class="page-footer">Beispielansichten zur Funktionsübersicht · Illustrative Listen und QR-Code-Darstellung · Installationsbereich ausgelassen</footer>
+</body>
+</html>

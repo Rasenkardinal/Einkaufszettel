@@ -6,7 +6,7 @@
 <script>
 async function runTests() {
   const source = await (await fetch("../../custom_components/einkaufszettel/www/app.js")).text();
-  const persistence = source.slice(source.indexOf("let localUpdates ="), source.indexOf("function render()"));
+  const persistence = source.slice(source.indexOf("let localUpdates ="), source.indexOf("function enableItemLongPress("));
   const selection = source.slice(source.indexOf("async function loadSelectedList()"), source.indexOf("async function selectList("));
   const protocol = source.slice(source.indexOf("function scheduleSynchronization()"), source.indexOf("async function loadRemoteLists()"));
   const productHelpers = source.slice(source.indexOf("function productNameKey("), source.indexOf("function cacheCatalog("));

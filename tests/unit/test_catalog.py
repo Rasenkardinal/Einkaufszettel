@@ -25,6 +25,42 @@ def sample():
     }
 
 
+@pytest.mark.parametrize(
+    "usage",
+    [
+        None,
+        [],
+        {"a": {"added": True, "last_added": 0, "weeks": {}}},
+        {"a": {"added": -1, "last_added": 0, "weeks": {}}},
+        {"a": {"added": 1, "last_added": float("nan"), "weeks": {}}},
+        {"a": {"added": 1, "last_added": 0, "weeks": {"bad": 1}}},
+        {"a": {"added": 1, "last_added": 0, "weeks": {"2026-W43": -1}}},
+    ],
+)
+def test_invalid_product_usage_is_rejected(usage):
+    data = sample()
+    data["products"] = [
+        {"key": "milch", "name": "Milch", "category_id": None, "usage": usage}
+    ]
+    with pytest.raises(ValueError):
+        catalog.validate_catalog(data)
+
+
+def test_weekly_product_usage_survives_category_assignment_removal():
+    data = sample()
+    usage = {"a": {"added": 2, "last_added": 1000, "weeks": {"2026-W43": 2}}}
+    data["products"] = [
+        {"key": "milch", "name": "Milch", "category_id": "fruit", "usage": usage}
+    ]
+    result = catalog.change_catalog(
+        data,
+        "remove_category_product",
+        {"product_key": "milch", "category_id": "fruit"},
+    )
+    assert result["products"][0]["usage"] == usage
+    assert result["products"][0]["category_id"] is None
+
+
 def test_legacy_market_store_can_add_categories_without_losing_markets():
     old = {"supermarkets": [{"id": "shop", "name": "Markt"}]}
     result = catalog.change_catalog(

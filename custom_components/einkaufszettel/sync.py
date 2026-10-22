@@ -98,7 +98,27 @@ async def persist_items(
         and item.source_uid not in superseded_sources
     ]
     if getattr(data, "product_rules", None) is not None:
-        items = await data.product_rules(items, operation=product_operation)
+        previous_items = {item.uid: item for item in data.items}
+        events = []
+        for item in items:
+            old = previous_items.get(item.uid)
+            if item.status == "needs_action" and (
+                old is None
+                or (
+                    old.status == "completed"
+                    and item.source_uid
+                    and item.source_uid != old.source_uid
+                )
+            ):
+                identity = (
+                    f"source:{item.source_uid}"
+                    if item.source_uid
+                    else f"local:{item.uid}"
+                )
+                events.append((f"added:{identity}", item.summary))
+        items = await data.product_rules(
+            items, operation=product_operation, events=events
+        )
     previous = {item.uid: item for item in data.items}
     current = {item.uid: item for item in items}
     for uid in previous.keys() - current.keys():

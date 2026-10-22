@@ -393,9 +393,19 @@ async function runTests() {
     check();
   });
   const endShoppingAction = doc.querySelector("#items > li:last-child .end-shopping-action");
-  test("Shopping mode adds the end-shopping action as the final list row", () => {
+  test("Shopping mode adds the variant 3 end-shopping action as the final list row", () => {
     assert(endShoppingAction && endShoppingAction.closest("li") === doc.querySelector("#items > li:last-child"), "End-shopping action is not the last row");
-    assert(endShoppingAction.querySelectorAll(".end-shopping-cart-filled,.end-shopping-arrow,.end-shopping-cart-empty").length === 3, "Variant 08 cart sequence missing");
+    const fullCart = endShoppingAction.querySelector(".end-shopping-cart-filled");
+    const emptyCart = endShoppingAction.querySelector(".end-shopping-cart-empty");
+    assert(fullCart && emptyCart && endShoppingAction.querySelector(".end-shopping-arrow"), "Cart sequence is incomplete");
+    assert(fullCart.getAttribute("viewBox") === emptyCart.getAttribute("viewBox"), "Full and empty carts have different viewBoxes");
+    assert(fullCart.querySelector("path").getAttribute("d") === emptyCart.querySelector("path").getAttribute("d"), "Full and empty carts have different outlines");
+    assert(fullCart.querySelectorAll("circle").length === 2 && emptyCart.querySelectorAll("circle").length === 2, "Cart wheels are missing");
+    const wheelGeometry = cart => [...cart.querySelectorAll("circle")].map(wheel =>
+      ["cx", "cy", "r"].map(attribute => wheel.getAttribute(attribute)).join(",")
+    ).join("|");
+    assert(wheelGeometry(fullCart) === wheelGeometry(emptyCart), "Full and empty carts have different wheel positions");
+    assert(fullCart.querySelector('path[fill="#fff"][stroke="none"]'), "Variant 3 cart contents are missing");
   });
   modeToggle.click();
   assert(!doc.querySelector("#items .end-shopping-action"), "End-shopping action appeared in planning mode");

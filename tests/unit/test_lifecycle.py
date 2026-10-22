@@ -1608,6 +1608,133 @@ async def test_local_only_choice_survives_restart_and_never_recreates(
     assert any(service == "add_item" for service, _ in ctx.calls)
 
 
+async def test_product_usage_counts_additions_once_and_survives_list_save_retry(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    store = env.stores["einkaufszettel.supermarkets"]
+    env.store.async_save.side_effect = OSError("list full")
+    with pytest.raises(OSError):
+        await ctx.protocol.apply_operation(
+            ctx.data, "butter-add", "add_item", "butter-1", {"summary": "Butter"}
+        )
+    catalog = await store.async_load()
+    butter = next(p for p in catalog["products"] if p["key"] == "butter")
+    assert butter["usage"][env.entry.entry_id]["added"] == 1
+    env.store.async_save.side_effect = None
+    for _ in range(2):
+        await ctx.protocol.apply_operation(
+            ctx.data, "butter-add", "add_item", "butter-1", {"summary": "Butter"}
+        )
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "butter-assign",
+        "update_item",
+        "butter-1",
+        {"metadata": {"category_id": "dairy"}},
+    )
+    for operation, status in [("check", "completed"), ("undo", "needs_action")]:
+        await ctx.protocol.apply_operation(
+            ctx.data, operation, "update_item", "butter-1", {"status": status}
+        )
+    await ctx.protocol.apply_operation(
+        ctx.data, "delete-butter", "delete_item", "butter-1", {}
+    )
+    await ctx.protocol.apply_operation(
+        ctx.data, "butter-again", "add_item", "butter-2", {"summary": " BUTTER "}
+    )
+    catalog = await store.async_load()
+    butter = next(p for p in catalog["products"] if p["key"] == "butter")
+    stats = butter["usage"][env.entry.entry_id]
+    assert stats["added"] == 2
+    assert sum(stats["weeks"].values()) == 2
+    assert stats["last_added"] > 0
+    assert butter["category_id"] == "dairy"
+    assert len(catalog["product_events"]) >= 2
+
+
+async def test_source_additions_learn_uncategorized_products_and_do_not_count_echoes(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    ctx.remote.append(
+        {"uid": "banana-1", "summary": "Bananen", "status": "needs_action"}
+    )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    catalog = await env.stores["einkaufszettel.supermarkets"].async_load()
+    banana = next(p for p in catalog["products"] if p["key"] == "bananen")
+    assert banana["category_id"] is None
+    assert banana["usage"][env.entry.entry_id]["added"] == 1
+    source = next(item for item in ctx.remote if item["uid"] == "banana-1")
+    source["status"] = "completed"
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    ctx.remote.append(
+        {"uid": "banana-2", "summary": "Bananen", "status": "needs_action"}
+    )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    catalog = await env.stores["einkaufszettel.supermarkets"].async_load()
+    banana = next(p for p in catalog["products"] if p["key"] == "bananen")
+    assert banana["usage"][env.entry.entry_id]["added"] == 2
+
+
+async def test_product_history_migration_learns_names_without_inventing_usage(
+    integration,
+):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    catalog = env.stores["einkaufszettel.supermarkets"].async_save.call_args.args[0]
+    assert all(not product.get("usage") for product in catalog["products"])
+
+
+async def test_product_usage_is_per_list_and_import_retry_uses_stable_source_identity(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    ctx.remote.append(
+        {"uid": "beer-source", "summary": "Bier", "status": "needs_action"}
+    )
+    env.store.async_save.side_effect = OSError("list full")
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.source_error == "list full"
+    env.store.async_save.side_effect = None
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    products_module = importlib.import_module(f"{env.package.__name__}.products")
+    await products_module.apply_product_rules(
+        env.hass, [], events=[("other:beer-source", "Bier")], list_id="other"
+    )
+    catalog = await env.stores["einkaufszettel.supermarkets"].async_load()
+    beer = next(p for p in catalog["products"] if p["key"] == "bier")
+    assert beer["usage"][env.entry.entry_id]["added"] == 1
+    assert beer["usage"]["other"]["added"] == 1
+
+
+async def test_statistics_store_failure_does_not_acknowledge_new_product(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    store = env.stores["einkaufszettel.supermarkets"]
+    save = store.async_save.side_effect
+    store.async_save.side_effect = OSError("statistics full")
+    with pytest.raises(OSError):
+        await ctx.protocol.apply_operation(
+            ctx.data, "new-product", "add_item", "new-product", {"summary": "Bier"}
+        )
+    assert "new-product" not in ctx.data.sync["receipts"]
+    assert not any(item.summary == "Bier" for item in ctx.data.items)
+    store.async_save.side_effect = save
+    await ctx.protocol.apply_operation(
+        ctx.data, "new-product", "add_item", "new-product", {"summary": "Bier"}
+    )
+    catalog = await store.async_load()
+    beer = next(p for p in catalog["products"] if p["key"] == "bier")
+    assert beer["usage"][env.entry.entry_id]["added"] == 1
+
+
 async def test_product_category_survives_deletion_restart_and_source_recreation(
     integration, monkeypatch
 ):

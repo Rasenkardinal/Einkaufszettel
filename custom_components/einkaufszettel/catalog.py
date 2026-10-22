@@ -2,6 +2,7 @@
 
 import base64
 import binascii
+import re
 from copy import deepcopy
 from typing import Any
 from uuid import uuid4
@@ -17,6 +18,32 @@ BONUS_CARD_PREFIXES = (
 def product_key(name: str) -> str:
     """Match spelling variants without merging different product names."""
     return " ".join(name.split()).lower().replace("ß", "ss").replace("ς", "σ")
+
+
+def validate_product_usage(usage: Any) -> bool:
+    """Accept additive per-list counters and compact weekly history."""
+    if not isinstance(usage, dict):
+        return False
+    for list_id, stats in usage.items():
+        if not isinstance(list_id, str) or not list_id or not isinstance(stats, dict):
+            return False
+        if (
+            type(stats.get("added")) is not int
+            or stats["added"] < 0
+            or type(stats.get("last_added")) not in (int, float)
+            or not 0 <= stats["last_added"] < float("inf")
+            or not isinstance(stats.get("weeks"), dict)
+        ):
+            return False
+        if any(
+            not isinstance(week, str)
+            or re.fullmatch(r"\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])", week) is None
+            or type(count) is not int
+            or count < 0
+            for week, count in stats["weeks"].items()
+        ):
+            return False
+    return True
 
 
 def _validate_bonus_card(value: Any) -> bool:
@@ -63,6 +90,12 @@ def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
         or not product_key(product["name"])
         or product.get("key") != product_key(product["name"])
         or "category_id" not in product
+        or not validate_product_usage(product.get("usage", {}))
+        or type(product.get("category_known", True)) is not bool
+        or (
+            product.get("category_known") is False
+            and product.get("category_id") is not None
+        )
         or (
             product.get("category_id") is not None
             and (
@@ -81,6 +114,12 @@ def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
         for key, value in receipts.items()
     ):
         raise ValueError("Ungültige Produktbestätigungen.")
+    events = data.get("product_events", {})
+    if not isinstance(events, dict) or any(
+        not isinstance(key, str) or not key or not isinstance(value, str)
+        for key, value in events.items()
+    ):
+        raise ValueError("Ungültige Produktstatistik-Bestätigungen.")
     for market in data.get("supermarkets", []):
         if "bonus_card" in market and not _validate_bonus_card(market["bonus_card"]):
             raise ValueError(
@@ -116,6 +155,7 @@ def change_catalog(
                 "Die Produktzuordnung wurde inzwischen geändert. Bitte neu laden."
             )
         product["category_id"] = None
+        product["category_known"] = True
     elif action == "save_market_categories":
         market = next((m for m in markets if m["id"] == msg["market_id"]), None)
         if market is None:
@@ -145,6 +185,7 @@ def change_catalog(
             for product in result.get("products", []):
                 if product["category_id"] == uid:
                     product["category_id"] = None
+                    product["category_known"] = True
             for market in markets:
                 market["category_ids"] = [
                     key for key in market.get("category_ids", []) if key != uid

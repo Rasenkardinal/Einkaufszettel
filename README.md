@@ -2,7 +2,7 @@
 
 Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- und Kategorienlogik sowie Alexa-Anbindung über eine vorhandene HA-To-do-Liste.
 
-> **Projektstatus:** Alpha. Enthält HA-Quelllistenverwaltung, automatischen Quellabgleich, gemeinsame Produktkategorien und Supermärkte mit eigener Kategorienreihenfolge sowie eine installierbare Offline-PWA. Die Integration erzeugt keine zusätzlichen To-do-Listen. Ein eigenständiger Produktkatalog ist noch nicht implementiert.
+> **Projektstatus:** Alpha. Enthält HA-Quelllistenverwaltung, automatischen Quellabgleich, gemeinsame Produktkategorien und Supermärkte mit eigener Kategorienreihenfolge sowie eine installierbare Offline-PWA. Die Integration erzeugt keine zusätzlichen To-do-Listen. Produktnamen und Nutzungsstatistiken werden für lokale Vorschläge gespeichert; eine Oberfläche zur eigenständigen Produktkatalogverwaltung gibt es noch nicht.
 
 ## Funktionsumfang
 
@@ -11,9 +11,9 @@ Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- u
 - Ein Button ergänzt später neue, offene Quell-Einträge anhand ihrer Quell-IDs, ohne vorhandene lokale Änderungen zurückzusetzen.
 - Die PWA unterstützt Hinzufügen, Abhaken/Wiederöffnen, Umbenennen und Löschen. Es erscheint keine doppelte Einkaufszettel-Liste in der HA-To-do-Ansicht.
 - Name und Status werden automatisch mit der Quelle abgeglichen; App-Änderungen werden zurückgeschrieben, soweit die Quelle die jeweilige Aktion unterstützt. Zusatzinformationen bleiben in unserem HA-Speicher.
-- Produktkategorien werden gemeinsam gespeichert und alphabetisch A–Z verwaltet. Je Supermarkt lassen sich Kategorien auswählen und unabhängig sortieren. Die Hauptliste verwendet dezente Kategorieüberschriften mit Trennlinien.
+- Produktkategorien werden gemeinsam gespeichert und alphabetisch A–Z verwaltet. Je Supermarkt lassen sich Kategorien auswählen und unabhängig sortieren; „Ohne Kategorie“ kann dort im Einkaufsmodus positioniert werden und bleibt im Planungsmodus oben. Die Hauptliste verwendet dezente Kategorieüberschriften mit Trennlinien.
 - Zu jedem Supermarkt kann eine Bonuskarten- oder APP-Code-Grafik hinzugefügt werden. Das Bild wird gemeinsam in Home Assistant gespeichert und beim Start des Kassiervorgangs zusammen mit der Pfandbon-Erinnerung angezeigt.
-- Artikel können eine Kategorie, eine Mengenangabe als Freitext und Zusatzinformationen erhalten. Diese Daten werden mit der vorhandenen Offline-Warteschlange gespeichert; ein Produktkatalog und strukturierte Mengeneinheiten sind noch nicht implementiert.
+- Artikel können eine Kategorie, eine Mengenangabe als Freitext und Zusatzinformationen erhalten. Diese Daten werden mit der vorhandenen Offline-Warteschlange gespeichert. Im Planungsmodus erscheinen zu Beginn passende Produktvorschläge aus bereits verwendeten Namen; Kategorie, Häufigkeit und letzter Verwendungszeitpunkt werden berücksichtigt. Eine Oberfläche zur eigenständigen Produktverwaltung und strukturierte Mengeneinheiten sind noch nicht implementiert.
 - Die Smartphone-Oberfläche wird als PWA von der Integration über Home Assistant ausgeliefert. App-Dateien und Listendaten werden lokal gespeichert; Hinzufügen, Abhaken und Löschen werden offline vorgemerkt und beim nächsten Verbinden synchronisiert.
 
 ## Installation mit HACS
@@ -98,7 +98,19 @@ Die App verwendet ausschließlich die Adresse, unter der sie geöffnet wurde, oh
 
 Die Verbindungsregressionen lassen sich ohne zusätzliche Pakete prüfen: Repository per HTTP bereitstellen (z. B. `python -m http.server 8774 --bind 127.0.0.1`) und `/tests/frontend/connection.html` öffnen. Die Seite testet die Verbindungsfunktionen aus dem aktuellen App-Skript mit simulierten Timern, WebSocket und Anmeldung; sie greift nicht auf Home Assistant zu.
 
-`/tests/frontend/categories.html` prüft die Verwaltungsseiten, A–Z-Auswahl, Markt-Reihenfolge, Drag-and-drop/Tastatur, Gruppierung, Zusatzinformationen und Speicherfehler. Außerdem deckt sie das Kategorie-Suchflyout, die Fokusführung im Artikeldialog und den Sync-Status ohne Layoutsprung mit isolierten Beispieldaten ab. `/tests/frontend/sync.html` prüft weiterhin die Offline-Synchronisation. Keine dieser Testseiten ändert echte HA-Daten.
+`/tests/frontend/categories.html` prüft die Verwaltungsseiten, A–Z-Auswahl, Markt-Reihenfolge, Drag-and-drop/Tastatur, Gruppierung, Zusatzinformationen und Speicherfehler. Außerdem deckt sie das Kategorie-Suchflyout, die Fokusführung im Artikeldialog, den Sync-Status ohne Layoutsprung sowie die übereinstimmende Wagenkontur des Checkout-Buttons mit isolierten Beispieldaten ab. `/tests/frontend/sync.html` prüft weiterhin die Offline-Synchronisation. Keine dieser Testseiten ändert echte HA-Daten.
+
+### Produktvorschläge beim Hinzufügen
+
+Im Planungsmodus zeigt die Eingabeleiste ab dem ersten Buchstaben bekannte Produkte mit passendem Namensanfang an. Groß-/Kleinschreibung und zusätzliche Leerzeichen werden wie bei Produktzuordnungen normalisiert. Die Reihenfolge folgt der Häufigkeit des Hinzufügens in der ausgewählten Liste, dann der letzten Verwendung und schließlich dem Namen. Bereits offene Produkte werden ausgeblendet. Bis zu zehn Zeilen sind sichtbar (bei wenig Bildschirmhöhe entsprechend weniger); weitere Treffer lassen sich innerhalb der Vorschläge scrollen.
+
+Ein Tipp übernimmt den Vorschlag sofort inklusive bekannter Kategorie. Die Eingabe wird geleert und behält den Fokus für weitere Artikel. Pfeiltasten wählen einen Vorschlag, Enter übernimmt ihn und Escape schließt die Liste. Ohne ausgewählten Vorschlag bleiben Enter und Plus die freie Artikeleingabe. Bereits offene gleichnamige Artikel werden dabei nicht erneut angelegt; eine ausdrückliche Meldung weist darauf hin. Die Suche erfolgt vollständig lokal, auch offline. Neue Produktnamen und noch ausstehende Hinzufügungen bleiben über die lokale Warteschlange erhalten.
+
+Der gemeinsame Produktkatalog merkt sich jetzt auch Namen ohne Kategorie. Bestehende Artikel und gespeicherte Löschvermerke liefern bei der Migration bekannte Namen, aber keine erfundenen historischen Häufigkeiten. Ab Einführung werden neue offene Artikel und erneute Alexa-Anlagen je Liste gezählt. Quellabgleich, Wiederholung derselben Aktion, Notiz-/Kategorieänderung und bloßes Abhaken/Wiederöffnen zählen nicht zusätzlich. Löschen entfernt die Produktstatistik nicht. Im Katalog liegen je Produkt und Liste Gesamtzahl, letzter Hinzufügezeitpunkt und UTC-Kalenderwochenzähler als Grundlage einer späteren Klassikeransicht; sie sind keine Kaufbestätigung. Die Erfassung tatsächlicher Einkäufe und die Klassikeroberfläche sind noch nicht umgesetzt.
+
+Die Statistikzeitpunkte beziehen sich auf die Annahme in HA; offline hinzugefügte Artikel werden nach der Übertragung der dann aktuellen UTC-Kalenderwoche zugerechnet. Katalog- und Listenspeicher bestätigen Änderungen weiterhin erst nach erfolgreichem Speichern. Dauerhafte Statistikbestätigungen verhindern Doppelzählung, wenn der Katalog bereits gespeichert war, die Listenspeicherung aber fehlschlug. Wie bei Kategoriezuordnungen sind beide Speicher keine gemeinsame atomare Transaktion.
+
+`/tests/frontend/suggestions.html` prüft Vorschlagsreihenfolge, Prefixfilter, Direktübernahme, Tastaturbedienung, Offline-Warteschlange, Fehleranzeige und mobile Popupbreiten ohne echte HA-Daten.
 
 ### Synchronisationsregeln
 

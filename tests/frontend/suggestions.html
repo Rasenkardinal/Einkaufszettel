@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Product suggestion regression tests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Vorschlagstests" style="width:390px;height:1000px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all([
+    fetch(base + "app.html").then(response => response.text()),
+    fetch(base + "app.js").then(response => response.text()),
+  ]);
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document;
+  const name = `suggestion-tests-${crypto.randomUUID()}`;
+  const storage = new Map();
+  const assert = (value, message) => { if (!value) throw Error(message); };
+  const results = [];
+  const pause = () => new Promise(resolve => setTimeout(resolve, 40));
+  const source = script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "")
+    .replace(/const STORAGE_NAME = "[^"]+";/, `const STORAGE_NAME = "${name}";`);
+  const api = win.Function("localStorage", source + `
+    return {
+      async setup() {
+        database = await openDatabase(); entryId = "a"; busy = false; authenticated = false;
+        availableLists = [{entry_id:"a",name:"A"},{entry_id:"b",name:"B"}];
+        categories = [{id:"food",name:"Lebensmittel"}];
+        products = [
+          {key:"butter",name:"Butter",category_id:"food",usage:{a:{added:5,last_added:100,weeks:{}},b:{added:1,last_added:1,weeks:{}}}},
+          {key:"bananen",name:"Bananen",category_id:null,usage:{a:{added:3,last_added:200,weeks:{}},b:{added:9,last_added:1,weeks:{}}}},
+          {key:"bier",name:"Bier",category_id:null,usage:{a:{added:3,last_added:150,weeks:{}}}},
+          ...Array.from({length:12},(_,i)=>({key:"brot "+i,name:"Brot "+i,category_id:null}))
+        ];
+        cacheCatalog(); updateModeView(); render();
+      },
+      queue:()=>readQueue(null),
+      state:()=>({items:currentItems,products}),
+      switchList:()=>{entryId="b";currentItems=[];pendingOperations=[];render();},
+      reload:async()=>{products=[];loadCachedSupermarkets();await loadSelectedList();},
+      failNext:()=>{storeRequest=async()=>{throw Error("Test: Speicher voll");};},
+      close:()=>database.close()
+    };
+  `)({getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)});
+  try {
+    await api.setup();
+    const input = doc.querySelector("#new-item"), list = doc.querySelector("#product-suggestions");
+    function type(text) { input.focus(); input.value=text; input.dispatchEvent(new win.Event("input",{bubbles:true})); }
+    const names = () => [...list.children].map(option=>option.textContent);
+    type("B");
+    assert(names().slice(0,3).join("|")==="Butter|Bananen|Bier","Frequency/recency ordering wrong");
+    assert(list.children.length===15,"Matches were truncated instead of scrollable");
+    assert(list.scrollHeight>list.clientHeight && list.clientHeight===440,"Exact ten-row scroll cap missing");
+    assert(input.getAttribute("aria-expanded")==="true","Combobox expansion missing");
+    results.push("PASS Prefix suggestions rank by list frequency and recency with ten-row scroll cap");
+    type(" bU ");
+    assert(names().join()==="Butter","Prefix filtering is not normalized");
+    input.dispatchEvent(new win.KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true,cancelable:true}));
+    assert(input.getAttribute("aria-activedescendant")===list.firstChild.id,"Keyboard active option missing");
+    input.dispatchEvent(new win.KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));
+    await pause();
+    assert(api.state().items[0].summary==="Butter" && api.state().items[0].metadata.category_id==="food","Selection missing item/category");
+    assert((await api.queue()).length===1,"Offline selection not durable");
+    assert(input.value==="" && doc.activeElement===input && list.hidden,"Input/focus not ready for next item");
+    results.push("PASS Keyboard selection immediately adds a durable offline article with category and retains input focus");
+    type("b");
+    assert(!names().includes("Butter"),"Already-open product suggested");
+    const option=list.firstChild;
+    option.dispatchEvent(new win.PointerEvent("pointerdown",{button:0,bubbles:true,cancelable:true}));
+    option.click(); option.click();
+    await pause();
+    assert((await api.queue()).length===2,"Rapid double selection duplicated an article");
+    results.push("PASS Pointer selection is immediate and duplicate taps do not add twice");
+    type("no-match");
+    assert(list.hidden,"No-match list should be hidden");
+    doc.querySelector("#add-form").requestSubmit();
+    await pause();
+    assert(api.state().items.some(item=>item.summary==="no-match"),"Free input stopped working");
+    type("b");
+    input.dispatchEvent(new win.KeyboardEvent("keydown",{key:"Escape",bubbles:true}));
+    assert(list.hidden,"Escape failed");
+    type("b");
+    input.dispatchEvent(new win.FocusEvent("blur"));
+    assert(list.hidden,"Blur failed");
+    results.push("PASS Free input, empty results, Escape and outside focus preserve existing behavior");
+    await api.reload();
+    assert(api.state().products.some(product=>product.key==="no-match"),"New offline name lost on replay");
+    assert(api.state().items.some(item=>item.summary==="Butter"),"Offline queued selection lost on reload");
+    api.switchList(); type("b");
+    assert(names()[0]==="Bananen","Ranking not scoped to selected list");
+    results.push("PASS Offline replay retains product names and per-list ranking");
+    doc.querySelector("#mode-toggle").click();
+    assert(list.hidden && doc.querySelector("#add-form").hidden,"Suggestions remain in shopping mode");
+    doc.querySelector("#mode-toggle").click(); type("b");
+    for (const width of [320,390,700]) {
+      frame.style.width=width+"px"; await pause();
+      assert(doc.documentElement.scrollWidth<=doc.documentElement.clientWidth,"Horizontal overflow");
+      assert(list.getBoundingClientRect().right<=doc.documentElement.clientWidth,"Suggestion popup overflows");
+    }
+    results.push("PASS Mode switch hides suggestions; popup fits 320/390/700px");
+    api.failNext(); type("Neue Sache");
+    doc.querySelector("#add-form").requestSubmit(); await pause();
+    assert(input.value==="Neue Sache","Failed persistence lost typed input");
+    assert(doc.querySelector("#message").textContent.includes("Speicher voll"),"Persistence failure hidden");
+    results.push("PASS Failed local persistence restores the input and shows an explicit error");
+  } finally {
+    api.close(); win.indexedDB.deleteDatabase(name);
+  }
+  document.querySelector("#results").textContent=results.join("\n");
+}
+runTests().catch(error=>{document.querySelector("#results").textContent="FAIL "+error.stack;});
+</script>
+</html>

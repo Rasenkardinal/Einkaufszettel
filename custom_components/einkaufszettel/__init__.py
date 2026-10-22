@@ -149,11 +149,19 @@ async def async_setup_entry(
     entry.runtime_data = EinkaufszettelData(store, items, sync=sync)
     from .products import apply_product_rules  # noqa: PLC0415
 
-    async def product_rules(articles, *, operation=None):
+    async def product_rules(articles, *, operation=None, events=()):
         if operation is not None:
             identity, name, category, payload = operation
             operation = (f"{entry.entry_id}:{identity}", name, category, payload)
-        return await apply_product_rules(hass, articles, operation=operation)
+        return await apply_product_rules(
+            hass,
+            articles,
+            operation=operation,
+            events=[
+                (f"{entry.entry_id}:{identity}", name) for identity, name in events
+            ],
+            list_id=entry.entry_id,
+        )
 
     entry.runtime_data.product_rules = product_rules
     try:

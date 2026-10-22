@@ -2,7 +2,7 @@
 <html lang="de">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Einkaufszettel · Einkauf beenden · 8 Farbschemata</title>
+<title>Einkaufszettel · Einkauf beenden · Variante 4 · 8 Akzente</title>
 <style>
 :root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:#141414;color:#f4f4f4}
 *{box-sizing:border-box}
@@ -12,7 +12,7 @@ header,.gallery,.legend{width:min(100%,1240px);margin-inline:auto}
 h1{margin:0;font-size:clamp(24px,5vw,34px);letter-spacing:-.035em}
 .intro{max-width:760px;margin:12px 0 24px;color:#aaa;font-size:14px;line-height:1.6}
 .gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,350px),390px));justify-content:center;gap:18px}
-.card{--bg:#141414;--surface:#202020;--line:#383838;--accent:#f5f5f5;--muted:#aaa;overflow:hidden;border:1px solid var(--line);border-radius:13px;background:var(--bg);color:#f4f4f4}
+.card{--bg:#141414;--surface:#202020;--line:#383838;--accent:#f5f5f5;--muted:#aaa;--finish-bg:color-mix(in srgb,var(--accent) 22%,var(--surface));--finish-line:color-mix(in srgb,var(--accent) 22%,var(--line));--icon-size:29px;--arrow-size:23px;--button-accent:#fff;--button-text:#f4f4f4;--tint:22%;overflow:hidden;border:1px solid var(--line);border-radius:13px;background:var(--bg);color:#f4f4f4}
 .card[data-theme="Botanical"]{--bg:#111813;--surface:#1b251e;--line:#304035;--accent:#a3e635;--muted:#aab7ac}
 .card[data-theme="Midnight Plum"]{--bg:#15121c;--surface:#211b2b;--line:#3b3148;--accent:#c4a7ff;--muted:#b9adc8}
 .card[data-theme="Market Journal"]{--bg:#1a1411;--surface:#271d18;--line:#49382e;--accent:#ffb454;--muted:#c7b3a5}
@@ -20,6 +20,14 @@ h1{margin:0;font-size:clamp(24px,5vw,34px);letter-spacing:-.035em}
 .card[data-theme="Tomato"]{--bg:#1b1315;--surface:#281c1f;--line:#493137;--accent:#ff8977;--muted:#c2a7a6}
 .card[data-theme="Lime Focus"]{--bg:#0c0f0c;--surface:#171c16;--line:#343e2d;--accent:#d4ff00;--muted:#a9b197}
 .card[data-theme="Indigo Pocket"]{--bg:#101522;--surface:#192033;--line:#303b56;--accent:#83a7ff;--muted:#aab5ca}
+.card[data-accent="1"]{--tint:16%}
+.card[data-accent="2"]{--tint:22%}
+.card[data-accent="3"]{--tint:25%}
+.card[data-accent="4"]{--tint:24%}
+.card[data-accent="5"]{--tint:25%}
+.card[data-accent="6"]{--tint:24%}
+.card[data-accent="7"]{--tint:17%}
+.card[data-accent="8"]{--tint:24%}
 .card-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
 .number{display:grid;place-items:center;width:28px;height:28px;flex:none;border:1px solid var(--line);border-radius:50%;color:var(--muted);font-size:12px;font-weight:700}
 .card-head h2{flex:1;margin:0;font-size:14px}
@@ -33,13 +41,14 @@ h1{margin:0;font-size:clamp(24px,5vw,34px);letter-spacing:-.035em}
 .check{width:19px;height:19px;flex:none;border:1.5px solid var(--muted);border-radius:5px}
 .item-name{font-size:15px;font-weight:600}
 .item-note{margin-left:auto;color:var(--muted);font-size:11px;white-space:nowrap}
-.finish{display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;min-height:66px;margin-top:14px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:transparent;color:#f4f4f4;font:inherit;cursor:pointer}
+.finish{position:relative;display:flex;align-items:center;justify-content:flex-start;gap:10px;width:100%;min-height:66px;margin-top:14px;padding:10px 12px;border:1px solid var(--finish-line);border-radius:10px;background:var(--finish-bg);color:#f4f4f4;font:inherit;cursor:pointer}
+.card .finish{border-color:color-mix(in srgb,var(--accent) var(--tint),var(--line));background:color-mix(in srgb,var(--accent) var(--tint),var(--surface));color:var(--button-text)}
 .finish:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .finish:hover{background:var(--surface)}
 .finish svg{display:block;flex:none}
 .sequence{display:flex;align-items:center;gap:7px}
-.cart-full,.cart-empty{width:20px;height:20px;color:var(--accent)}
-.arrow{width:17px;height:18px;color:var(--accent)}
+.cart-full,.cart-empty{width:var(--icon-size);height:var(--icon-size);color:#fff}
+.arrow{width:var(--arrow-size);height:calc(var(--arrow-size) * .72);color:#fff}
 .finish-label{flex:1;font-size:14px;font-weight:650;white-space:nowrap}
 .tail{width:8px;height:8px;flex:none;border-top:2px solid var(--muted);border-right:2px solid var(--muted);transform:rotate(45deg)}
 .caption{min-height:40px;margin:0;padding:11px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:11px;line-height:1.5}
@@ -48,12 +57,12 @@ h1{margin:0;font-size:clamp(24px,5vw,34px);letter-spacing:-.035em}
 @media(max-width:420px){body{padding:22px 12px 40px}.gallery{grid-template-columns:minmax(0,390px);gap:14px}.card-head small{display:none}}
 </style>
 <header>
-  <p class="kicker">DESIGNVORSCHAU · VARIANTE 08</p>
-  <h1>„Einkauf beenden“ in 8 Farbschemata</h1>
-  <p class="intro">Gleiche kompakte Abschlusszeile in allen Karten: gefüllter Einkaufswagen → Kasse → leerer Einkaufswagen, danach „Einkauf beenden“ und ein dezenter Abschlusswinkel. Hintergrund, Flächen, Rahmen und Symbolakzent folgen jeweils dem Farbschema der App.</p>
+  <p class="kicker">DESIGNVORSCHAU · VARIANTE 04</p>
+  <h1>Variante 4 · acht Farbvarianten</h1>
+  <p class="intro">Variante 4 mit deutlich zurückgenommenem Akzent: Der Button bleibt dunkel, bekommt aber einen sanften Farbstich aus dem jeweiligen Farbschema. Die größeren Wagen und der Pfeil bleiben weiß; der leere Wagen hat sichtbare Räder.</p>
 </header>
 <main class="gallery" id="gallery"></main>
-<div class="legend"><span class="legend-swatch"></span><span>Akzentfarbe der Symbole und des Sync-Punkts folgt dem jeweiligen Farbschema.</span></div>
+<div class="legend"><span class="legend-swatch"></span><span>Gedämpfte Akzentfläche · weiße Wagen-Icons und Pfeil · feiner farbiger Rahmen.</span></div>
 <template id="cart-filled"><svg class="cart-full" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M2 3h2.7l2.2 11.1a2 2 0 0 0 2 1.6h9.2a2 2 0 0 0 1.9-1.4L22 7H6.1l-.5-2.5A2 2 0 0 0 3.7 3H2zm6.2 14.2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm9.2 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></template>
 <template id="cart-empty"><svg class="cart-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h2.7l2.2 11.1a2 2 0 0 0 2 1.6h9.2a2 2 0 0 0 1.9-1.4L22 7H6.1"/><circle cx="8.2" cy="19.2" r="1.5"/><circle cx="17.4" cy="19.2" r="1.5"/></svg></template>
 <template id="arrow"><svg class="arrow" viewBox="0 0 28 18" fill="none" aria-hidden="true"><path d="M1 9h22M16 2l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></template>
@@ -66,11 +75,11 @@ const themes=[
 const gallery=document.querySelector("#gallery");
 function icon(name){return document.querySelector(`#${name}`).content.firstElementChild.cloneNode(true)}
 for(const [index,[name,key]] of themes.entries()){
-  const card=document.createElement("article");card.className="card";card.dataset.theme=name;
+  const card=document.createElement("article");card.className="card";card.dataset.theme=name;card.dataset.accent=String(index+1);
   const head=document.createElement("div");head.className="card-head";
   const number=document.createElement("span");number.className="number";number.textContent=String(index+1).padStart(2,"0");
-  const title=document.createElement("h2");title.textContent=name;
-  const label=document.createElement("small");label.textContent="VARIANTE 08";
+  const title=document.createElement("h2");title.textContent=`${String(index+1).padStart(2,"0")} · ${name}`;
+  const label=document.createElement("small");label.textContent="VARIANTE 04";
   head.append(number,title,label);
   const preview=document.createElement("div");preview.className="preview";
   const appHead=document.createElement("div");appHead.className="app-head";
@@ -93,7 +102,7 @@ for(const [index,[name,key]] of themes.entries()){
   const tail=document.createElement("span");tail.className="tail";tail.setAttribute("aria-hidden","true");
   finish.append(sequence,action,tail);
   preview.append(appHead,section,...rows,finish);
-  const caption=document.createElement("p");caption.className="caption";caption.textContent=`Gleiche Variante · Akzent ${key}`;
+  const caption=document.createElement("p");caption.className="caption";caption.textContent=`Dezenter Akzent · ${key}`;
   card.append(head,preview,caption);gallery.append(card);
 }
 </script>
