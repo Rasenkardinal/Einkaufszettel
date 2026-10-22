@@ -5,6 +5,11 @@ from typing import Any
 from uuid import uuid4
 
 
+def product_key(name: str) -> str:
+    """Match spelling variants without merging different product names."""
+    return " ".join(name.split()).lower().replace("ß", "ss").replace("ς", "σ")
+
+
 def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
     """Validate legacy market data as well as the extended catalog."""
     if not isinstance(data, dict):
@@ -24,6 +29,31 @@ def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
         if len({record["id"] for record in records}) != len(records):
             raise ValueError("Doppelte IDs im Katalog.")
     category_ids = {category["id"] for category in data.get("categories", [])}
+    products = data.get("products", [])
+    if not isinstance(products, list) or any(
+        not isinstance(product, dict)
+        or not isinstance(product.get("name"), str)
+        or not product_key(product["name"])
+        or product.get("key") != product_key(product["name"])
+        or "category_id" not in product
+        or (
+            product.get("category_id") is not None
+            and (
+                not isinstance(product["category_id"], str)
+                or product["category_id"] not in category_ids
+            )
+        )
+        for product in products
+    ):
+        raise ValueError("Ungültige gespeicherte Produktzuordnungen.")
+    if len({product["key"] for product in products}) != len(products):
+        raise ValueError("Doppelte Produkte im Katalog.")
+    receipts = data.get("product_operations", {})
+    if not isinstance(receipts, dict) or any(
+        not isinstance(key, str) or not isinstance(value, str)
+        for key, value in receipts.items()
+    ):
+        raise ValueError("Ungültige Produktbestätigungen.")
     for market in data.get("supermarkets", []):
         order = market.get("category_ids", [])
         if (
@@ -42,7 +72,17 @@ def change_catalog(
     result = deepcopy(validate_catalog(data))
     categories = result.setdefault("categories", [])
     markets = result.setdefault("supermarkets", [])
-    if action == "save_market_categories":
+    if action == "remove_category_product":
+        product = next(
+            (p for p in result.get("products", []) if p["key"] == msg["product_key"]),
+            None,
+        )
+        if product is None or product["category_id"] != msg["category_id"]:
+            raise ValueError(
+                "Die Produktzuordnung wurde inzwischen geändert. Bitte neu laden."
+            )
+        product["category_id"] = None
+    elif action == "save_market_categories":
         market = next((m for m in markets if m["id"] == msg["market_id"]), None)
         if market is None:
             raise ValueError("Der Supermarkt wurde nicht gefunden. Bitte neu laden.")
@@ -55,6 +95,9 @@ def change_catalog(
             if not uid:
                 raise ValueError("Bitte wähle eine Kategorie.")
             result["categories"] = [c for c in categories if c["id"] != uid]
+            for product in result.get("products", []):
+                if product["category_id"] == uid:
+                    product["category_id"] = None
             for market in markets:
                 market["category_ids"] = [
                     key for key in market.get("category_ids", []) if key != uid

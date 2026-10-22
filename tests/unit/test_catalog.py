@@ -103,3 +103,32 @@ def test_stale_market_is_rejected():
             "save_market_categories",
             {"market_id": "missing", "category_ids": []},
         )
+
+
+def test_category_deletion_retains_explicit_product_removal_marker():
+    old = sample()
+    old["products"] = [{"key": "apfel", "name": "Apfel", "category_id": "fruit"}]
+    result = catalog.change_catalog(old, "delete_category", {"category_id": "fruit"})
+    assert result["products"][0]["category_id"] is None
+    assert old["products"][0]["category_id"] == "fruit"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        [{"key": "milch", "name": "Milch", "category_id": []}],
+        [{"key": "milch", "name": "Milch", "category_id": "missing"}],
+        [{"key": "wrong", "name": "Milch", "category_id": None}],
+        [{"key": "milch", "name": "Milch", "category_id": None}] * 2,
+    ],
+)
+def test_invalid_product_registry_is_not_silently_reset(value):
+    data = sample()
+    data["products"] = value
+    with pytest.raises(ValueError):
+        catalog.validate_catalog(data)
+
+
+@pytest.mark.parametrize("name", [" MILCH ", "Milch", "milch"])
+def test_product_identity_ignores_case_and_surrounding_whitespace(name):
+    assert catalog.product_key(name) == "milch"

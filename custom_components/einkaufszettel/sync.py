@@ -75,7 +75,9 @@ def load_sync_state(value: object) -> dict[str, Any]:
     return deepcopy(value)
 
 
-async def persist_items(data, items: list[ShoppingItem], state=None) -> None:
+async def persist_items(
+    data, items: list[ShoppingItem], state=None, *, product_operation=None
+) -> None:
     """Commit the snapshot, receipts and tombstones in one HA Store write."""
     state = deepcopy(
         state if state is not None else getattr(data, "sync", new_sync_state())
@@ -95,6 +97,8 @@ async def persist_items(data, items: list[ShoppingItem], state=None) -> None:
         and item.source_uid not in deleted_sources
         and item.source_uid not in superseded_sources
     ]
+    if getattr(data, "product_rules", None) is not None:
+        items = await data.product_rules(items, operation=product_operation)
     previous = {item.uid: item for item in data.items}
     current = {item.uid: item for item in items}
     for uid in previous.keys() - current.keys():
@@ -166,5 +170,18 @@ async def apply_operation(
             else [*items, updated]
         )
     state["receipts"][operation_id] = {"payload": payload, "result": result}
-    await persist_items(data, items, state)
+    product_operation = None
+    if (
+        result == "applied"
+        and action != "delete_item"
+        and "category_id" in changes.get("metadata", {})
+    ):
+        article = next(item for item in items if item.uid == uid)
+        product_operation = (
+            operation_id,
+            article.summary,
+            changes["metadata"]["category_id"],
+            payload,
+        )
+    await persist_items(data, items, state, product_operation=product_operation)
     return result

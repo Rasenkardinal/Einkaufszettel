@@ -147,6 +147,7 @@ async def _catalog_command(
                 {
                     "supermarkets": data.get("supermarkets", []),
                     "categories": data.get("categories", []),
+                    "products": data.get("products", []),
                 },
             )
         except (HomeAssistantError, OSError, ValueError, KeyError, TypeError) as err:
@@ -188,6 +189,21 @@ async def websocket_delete_category(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
     """Delete a category and its market assignments."""
+    await _catalog_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/remove_category_product",
+        vol.Required("category_id"): str,
+        vol.Required("product_key"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_remove_category_product(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Remove a durable assignment, never an item on a shopping list."""
     await _catalog_command(hass, connection, msg)
 
 
@@ -495,7 +511,12 @@ async def websocket_get_list(
     """Return a persisted list snapshot to an authenticated HA user."""
     entry = _get_entry(hass, connection, msg)
     if entry is not None:
-        _send_snapshot(connection, msg["id"], entry)
+        try:
+            async with entry.runtime_data.lock:
+                await persist_items(entry.runtime_data, entry.runtime_data.items)
+                _send_snapshot(connection, msg["id"], entry)
+        except (HomeAssistantError, OSError, ValueError) as err:
+            connection.send_error(msg["id"], "cannot_load_list", str(err))
 
 
 @websocket_api.websocket_command(

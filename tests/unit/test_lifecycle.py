@@ -871,7 +871,7 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 18
+    assert env.websocket_api.async_register_command.call_count == 19
 
 
 async def test_catalog_shared_persistence_and_market_rename_preserves_categories(
@@ -943,7 +943,7 @@ async def test_catalog_shared_persistence_and_market_rename_preserves_categories
     await env.websocket.websocket_get_catalog(
         env.hass, connection, {"id": 6, "type": "einkaufszettel/get_catalog"}
     )
-    connection.send_result.assert_called_with(6, persisted)
+    connection.send_result.assert_called_with(6, {**persisted, "products": []})
     connection.send_error.assert_not_called()
 
 
@@ -1271,6 +1271,15 @@ async def test_simultaneous_copy_presses_do_not_duplicate_items(integration):
 async def sync_environment(env, monkeypatch, *, features=49):
     """Use the real reconciler against an in-memory external To-do service."""
     await env.package.async_setup_entry(env.hass, env.entry)
+    catalog_store = env.stores["einkaufszettel.supermarkets"]
+    catalog = {"categories": [{"id": "dairy", "name": "Milchprodukte"}]}
+
+    async def save_catalog(value):
+        nonlocal catalog
+        catalog = deepcopy(value)
+
+    catalog_store.async_load.side_effect = lambda: deepcopy(catalog)
+    catalog_store.async_save.side_effect = save_catalog
     sync = importlib.import_module(f"{env.package.__name__}.sync")
     source_sync = importlib.import_module(f"{env.package.__name__}.source_sync")
     remote = [{"uid": "a", "summary": "Milch", "status": "needs_action"}]
@@ -1584,6 +1593,266 @@ async def test_local_only_choice_survives_restart_and_never_recreates(
     )
     await ctx.source.synchronize_source(env.hass, env.entry)
     assert any(service == "add_item" for service, _ in ctx.calls)
+
+
+async def test_product_category_survives_deletion_restart_and_source_recreation(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "assign",
+        "update_item",
+        uid,
+        {"metadata": {"category_id": "dairy", "quantity": "2"}},
+    )
+    await ctx.protocol.apply_operation(ctx.data, "delete", "delete_item", uid, {})
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert not ctx.data.items
+    env.store.async_load.return_value = env.store.async_save.call_args.args[0]
+    await env.package.async_setup_entry(env.hass, env.entry)
+    ctx.remote.append(
+        {"uid": "milk-new", "summary": " MILCH ", "status": "needs_action"}
+    )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert env.entry.runtime_data.items[0].metadata == {"category_id": "dairy"}
+    assert env.entry.runtime_data.items[0].source_uid == "milk-new"
+    assert env.entry.runtime_data.items[0].uid != uid
+
+
+async def test_product_removal_clears_all_lists_without_deleting_articles_and_never_relearns(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "assign",
+        "update_item",
+        uid,
+        {"metadata": {"category_id": "dairy", "note": "bio"}},
+    )
+    second = SimpleNamespace(
+        entry_id="second",
+        domain="einkaufszettel",
+        data={"name": "Zweite Liste"},
+        options={},
+    )
+    await env.package.async_setup_entry(env.hass, second)
+    protocol = ctx.protocol
+    await protocol.apply_operation(
+        second.runtime_data, "add", "add_item", "second-milk", {"summary": "milch"}
+    )
+    assert second.runtime_data.items[-1].metadata["category_id"] == "dairy"
+    second_before = list(second.runtime_data.items)
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_remove_category_product(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/remove_category_product",
+            "category_id": "dairy",
+            "product_key": "milch",
+        },
+    )
+    connection.send_error.assert_not_called()
+    assert (
+        connection.send_result.call_args.args[1]["products"][0]["category_id"] is None
+    )
+    await protocol.persist_items(ctx.data, ctx.data.items)
+    await protocol.persist_items(second.runtime_data, second_before)
+    assert len(ctx.data.items) == 1
+    assert ctx.data.items[0].metadata == {"category_id": None, "note": "bio"}
+    assert all(
+        item.metadata["category_id"] is None for item in second.runtime_data.items
+    )
+    # A stale article saved again must not teach the removed category anew.
+    await protocol.persist_items(second.runtime_data, second_before)
+    assert all(
+        item.metadata["category_id"] is None for item in second.runtime_data.items
+    )
+    await protocol.apply_operation(
+        ctx.data, "new", "add_item", "new-milk", {"summary": "MILCH"}
+    )
+    assert ctx.data.items[-1].metadata["category_id"] is None
+    await protocol.apply_operation(
+        ctx.data, "manual", "update_item", uid, {"metadata": {"category_id": "dairy"}}
+    )
+    assert all(item.metadata["category_id"] == "dairy" for item in ctx.data.items)
+
+
+async def test_product_assignment_retry_cannot_undo_later_manual_removal(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    uid = ctx.data.items[0].uid
+    patch = {"metadata": {"category_id": "dairy"}}
+    env.store.async_save.side_effect = OSError("list disk full")
+    with pytest.raises(OSError):
+        await ctx.protocol.apply_operation(ctx.data, "once", "update_item", uid, patch)
+    assert "once" not in ctx.data.sync["receipts"]
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_remove_category_product(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/remove_category_product",
+            "category_id": "dairy",
+            "product_key": "milch",
+        },
+    )
+    connection.send_error.assert_not_called()
+    env.store.async_save.side_effect = None
+    await ctx.protocol.apply_operation(ctx.data, "once", "update_item", uid, patch)
+    assert ctx.data.items[0].metadata["category_id"] is None
+    assert "once" in ctx.data.sync["receipts"]
+
+
+async def test_product_retry_after_source_rename_keeps_original_assignment(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    uid = ctx.data.items[0].uid
+    patch = {"metadata": {"category_id": "dairy"}}
+    env.store.async_save.side_effect = OSError("list full")
+    with pytest.raises(OSError):
+        await ctx.protocol.apply_operation(ctx.data, "once", "update_item", uid, patch)
+    env.store.async_save.side_effect = None
+    ctx.data.items = [env.model.ShoppingItem(uid, "Hafermilch")]
+    await ctx.protocol.apply_operation(ctx.data, "once", "update_item", uid, patch)
+    catalog = await env.stores["einkaufszettel.supermarkets"].async_load()
+    assert (
+        next(product for product in catalog["products"] if product["key"] == "milch")[
+            "category_id"
+        ]
+        == "dairy"
+    )
+    assert ctx.data.items[0].metadata["category_id"] == "dairy"
+
+
+async def test_product_catalog_save_failure_does_not_acknowledge_assignment(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    env.stores["einkaufszettel.supermarkets"].async_save.side_effect = OSError(
+        "catalog full"
+    )
+    with pytest.raises(OSError, match="catalog full"):
+        await ctx.protocol.apply_operation(
+            ctx.data,
+            "assign",
+            "update_item",
+            ctx.data.items[0].uid,
+            {"metadata": {"category_id": "dairy"}},
+        )
+    assert "assign" not in ctx.data.sync["receipts"]
+    assert not ctx.data.items[0].metadata
+
+
+async def test_migration_seeds_completed_and_deleted_items_but_respects_removal_markers(
+    integration,
+):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    store = env.stores["einkaufszettel.supermarkets"]
+    catalog = {
+        "categories": [{"id": "dairy", "name": "Milchprodukte"}],
+        "products": [{"key": "milch", "name": "Milch", "category_id": None}],
+    }
+    store.async_load.side_effect = lambda: deepcopy(catalog)
+
+    async def save(value):
+        nonlocal catalog
+        catalog = deepcopy(value)
+
+    store.async_save.side_effect = save
+    state = importlib.import_module(f"{env.package.__name__}.sync").new_sync_state()
+    state["deleted"]["deleted"] = env.model.ShoppingItem(
+        "deleted", "Quark", metadata={"category_id": "dairy"}
+    ).to_dict()
+    env.store.async_load.return_value = {
+        "items": [
+            env.model.ShoppingItem(
+                "milk", "Milch", metadata={"category_id": "dairy"}
+            ).to_dict(),
+            env.model.ShoppingItem(
+                "yoghurt", "Joghurt", "completed", metadata={"category_id": "dairy"}
+            ).to_dict(),
+        ],
+        "sync": state,
+    }
+    await env.package.async_setup_entry(env.hass, env.entry)
+    rules = {product["key"]: product["category_id"] for product in catalog["products"]}
+    assert rules == {"milch": None, "joghurt": "dairy", "quark": "dairy"}
+    assert env.entry.runtime_data.items[0].metadata["category_id"] is None
+    assert len(env.entry.runtime_data.items) == 2
+
+
+@pytest.mark.parametrize("admin", [True, False])
+async def test_product_remove_revalidates_category_and_permissions(
+    integration, monkeypatch, admin
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "assign",
+        "update_item",
+        ctx.data.items[0].uid,
+        {"metadata": {"category_id": "dairy"}},
+    )
+    connection = Mock(user=SimpleNamespace(is_admin=admin))
+    await env.websocket.websocket_remove_category_product(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/remove_category_product",
+            "category_id": "wrong-category",
+            "product_key": "milch",
+        },
+    )
+    connection.send_error.assert_called_once()
+    connection.send_result.assert_not_called()
+    assert ctx.data.items[0].metadata["category_id"] == "dairy"
+
+
+async def test_get_list_projects_product_rules_without_source_write(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "assign",
+        "update_item",
+        ctx.data.items[0].uid,
+        {"metadata": {"category_id": "dairy"}},
+    )
+    # Existing items on another list can still contain an older materialized value.
+    ctx.data.items = [
+        env.model.ShoppingItem("other", "MILCH", metadata={"quantity": "4"})
+    ]
+    env.entry.domain = "einkaufszettel"
+    env.hass.config_entries.async_get_entry.return_value = env.entry
+    connection = Mock()
+    ctx.calls.clear()
+    await env.websocket.websocket_get_list(
+        env.hass, connection, {"id": 8, "entry_id": env.entry.entry_id}
+    )
+    assert connection.send_result.call_args.args[1]["items"][0]["metadata"] == {
+        "category_id": "dairy",
+        "quantity": "4",
+    }
+    assert not ctx.calls
 
 
 async def test_explicit_retry_creates_once_and_rejects_replayed_decision(

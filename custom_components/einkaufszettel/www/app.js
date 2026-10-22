@@ -42,15 +42,27 @@ const elements = {
   listFlyout: document.querySelector("#list-flyout"),
   editItem: document.querySelector("#edit-item"),
   editItemForm: document.querySelector("#edit-item-form"),
+  editItemTitle: document.querySelector("#edit-item-title"),
   editSummary: document.querySelector("#edit-summary"),
   editCategory: document.querySelector("#edit-category"),
+  editCategoryPicker: document.querySelector(".category-picker"),
+  editCategoryTrigger: document.querySelector("#edit-category-trigger"),
+  editCategoryValue: document.querySelector("#edit-category-value"),
+  editCategoryFlyout: document.querySelector("#edit-category-flyout"),
+  editCategorySearch: document.querySelector("#edit-category-search"),
+  editCategoryOptions: document.querySelector("#edit-category-options"),
+  editCategoryUnavailable: document.querySelector("#edit-category-unavailable"),
+  editCategoryEmpty: document.querySelector("#edit-category-empty"),
   editQuantity: document.querySelector("#edit-quantity"),
   editNotes: document.querySelector("#edit-notes"),
   cancelEdit: document.querySelector("#cancel-edit"),
   connectionDot: document.querySelector("#connection-dot"),
   connectionLabel: document.querySelector("#connection-label"),
   syncDetail: document.querySelector("#sync-detail"),
+  syncActions: document.querySelector(".sync-actions"),
   sync: document.querySelector("#sync"),
+  syncDetailsToggle: document.querySelector("#sync-details-toggle"),
+  syncFlyout: document.querySelector("#sync-flyout"),
   copySource: document.querySelector("#copy-source"),
   connect: document.querySelector("#connect"),
   install: document.querySelector("#install"),
@@ -94,10 +106,13 @@ let listRefreshPromise;
 let lastOperationTime = 0;
 let availableLists = [];
 let editingUid;
+let editingCategory;
+let editingTrigger;
 let supermarkets = [];
 let selectedMarket = "";
 let managingSupermarkets = false;
 let categories = [];
+let products = [];
 let catalogView;
 let catalogDraft;
 let catalogDirty = false;
@@ -123,12 +138,38 @@ function applyCatalog(value) {
   if (nextMarkets.some(market => (market.category_ids || []).some(id => !nextCategories.some(c => c.id === id)))) {
     throw new Error("Der Katalog enthält unbekannte Markt-Kategorien. Bitte erneut laden.");
   }
+  const nextProducts = value.products === undefined ? [] : value.products;
+  if (!Array.isArray(nextProducts) || nextProducts.some(product =>
+    !product || typeof product.name !== "string" || !productNameKey(product.name) ||
+    product.key !== productNameKey(product.name) ||
+    (product.category_id !== null && !nextCategories.some(category => category.id === product.category_id))
+  ) || new Set(nextProducts.map(product => product.key)).size !== nextProducts.length) {
+    throw new Error("Die Produktzuordnungen sind ungültig. Bitte erneut laden.");
+  }
   supermarkets = nextMarkets;
   categories = nextCategories;
+  products = nextProducts;
+}
+
+function productNameKey(name) {
+  return name.trim().replace(/\s+/gu, " ").toLowerCase().replace(/ß/gu, "ss").replace(/ς/gu, "σ");
+}
+
+function rememberProduct(name, categoryId) {
+  const key = productNameKey(name);
+  const product = { key, name, category_id: categoryId };
+  products = [...products.filter(item => item.key !== key), product];
+}
+
+function applyProductCategories() {
+  currentItems = currentItems.map(item => {
+    const product = products.find(record => record.key === productNameKey(item.summary));
+    return product ? { ...item, metadata: { ...item.metadata, category_id: product.category_id } } : item;
+  });
 }
 
 function cacheCatalog() {
-  localStorage.setItem(CATALOG_KEY, JSON.stringify({ supermarkets, categories }));
+  localStorage.setItem(CATALOG_KEY, JSON.stringify({ supermarkets, categories, products }));
 }
 
 function renderMarketSelection() {
@@ -183,16 +224,21 @@ function loadCachedSupermarkets() {
 
 async function refreshSupermarkets() {
   const catalog = await sendCommand(`${DOMAIN}/get_catalog`);
-  applyCatalog(catalog);
-  let cacheError;
-  try {
+  await withLocalState(async () => {
+    applyCatalog(catalog);
+    if (database) replayProductAssignments(await readQueue(null));
     cacheCatalog();
-  } catch (error) {
-    cacheError = new Error(`Supermärkte geladen, aber die Offline-Kopie konnte nicht gespeichert werden: ${error.message}`);
+    loadMarketSelection();
+    render();
+  });
+}
+
+function replayProductAssignments(operations) {
+  for (const operation of operations) {
+    if (operation.product_name && Object.hasOwn(operation.metadata || {}, "category_id")) {
+      rememberProduct(operation.product_name, operation.metadata.category_id);
+    }
   }
-  loadMarketSelection();
-  render();
-  if (cacheError) throw cacheError;
 }
 
 function button(text, action, className = "secondary") {
@@ -259,6 +305,23 @@ async function loadCatalogPage(view) {
   }
 }
 
+async function openCategoryProducts(category) {
+  openCatalog("category-products", category);
+  if (catalogView !== "category-products" || catalogDraft.id !== category.id) return;
+  const request = ++catalogRequest;
+  elements.catalogMessage.textContent = "Produktzuordnungen werden geladen …";
+  try {
+    await refreshSupermarkets();
+    if (request === catalogRequest && catalogView === "category-products" && catalogDraft.id === category.id) {
+      renderCatalogPage();
+    }
+  } catch (error) {
+    if (request === catalogRequest && catalogView === "category-products") {
+      elements.catalogMessage.textContent = `Offline-Kopie. Zuordnungen konnten nicht aktualisiert werden: ${error.message}`;
+    }
+  }
+}
+
 async function saveCatalog(command, payload, nextView) {
   if (managingSupermarkets) return;
   managingSupermarkets = true;
@@ -269,11 +332,12 @@ async function saveCatalog(command, payload, nextView) {
   try {
     const result = await sendCommand(`${DOMAIN}/${command}`, payload);
     if (command.endsWith("supermarket")) {
-      applyCatalog({ supermarkets: result, categories });
+      applyCatalog({ supermarkets: result, categories, products });
     } else {
       applyCatalog(result);
     }
     saved = true;
+    if (database) replayProductAssignments(await readQueue(null));
     catalogDirty = false;
     catalogView = nextView;
     cacheCatalog();
@@ -309,9 +373,11 @@ function renderCatalogPage() {
   elements.catalogBack.querySelector("span").textContent = isList ? "Zurück zur Liste"
     : catalogView === "market-order" ? "Supermarkt bearbeiten"
     : catalogView === "market-select" ? "Marktkategorien"
+    : catalogView === "category-products" ? "Kategorie bearbeiten"
     : isMarket ? "Supermärkte" : "Produktkategorien";
   elements.catalogBack.onclick = () => {
     if (isList) leaveManagement();
+    else if (catalogView === "category-products") openCatalog("category-edit", catalogDraft);
     else if (catalogView === "market-order") openCatalog("market-edit", catalogDraft);
     else if (catalogView === "market-select") {
       catalogView = "market-order";
@@ -330,6 +396,28 @@ function renderCatalogPage() {
     }
     content.append(list);
     if (!records.length) content.append(paragraph(`Noch keine ${isMarket ? "Supermärkte" : "Produktkategorien"} angelegt.`));
+  } else if (catalogView === "category-products") {
+    elements.catalogTitle.textContent = "Zugeordnete Produkte";
+    elements.catalogHelp.textContent = `${catalogDraft.name} · Dauerhafte Zuordnungen für alle Einkaufslisten, auch wenn das Produkt gerade nicht auf einer Liste steht. Entfernen löst nur die Kategoriezuordnung; Einkaufsartikel bleiben erhalten.`;
+    const list = document.createElement("div");
+    list.className = "management-list";
+    const assigned = products.filter(product => product.category_id === catalogDraft.id)
+      .sort((a, b) => nameOrder.compare(a.name, b.name));
+    for (const product of assigned) {
+      const row = document.createElement("div");
+      row.className = "category-product-row";
+      const name = document.createElement("span");
+      name.textContent = product.name;
+      const remove = button("Entfernen", () => {
+        if (!confirm(`„${product.name}“ dauerhaft aus der Kategorie „${catalogDraft.name}“ entfernen? Bestehende Einkaufsartikel bleiben erhalten und erscheinen ohne Kategorie. Auch beim erneuten Hinzufügen wird diese Kategorie nicht mehr automatisch zugeordnet.`)) return;
+        saveCatalog("remove_category_product", { category_id: catalogDraft.id, product_key: product.key }, "category-products");
+      });
+      remove.setAttribute("aria-label", `Kategoriezuordnung entfernen: ${product.name}`);
+      row.append(name, remove);
+      list.append(row);
+    }
+    content.append(list);
+    if (!assigned.length) content.append(paragraph("Dieser Kategorie sind noch keine Produkte zugeordnet."));
   } else if (catalogView === "market-order" || catalogView === "market-select") {
     renderMarketCategories();
   } else {
@@ -351,6 +439,16 @@ function renderCatalogPage() {
       catalogDirty = true;
     });
     form.append(label, input);
+    if (!isMarket && catalogDraft.id) {
+      form.append(button("Zugeordnete Produkte  ›", () => {
+        const category = categories.find(record => record.id === catalogDraft.id);
+        if (!category) {
+          elements.catalogMessage.textContent = "Die Kategorie wurde inzwischen entfernt. Bitte die Kategorienübersicht neu öffnen.";
+          return;
+        }
+        openCategoryProducts(category);
+      }, "management-link category-navigation"));
+    }
     if (isMarket && catalogDraft.id) {
       form.append(button("Produktkategorien für diesen Markt bearbeiten  ›", () => {
         if (catalogDirty && !confirm("Ungespeicherten Namen verwerfen und Produktkategorien öffnen?")) return;
@@ -731,7 +829,7 @@ async function readQueue(listId = entryId) {
     request.onsuccess = () => {
       resolve(
         request.result
-          .filter((operation) => operation.entry_id === listId)
+          .filter((operation) => listId === null || operation.entry_id === listId)
           .sort((a, b) => a.created_at - b.created_at || a.id.localeCompare(b.id)),
       );
     };
@@ -746,12 +844,14 @@ async function enqueue(operation, listId = entryId) {
     id: crypto.randomUUID(),
     entry_id: listId,
     created_at: (lastOperationTime = Math.max(Date.now(), lastOperationTime + 1)),
+    product_name: operation.summary || currentItems.find(item => item.uid === operation.uid)?.summary,
   };
   await withLocalState(async () => {
     await storeRequest("operations", "put", queued);
     if (entryId === listId) {
       pendingOperations.push(queued);
       applyLocalOperation(queued);
+      cacheCatalog();
       render();
       updateConnection("pending");
     }
@@ -783,6 +883,39 @@ function applyLocalOperation(operation) {
   } else if (operation.type === "delete_item") {
     currentItems = currentItems.filter((item) => item.uid !== operation.uid);
   }
+  if (operation.type !== "delete_item" && Object.hasOwn(operation.metadata || {}, "category_id")) {
+    const item = currentItems.find(item => item.uid === operation.uid);
+    if (item) rememberProduct(item.summary, operation.metadata.category_id);
+  }
+  applyProductCategories();
+}
+
+function enableItemLongPress(label, openDetails) {
+  let press = null;
+  function cancelPress() {
+    if (press) window.clearTimeout(press.timer);
+    press = null;
+  }
+  label.addEventListener("pointerdown", event => {
+    cancelPress();
+    if (busy || event.button !== 0 || !event.isPrimary) return;
+    press = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    press.timer = window.setTimeout(() => {
+      cancelPress();
+      if (label.isConnected && !busy && !document.hidden) openDetails();
+    }, 500);
+  });
+  label.addEventListener("pointermove", event => {
+    if (press && event.pointerId === press.id &&
+        Math.hypot(event.clientX - press.x, event.clientY - press.y) >= 10) cancelPress();
+  });
+  for (const type of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
+    label.addEventListener(type, cancelPress);
+  }
+  label.addEventListener("contextmenu", event => event.preventDefault());
+  label.addEventListener("click", event => {
+    if (event.detail === 0 && !busy) openDetails();
+  });
 }
 
 function enableItemSwipeDelete(row, uid, listId = entryId) {
@@ -840,6 +973,7 @@ function enableItemSwipeDelete(row, uid, listId = entryId) {
 }
 
 function render() {
+  applyProductCategories();
   const pendingIds = new Set(
     pendingOperations.map((operation) => operation.uid),
   );
@@ -891,6 +1025,7 @@ function render() {
     const label = document.createElement("button");
     label.type = "button";
     label.className = "item-name";
+    label.dataset.uid = item.uid;
     const summary = document.createElement("span");
     summary.textContent = item.summary;
     label.append(summary);
@@ -903,23 +1038,69 @@ function render() {
       label.classList.add("has-note");
     }
     label.setAttribute("aria-label", `Bearbeiten: ${item.summary}`);
-    label.setAttribute("aria-description", "Zum Löschen nach links wischen oder die Entf-Taste drücken.");
+    label.setAttribute("aria-description", "Zum Bearbeiten lange drücken oder Enter bzw. die Leertaste drücken. Zum Löschen nach links wischen oder die Entf-Taste drücken.");
     label.setAttribute("aria-keyshortcuts", "Delete");
-    label.addEventListener("click", () => {
+    enableItemLongPress(label, () => {
       editingUid = item.uid;
       elements.editSummary.value = item.summary;
       elements.editQuantity.value = item.metadata?.quantity || "";
       elements.editNotes.value = item.description || "";
-      elements.editCategory.replaceChildren(new Option("Ohne Kategorie", ""));
-      for (const category of [...categories].sort((a, b) => nameOrder.compare(a.name, b.name))) {
-        elements.editCategory.append(new Option(category.name, category.id));
+      closeEditCategoryFlyout();
+      elements.editCategoryOptions.replaceChildren();
+      const editCategories = [
+        { id: "", name: "Ohne Kategorie" },
+        ...[...categories].sort((a, b) => nameOrder.compare(a.name, b.name)),
+      ];
+      for (const category of editCategories) {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = "category-option";
+        option.setAttribute("role", "option");
+        option.dataset.categoryId = category.id;
+        option.dataset.categoryName = category.name;
+        option.setAttribute("aria-selected", "false");
+        option.tabIndex = -1;
+        const name = document.createElement("span");
+        name.className = "category-option-name";
+        name.textContent = category.name;
+        const check = document.createElement("span");
+        check.className = "category-option-check";
+        check.textContent = "✓";
+        check.setAttribute("aria-hidden", "true");
+        option.append(name, check);
+        elements.editCategoryOptions.append(option);
       }
       const categoryId = item.metadata?.category_id || "";
-      if (categoryId && !categories.some(c => c.id === categoryId)) {
-        elements.editCategory.append(new Option("Nicht verfügbare Kategorie", categoryId));
-      }
       elements.editCategory.value = categoryId;
+      const currentCategory = categories.find(category => category.id === categoryId);
+      elements.editCategoryValue.textContent = currentCategory?.name ||
+        (categoryId ? "Nicht verfügbare Kategorie" : "Ohne Kategorie");
+      elements.editCategoryUnavailable.hidden = !categoryId || !!currentCategory;
+      elements.editCategorySearch.value = "";
+      elements.editCategoryOptions.querySelectorAll(".category-option").forEach(option => {
+        const selected = option.dataset.categoryId === categoryId;
+        option.setAttribute("aria-selected", String(selected));
+        option.tabIndex = selected ? 0 : -1;
+        option.hidden = false;
+        option.addEventListener("click", () => {
+          elements.editCategory.value = option.dataset.categoryId;
+          elements.editCategoryValue.textContent = option.dataset.categoryName;
+          elements.editCategoryOptions.querySelectorAll(".category-option").forEach(candidate => {
+            const selected = candidate === option;
+            candidate.setAttribute("aria-selected", String(selected));
+            candidate.tabIndex = selected ? 0 : -1;
+          });
+          closeEditCategoryFlyout(true);
+        });
+      });
+      elements.editCategoryUnavailable.textContent = categoryId && !currentCategory
+        ? "Diese Kategorie ist nicht mehr verfügbar. Wähle eine andere Kategorie oder „Ohne Kategorie“."
+        : "";
+      elements.editCategoryEmpty.hidden = true;
+      editingCategory = categoryId;
+      editingTrigger = label;
       elements.editItem.showModal();
+      elements.editItemTitle.focus({ preventScroll: true });
     });
     label.addEventListener("keydown", event => {
       if (event.key !== "Delete" || !confirm(`„${item.summary}“ wirklich löschen?`)) return;
@@ -950,6 +1131,7 @@ function setBusy(value) {
   if (elements.marketSelect.disabled) closeFlyout(elements.marketSelect, elements.marketFlyout);
   elements.addForm.inert = blocked || !entryId;
   elements.sync.disabled = blocked || !!syncPromise || !!listRefreshPromise;
+  elements.syncActions.classList.toggle("syncing", !!syncPromise || !!listRefreshPromise);
   elements.copySource.disabled = blocked || !!syncPromise || !entryId;
   elements.items.inert = blocked;
   elements.manageLists.disabled = blocked;
@@ -988,6 +1170,123 @@ function createPickerOption(label, selected, onSelect) {
   return option;
 }
 
+function closeEditCategoryFlyout(focus = false) {
+  elements.editCategoryFlyout.hidden = true;
+  elements.editCategoryTrigger.setAttribute("aria-expanded", "false");
+  if (focus) elements.editCategoryTrigger.focus();
+}
+
+function openEditCategoryFlyout() {
+  elements.editCategorySearch.value = "";
+  elements.editCategoryOptions.querySelectorAll(".category-option").forEach(option => {
+    option.hidden = false;
+  });
+  elements.editCategoryEmpty.hidden = true;
+  elements.editCategoryFlyout.hidden = false;
+  elements.editCategoryTrigger.setAttribute("aria-expanded", "true");
+}
+
+elements.editCategoryTrigger.addEventListener("click", () => {
+  if (elements.editCategoryFlyout.hidden) openEditCategoryFlyout();
+  else closeEditCategoryFlyout();
+});
+elements.editCategoryTrigger.addEventListener("keydown", event => {
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  event.preventDefault();
+  if (elements.editCategoryFlyout.hidden) openEditCategoryFlyout();
+  const selected = elements.editCategoryOptions.querySelector('[aria-selected="true"]:not([hidden])');
+  (selected || elements.editCategoryOptions.querySelector(".category-option:not([hidden])"))?.focus();
+});
+elements.editCategoryOptions.addEventListener("keydown", event => {
+  const options = [...elements.editCategoryOptions.querySelectorAll(".category-option:not([hidden])")];
+  if (!options.length || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const current = options.indexOf(document.activeElement);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 :
+    (current + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length;
+  options[next].focus();
+});
+elements.editCategoryOptions.addEventListener("click", event => {
+  if (event.target.closest(".category-option")) return;
+  closeEditCategoryFlyout();
+});
+elements.editCategorySearch.addEventListener("input", () => {
+  const query = elements.editCategorySearch.value.trim().toLocaleLowerCase("de");
+  let visible = 0;
+  for (const option of elements.editCategoryOptions.querySelectorAll(".category-option")) {
+    option.hidden = !option.dataset.categoryName.toLocaleLowerCase("de").includes(query);
+    if (!option.hidden) visible += 1;
+  }
+  elements.editCategoryEmpty.hidden = visible > 0;
+});
+elements.editCategorySearch.addEventListener("keydown", event => {
+  if (event.key === "ArrowDown") {
+    const first = elements.editCategoryOptions.querySelector(".category-option:not([hidden])");
+    if (first) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+});
+elements.editCategoryPicker.addEventListener("focusout", event => {
+  if (!elements.editCategoryPicker.contains(event.relatedTarget)) closeEditCategoryFlyout();
+});
+document.addEventListener("click", event => {
+  if (!elements.editCategoryPicker.contains(event.target)) closeEditCategoryFlyout();
+});
+elements.editItem.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !elements.editCategoryFlyout.hidden) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeEditCategoryFlyout(true);
+  }
+});
+elements.editItem.addEventListener("close", () => {
+  closeEditCategoryFlyout();
+  const trigger = editingTrigger?.isConnected
+    ? editingTrigger
+    : [...elements.items.querySelectorAll(".item-name")].find(label => label.dataset.uid === editingUid);
+  trigger?.focus({ preventScroll: true });
+  editingTrigger = undefined;
+});
+
+elements.syncDetailsToggle.addEventListener("click", () => {
+  const open = elements.syncFlyout.hidden;
+  if (open) {
+    closeFlyout(elements.listSelect, elements.listFlyout);
+    closeFlyout(elements.marketSelect, elements.marketFlyout);
+  }
+  elements.syncFlyout.hidden = !open;
+  elements.syncDetailsToggle.setAttribute("aria-expanded", String(open));
+});
+elements.syncDetailsToggle.addEventListener("keydown", event => {
+  if (event.key !== "ArrowDown") return;
+  event.preventDefault();
+  closeFlyout(elements.listSelect, elements.listFlyout);
+  closeFlyout(elements.marketSelect, elements.marketFlyout);
+  elements.syncFlyout.hidden = false;
+  elements.syncDetailsToggle.setAttribute("aria-expanded", "true");
+  elements.syncFlyout.focus();
+});
+elements.syncActions.addEventListener("focusout", event => {
+  if (!elements.syncActions.contains(event.relatedTarget)) {
+    elements.syncFlyout.hidden = true;
+    elements.syncDetailsToggle.setAttribute("aria-expanded", "false");
+  }
+});
+document.addEventListener("click", event => {
+  if (elements.syncActions.contains(event.target)) return;
+  elements.syncFlyout.hidden = true;
+  elements.syncDetailsToggle.setAttribute("aria-expanded", "false");
+});
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape" || elements.syncFlyout.hidden) return;
+  event.preventDefault();
+  elements.syncFlyout.hidden = true;
+  elements.syncDetailsToggle.setAttribute("aria-expanded", "false");
+  elements.syncDetailsToggle.focus();
+});
+
 function closeFlyout(trigger, flyout, focus = false) {
   flyout.hidden = true;
   trigger.setAttribute("aria-expanded", "false");
@@ -999,6 +1298,8 @@ function initializePicker(trigger, flyout) {
   const close = (focus = false) => closeFlyout(trigger, flyout, focus);
   function open(focus = false) {
     if (trigger.disabled) return;
+    elements.syncFlyout.hidden = true;
+    elements.syncDetailsToggle.setAttribute("aria-expanded", "false");
     for (const [otherTrigger, otherFlyout] of [
       [elements.listSelect, elements.listFlyout],
       [elements.marketSelect, elements.marketFlyout],
@@ -1064,6 +1365,7 @@ async function loadSelectedList() {
     if (entryId !== listId) return;
     const cached = await storeRequest("lists", "get", listId);
     const operations = await readQueue(listId);
+    const allOperations = await readQueue(null);
     if (entryId !== listId) return;
     deletedUids = new Set(cached?.deleted_uids || []);
     elements.listName.textContent = cached?.name ||
@@ -1071,6 +1373,8 @@ async function loadSelectedList() {
     currentItems = cached?.items || [];
     pendingOperations = operations;
     for (const operation of pendingOperations) applyLocalOperation(operation);
+    replayProductAssignments(allOperations);
+    applyProductCategories();
     lastOperationTime = pendingOperations.reduce(
       (latest, operation) => Math.max(latest, operation.created_at), lastOperationTime,
     );
@@ -1118,7 +1422,8 @@ elements.editItemForm.addEventListener("submit", async (event) => {
       type: "update_item", uid: editingUid, summary,
       description: elements.editNotes.value.trim() || null,
       metadata: {
-        category_id: elements.editCategory.value || null,
+        ...(elements.editCategory.value !== editingCategory
+          ? { category_id: elements.editCategory.value || null } : {}),
         quantity: elements.editQuantity.value.trim() || null,
       },
     });
@@ -1131,7 +1436,8 @@ elements.editItemForm.addEventListener("submit", async (event) => {
 elements.editSummary.addEventListener("input", () => elements.editSummary.setCustomValidity(""));
 
 function updateConnection(state, detail) {
-  elements.connectionDot.className = `dot ${state === "online" ? "online" : state === "pending" ? "pending" : ""}`;
+  elements.connectionDot.className = `dot ${state}`;
+  elements.syncActions.dataset.status = state;
   elements.connectionLabel.textContent =
     state === "online"
       ? "Mit Home Assistant verbunden"
@@ -1595,6 +1901,7 @@ async function runSynchronization() {
         else sourceWarnings.delete(listId);
       }
     } while (syncRequested && !busy && authenticated && socket?.readyState === WebSocket.OPEN);
+    await refreshSupermarkets();
   } finally {
     await loadSelectedList();
     await refreshSyncConflicts();

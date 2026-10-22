@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.4">
+    <link rel="stylesheet" href="./app.css?v=0.4.5">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -21,6 +21,18 @@
             <div class="list-title">
               <h1><button id="list-select" type="button" aria-label="Einkaufsliste auswählen" aria-expanded="false" aria-controls="list-flyout" disabled><span id="list-name">Liste auswählen</span><span class="list-arrow" aria-hidden="true"></span></button></h1>
               <div id="list-flyout" aria-label="Einkaufsliste auswählen" hidden></div>
+              <div class="sync-actions">
+                <button id="sync" class="sync-icon" type="button" aria-label="Jetzt synchronisieren" title="Jetzt synchronisieren">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(24 0) scale(-1 1)"><path d="M11 4a8 8 0 1 0 8 8v-4"/><path d="m15 12 4-4 4 4"/></g></svg>
+                </button>
+                <button id="sync-details-toggle" class="sync-details-toggle" type="button" aria-label="Sync- und Onlinestatus anzeigen" aria-expanded="false" aria-controls="sync-flyout">
+                  <span class="sync-details-arrow" aria-hidden="true"></span>
+                </button>
+                <section id="sync-flyout" class="sync-flyout" aria-label="Sync- und Onlinestatus" tabindex="-1" hidden>
+                  <div class="sync-status-heading"><span id="connection-dot" class="dot"></span><strong id="connection-label">Offline-Liste wird geladen</strong></div>
+                  <p id="sync-detail" role="status">Gespeicherte Änderungen werden beim nächsten Verbinden synchronisiert.</p>
+                </section>
+              </div>
             </div>
           </div>
         </div>
@@ -85,15 +97,6 @@
         </details>
       </header>
 
-      <section class="sync-card" aria-live="polite">
-        <span id="connection-dot" class="dot"></span>
-        <div>
-          <strong id="connection-label">Offline-Liste wird geladen</strong>
-          <p id="sync-detail">Gespeicherte Änderungen werden beim nächsten Verbinden synchronisiert.</p>
-        </div>
-        <button id="sync" class="icon-button" aria-label="Jetzt synchronisieren" title="Jetzt synchronisieren">↻</button>
-      </section>
-
       <form id="add-form" class="add-form">
         <label class="visually-hidden" for="new-item">Neuer Artikel</label>
         <input id="new-item" name="item" autocomplete="off" maxlength="200" placeholder="Was fehlt noch?" required>
@@ -140,11 +143,23 @@
     </section>
     <dialog id="edit-item" aria-labelledby="edit-item-title">
       <form id="edit-item-form">
-        <h2 id="edit-item-title">Artikel bearbeiten</h2>
+        <h2 id="edit-item-title" tabindex="-1" autofocus>Artikel bearbeiten</h2>
         <label for="edit-summary">Artikelname</label>
         <input id="edit-summary" maxlength="200" required autocomplete="off">
-        <label for="edit-category">Produktkategorie</label>
-        <select id="edit-category"></select>
+        <label id="edit-category-label" for="edit-category-trigger">Produktkategorie</label>
+        <div class="category-picker">
+          <button id="edit-category-trigger" class="category-picker-trigger" type="button" role="combobox" aria-labelledby="edit-category-label edit-category-value" aria-expanded="false" aria-haspopup="listbox" aria-controls="edit-category-flyout">
+            <span id="edit-category-value">Ohne Kategorie</span><span class="category-picker-arrow" aria-hidden="true"></span>
+          </button>
+          <div id="edit-category-flyout" class="category-picker-flyout" hidden>
+            <label class="visually-hidden" for="edit-category-search">Kategorien suchen</label>
+            <input id="edit-category-search" class="category-search" type="search" autocomplete="off" placeholder="Kategorie suchen …">
+            <p id="edit-category-unavailable" class="category-unavailable" role="note" hidden></p>
+            <p id="edit-category-empty" class="category-empty" role="status" hidden>Keine Kategorie gefunden.</p>
+            <div id="edit-category-options" class="category-options" role="listbox" aria-labelledby="edit-category-label"></div>
+          </div>
+          <input id="edit-category" type="hidden" value="">
+        </div>
         <label for="edit-quantity">Menge</label>
         <input id="edit-quantity" maxlength="100" autocomplete="off" placeholder="z. B. 2 × 1 l">
         <label for="edit-notes">Zusatzinformation</label>
@@ -162,6 +177,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.4" defer></script>
+    <script src="./app.js?v=0.4.5" defer></script>
   </body>
 </html>

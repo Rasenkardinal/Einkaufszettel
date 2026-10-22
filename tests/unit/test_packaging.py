@@ -92,6 +92,10 @@ def test_list_selection_uses_custom_flyout_not_native_popup():
     assert '<button id="list-select"' in html
     assert 'aria-controls="list-flyout"' in html
     assert 'id="list-flyout" aria-label="Einkaufsliste auswählen" hidden' in html
+    assert 'id="edit-category" type="hidden"' in html
+    assert 'id="edit-category-trigger" class="category-picker-trigger"' in html
+    assert 'id="edit-category-search" class="category-search" type="search"' in html
+    assert 'id="edit-item-title" tabindex="-1" autofocus' in html
 
 
 def test_embedded_authentication_opens_standalone_app_before_oauth():

@@ -22,6 +22,11 @@ async function runTests() {
   const state = {
     categories: [{ id: "z", name: "Zwiebeln" }, { id: "b", name: "Backwaren" }, { id: "a", name: "Äpfel" }],
     supermarkets: [{ id: "m", name: "Markt", category_ids: ["z", "b"] }],
+    products: [
+      {key:"zwieback",name:"Zwieback",category_id:"b"},
+      {key:"brot",name:"Brot",category_id:"b"},
+      {key:"ährenbrot",name:"Ährenbrot",category_id:"b"},
+    ],
   };
   let fail = false;
   win.confirm = () => true;
@@ -30,7 +35,7 @@ async function runTests() {
     enqueue = async operation => { test.operations.push(operation); };
     entryId = "test"; busy = false;
     availableLists = [{entry_id:"test", name:"Test"}];
-    categories = test.state.categories; supermarkets = test.state.supermarkets;
+    categories = test.state.categories; supermarkets = test.state.supermarkets; products = test.state.products;
     currentItems = [
       { uid:"one", summary:"Brot", status:"needs_action", metadata:{category_id:"b", quantity:"1"}, description:"Vollkorn" },
       { uid:"two", summary:"Zwiebeln", status:"needs_action", metadata:{category_id:"z"} },
@@ -39,9 +44,10 @@ async function runTests() {
     selectedMarket = "m";
     render();
     return { openCatalog, render, saveCatalog, refreshSupermarkets, loadCachedSupermarkets,
-      state: () => ({categories, supermarkets, selectedMarket, catalogDraft, catalogDirty}),
+      state: () => ({categories, supermarkets, products, currentItems, selectedMarket, catalogDraft, catalogDirty}),
       withoutMarket: () => { selectedMarket = ""; render(); },
-      reset: () => { categories = test.state.categories; supermarkets = test.state.supermarkets; }
+      reset: () => { categories = test.state.categories; supermarkets = test.state.supermarkets; },
+      updateConnection
     };
   `)({
     state, operations,
@@ -50,6 +56,8 @@ async function runTests() {
       if (fail) throw Error("Test: Speichern fehlgeschlagen");
       if (command === "save_market_categories") state.supermarkets[0].category_ids = [...payload.category_ids];
       if (command === "save_category") state.categories = state.categories.map(c => c.id === payload.category_id ? {...c, name:payload.name} : c);
+      if (command === "remove_category_product") state.products = state.products.map(product =>
+        product.key === payload.product_key ? {...product, category_id:null} : product);
       return structuredClone(state);
     }
   }, { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) });
@@ -64,6 +72,138 @@ async function runTests() {
     assert(doc.querySelectorAll(".item .delete").length === 0, "Delete buttons should not be shown");
     assert(doc.querySelector(".item-name .item-note"), "Item details should stay in the item-name column");
     assert(doc.querySelector(".item-name").getAttribute("aria-keyshortcuts") === "Delete", "Keyboard delete shortcut missing");
+  });
+  const itemLabel = doc.querySelector('[aria-label="Bearbeiten: Brot"]');
+  const editDialog = doc.querySelector("#edit-item");
+  test("Sync status is tucked into a stable list-title flyout", () => {
+    const title = doc.querySelector(".list-title");
+    const actions = doc.querySelector(".sync-actions");
+    assert(title.contains(actions), "Sync controls are not next to the selected list");
+    assert(Math.abs(actions.getBoundingClientRect().right - title.getBoundingClientRect().right) < 1, "Sync controls are not right-aligned with the list title");
+    assert(!doc.querySelector(".sync-card"), "Variable-height sync card remains in the page flow");
+    assert(doc.querySelector("#sync-details-toggle").getAttribute("aria-controls") === "sync-flyout", "Status trigger is not associated with its flyout");
+    const y = doc.querySelector("#add-form").getBoundingClientRect().top;
+    doc.querySelector("#sync-details-toggle").click();
+    assert(!doc.querySelector("#sync-flyout").hidden, "Status flyout did not open");
+    assert(doc.querySelector("#add-form").getBoundingClientRect().top === y, "Opening sync status shifted the list");
+    api.updateConnection("online", "Alle Änderungen wurden synchronisiert.");
+    assert(actions.dataset.status === "online" && doc.querySelector("#connection-dot").classList.contains("online"), "Online status color missing");
+    api.updateConnection("pending");
+    assert(actions.dataset.status === "pending" && doc.querySelector("#connection-dot").classList.contains("pending"), "Pending status color missing");
+    doc.activeElement.dispatchEvent(new win.KeyboardEvent("keydown", {key:"Escape", bubbles:true, cancelable:true}));
+    assert(doc.querySelector("#sync-flyout").hidden, "Escape did not close status flyout");
+    assert(doc.activeElement === doc.querySelector("#sync-details-toggle"), "Escape did not return focus to status trigger");
+    api.updateConnection("offline");
+  });
+  const pause = ms => new Promise(resolve => win.setTimeout(resolve, ms));
+  function itemPointer(type, options = {}) {
+    itemLabel.dispatchEvent(new win.PointerEvent(type, {
+      pointerId: 81, pointerType: "touch", isPrimary: true, button: 0,
+      clientX: 240, clientY: 120, bubbles: true, cancelable: true, ...options,
+    }));
+  }
+  itemPointer("pointerdown");
+  itemPointer("pointerup");
+  itemLabel.dispatchEvent(new win.MouseEvent("click", {detail: 1, bubbles: true}));
+  await pause(550);
+  test("Short tap does not open article details or leave a pending long press", () => {
+    assert(!editDialog.open, "Short tap opened details");
+  });
+  itemPointer("pointerdown");
+  await pause(200);
+  assert(!editDialog.open, "Long press opened before the threshold");
+  await pause(350);
+  test("Holding for half a second opens article details", () => {
+    assert(editDialog.open, "Long press did not open details");
+    assert(doc.querySelector("#edit-summary").value === "Brot", "Wrong article opened");
+    assert(doc.activeElement === doc.querySelector("#edit-item-title"), "Opening details focused a text field");
+    assert(doc.querySelector("#edit-category").value === "b", "Item category missing");
+    assert(doc.querySelector("#edit-category-options").children.length === 4, "Category menu is missing an option");
+  });
+  itemPointer("pointerup");
+  const categoryTrigger = doc.querySelector("#edit-category-trigger");
+  categoryTrigger.click();
+  test("Category search flyout opens without focusing the keyboard field", () => {
+    assert(!doc.querySelector("#edit-category-flyout").hidden, "Category flyout did not open");
+    assert(doc.activeElement !== doc.querySelector("#edit-category-search"), "Search field received automatic focus");
+  });
+  const categorySearch = doc.querySelector("#edit-category-search");
+  categorySearch.focus();
+  categorySearch.value = "ä";
+  categorySearch.dispatchEvent(new win.Event("input", {bubbles:true}));
+  test("Category search filters case-insensitively and reports empty results", () => {
+    assert(doc.querySelectorAll("#edit-category-options .category-option:not([hidden])").length === 1, "Search did not filter categories");
+    categorySearch.value = "not-a-category";
+    categorySearch.dispatchEvent(new win.Event("input", {bubbles:true}));
+    assert(!doc.querySelector("#edit-category-empty").hidden, "Empty result message missing");
+  });
+  categorySearch.value = "";
+  categorySearch.dispatchEvent(new win.Event("input", {bubbles:true}));
+  categorySearch.dispatchEvent(new win.KeyboardEvent("keydown", {key:"ArrowDown", bubbles:true, cancelable:true}));
+  doc.activeElement.dispatchEvent(new win.KeyboardEvent("keydown", {key:"Escape", bubbles:true, cancelable:true}));
+  test("Escape closes category flyout without closing article dialog", () => {
+    assert(editDialog.open, "Escape closed the article dialog instead of its flyout");
+    assert(doc.querySelector("#edit-category-flyout").hidden, "Escape did not close category flyout");
+    assert(doc.activeElement === categoryTrigger, "Escape did not return focus to category trigger");
+  });
+  categoryTrigger.click();
+  doc.querySelector('#edit-category-options [data-category-id="a"]').click();
+  test("Selecting a category updates only the edit draft", () => {
+    assert(doc.querySelector("#edit-category").value === "a", "Category selection not reflected in draft");
+    assert(api.state().currentItems.find(item => item.uid === "one").metadata.category_id === "b", "Category selection changed item before save");
+  });
+  doc.querySelector("#cancel-edit").click();
+  await pause(50);
+  test("Closing article dialog restores focus to its list item", () => {
+    assert(doc.activeElement.matches(".item-name") && doc.activeElement.dataset.uid === "one", "Closing dialog did not restore focus to the article");
+    assert(operations.every(operation => operation.type !== "update_item"), "Cancelling article edit queued an update");
+  });
+  const missingCategoryItem = doc.querySelector('[aria-label="Bearbeiten: Sonstiges"]');
+  missingCategoryItem.click();
+  test("Unavailable existing category remains visible without becoming a new choice", () => {
+    assert(doc.querySelector("#edit-category-value").textContent === "Nicht verfügbare Kategorie", "Unavailable category label lost");
+    assert(!doc.querySelector("#edit-category-unavailable").hidden, "Unavailable category hint missing");
+    assert(!doc.querySelector('#edit-category-options [data-category-id="deleted"]'), "Unavailable category was offered as a new choice");
+  });
+  doc.querySelector("#edit-category-trigger").click();
+  doc.querySelector('#edit-category-options [data-category-id="a"]').click();
+  doc.querySelector("#edit-item-form").requestSubmit();
+  await pause(0);
+  test("Replacing an unavailable category uses the existing save operation", () => {
+    assert(operations.at(-1).uid === "three", "Updated the wrong article");
+    assert(operations.at(-1).metadata.category_id === "a", "Replacement category was not saved");
+  });
+  for (const [name, type, options] of [
+    ["Scrolling", "pointermove", {clientY: 140}],
+    ["Swiping", "pointermove", {clientX: 220}],
+    ["Pointer cancellation", "pointercancel", {}],
+    ["Leaving the article", "pointerleave", {}],
+  ]) {
+    itemPointer("pointerdown");
+    itemPointer(type, options);
+    await pause(550);
+    itemPointer("pointerup");
+    test(`${name} cancels article long press`, () => {
+      assert(!editDialog.open, `${name} opened article details`);
+    });
+  }
+  itemPointer("pointerdown", {pointerType: "mouse"});
+  await pause(550);
+  test("Mouse long press also opens article details", () => {
+    assert(editDialog.open, "Mouse hold did not open details");
+  });
+  itemPointer("pointerup");
+  editDialog.close();
+  itemLabel.click();
+  test("Keyboard and assistive activation still open article details", () => {
+    assert(editDialog.open, "Accessible activation failed");
+  });
+  editDialog.close();
+  const checkbox = doc.querySelector('[aria-label="Erledigt: Brot"]');
+  checkbox.click();
+  test("Checkbox still queues status changes immediately without opening details", () => {
+    assert(operations.at(-1).uid === "one" && operations.at(-1).status === "completed", "Checkbox delayed");
+    assert(!editDialog.open, "Checkbox opened details");
   });
   const swipeRow = doc.querySelector(".item");
   swipeRow.dispatchEvent(new win.PointerEvent("pointerdown", {
@@ -183,11 +323,16 @@ async function runTests() {
   doc.querySelector("#edit-notes").value = "Geschnitten";
   doc.querySelector("#edit-item-form").requestSubmit();
   await Promise.resolve();
-  assert(operations.at(-1).metadata.category_id === "b", "Category not enqueued");
+  assert(!("category_id" in operations.at(-1).metadata), "Unchanged category should not overwrite a newer product rule");
   assert(operations.at(-1).description === "Geschnitten", "Notes not enqueued");
   results.push("PASS Item category, quantity and notes use existing offline operation queue");
   assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, "Mobile horizontal overflow");
-  results.push("PASS No horizontal overflow at 390px");
+  frame.style.width = "320px";
+  await pause(50);
+  assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, "320px horizontal overflow");
+  assert(doc.querySelector(".sync-actions").getBoundingClientRect().right <= doc.documentElement.clientWidth, "Sync controls overflow at 320px");
+  frame.style.width = "390px";
+  results.push("PASS No horizontal overflow at 320px or 390px");
   // Step the animation clock explicitly, including in headless virtual-time runs.
   const requestFrame = win.requestAnimationFrame, cancelFrame = win.cancelAnimationFrame;
   const frames = new Map();
@@ -248,6 +393,45 @@ async function runTests() {
   win.requestAnimationFrame = requestFrame;
   win.cancelAnimationFrame = cancelFrame;
   results.push("PASS Navigation cleans up drag without overwriting the new draft");
+  state.categories=[{id:"z",name:"Zwiebeln"},{id:"b",name:"Backwaren"},{id:"a",name:"Äpfel"}];
+  api.reset();
+  api.openCatalog("category-edit", state.categories.find(category=>category.id==="b"));
+  const productLink = [...doc.querySelectorAll("#catalog-content button")].find(button=>button.textContent.startsWith("Zugeordnete Produkte"));
+  assert(productLink, "Category edit has no assigned-products button");
+  productLink.click();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert(doc.querySelector("#catalog-title").textContent==="Zugeordnete Produkte", "Wrong product page");
+  assert(doc.querySelector("#catalog-back span").textContent==="Kategorie bearbeiten", "Missing parent navigation");
+  const productNames=()=>[...doc.querySelectorAll(".category-product-row > span")].map(node=>node.textContent);
+  assert(productNames().join("|")==="Ährenbrot|Brot|Zwieback", "Assigned products not alphabetic or absent products missing");
+  results.push("PASS Assigned products page shows permanent products alphabetically, including absent shopping items");
+  let asked=0;
+  win.confirm=()=>{asked++; return false;};
+  const sentBefore=messages.length;
+  doc.querySelector('[aria-label="Kategoriezuordnung entfernen: Brot"]').click();
+  assert(asked===1 && messages.length===sentBefore && productNames().includes("Brot"), "Cancelled removal changed data");
+  results.push("PASS Cancelling product removal sends no command and keeps assignment");
+  win.confirm=()=>true;
+  fail=true;
+  await api.saveCatalog("remove_category_product",{category_id:"b",product_key:"brot"},"category-products");
+  assert(productNames().includes("Brot"), "Failed removal hid product");
+  assert(doc.querySelector("#catalog-message").textContent.includes("fehlgeschlagen"), "Removal failure hidden");
+  fail=false;
+  doc.querySelector('[aria-label="Kategoriezuordnung entfernen: Brot"]').click();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert(!productNames().includes("Brot"), "Removed product still assigned");
+  assert(api.state().currentItems.some(item=>item.uid==="one"), "Removal deleted shopping item");
+  assert(api.state().currentItems.find(item=>item.uid==="one").metadata.category_id===null, "Shopping item retained removed category");
+  assert(api.state().currentItems.find(item=>item.uid==="one").description==="Vollkorn", "Removal lost local details");
+  const cachedProducts=JSON.parse(storage.get("einkaufszettel.catalog")).products;
+  assert(cachedProducts.find(product=>product.key==="brot").category_id===null, "Offline cache lost explicit removal");
+  api.loadCachedSupermarkets();
+  assert(api.state().products.find(product=>product.key==="brot").category_id===null, "Offline reload revived removed category");
+  assert(doc.documentElement.scrollWidth<=doc.documentElement.clientWidth, "Product page mobile overflow");
+  results.push("PASS Confirmed removal only clears category, retains item/details and persists removal across offline reload");
+  doc.querySelector("#catalog-back").click();
+  assert(doc.querySelector("#catalog-title").textContent==="Kategorie bearbeiten", "Product page back did not return to category editor");
+  results.push("PASS Product page returns to category editor");
   document.querySelector("#results").textContent = results.join("\n");
 }
 runTests().catch(error => {

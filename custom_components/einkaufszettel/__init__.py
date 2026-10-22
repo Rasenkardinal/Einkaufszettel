@@ -1,7 +1,7 @@
 """An independent local copy of a Home Assistant To-do list."""
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -18,7 +18,7 @@ from homeassistant.helpers.storage import Store
 from .const import CONF_SOURCE, DOMAIN, LEGACY_DOMAIN, STORAGE_VERSION
 from .model import ShoppingItem, load_items
 from .source import async_read_source
-from .sync import load_sync_state, new_sync_state
+from .sync import load_sync_state, new_sync_state, persist_items
 
 PLATFORMS = [Platform.BUTTON]
 WEBAPP_PATH = Path(__file__).parent / "www"
@@ -50,6 +50,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_get_lists,
         websocket_get_sources,
         websocket_get_supermarkets,
+        websocket_remove_category_product,
         websocket_resolve_source_conflict,
         websocket_save_category,
         websocket_save_market_categories,
@@ -77,6 +78,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_apply_operation,
         websocket_sync_source,
         websocket_resolve_source_conflict,
+        websocket_remove_category_product,
     ):
         websocket_api.async_register_command(hass, command)
     return True
@@ -92,6 +94,7 @@ class EinkaufszettelData:
     sync: dict[str, Any] = field(default_factory=new_sync_state)
     source_error: str | None = None
     cancel_source_sync: Callable[[], None] | None = None
+    product_rules: Callable[..., Awaitable[list[ShoppingItem]]] | None = None
 
 
 type EinkaufszettelConfigEntry = ConfigEntry[EinkaufszettelData]
@@ -142,6 +145,22 @@ async def async_setup_entry(
         raise ConfigEntryNotReady(f"Cannot load Einkaufszettel: {err}") from err
 
     entry.runtime_data = EinkaufszettelData(store, items, sync=sync)
+    from .products import apply_product_rules  # noqa: PLC0415
+
+    async def product_rules(articles, *, operation=None):
+        if operation is not None:
+            identity, name, category, payload = operation
+            operation = (f"{entry.entry_id}:{identity}", name, category, payload)
+        return await apply_product_rules(hass, articles, operation=operation)
+
+    entry.runtime_data.product_rules = product_rules
+    try:
+        seed = [*items, *(ShoppingItem(**item) for item in sync["deleted"].values())]
+        migrated = await apply_product_rules(hass, items, seed=seed)
+        if migrated != items:
+            await persist_items(entry.runtime_data, migrated)
+    except (HomeAssistantError, OSError, ValueError) as err:
+        raise ConfigEntryNotReady(f"Cannot load product assignments: {err}") from err
     registry = er.async_get(hass)
     for entity in list(registry.entities.values()):
         if entity.platform == DOMAIN and entity.entity_id.startswith("todo."):

@@ -9,6 +9,8 @@ async function runTests() {
   const persistence = source.slice(source.indexOf("let localUpdates ="), source.indexOf("function render()"));
   const selection = source.slice(source.indexOf("async function loadSelectedList()"), source.indexOf("async function selectList("));
   const protocol = source.slice(source.indexOf("function scheduleSynchronization()"), source.indexOf("async function loadRemoteLists()"));
+  const productHelpers = source.slice(source.indexOf("function productNameKey("), source.indexOf("function cacheCatalog("));
+  const productReplay = source.slice(source.indexOf("function replayProductAssignments("), source.indexOf("function button("));
   const results = [];
   const assert = (value, message) => { if (!value) throw Error(message); };
   const deferred = () => {
@@ -19,6 +21,7 @@ async function runTests() {
   function server(env, snapshots) {
     const calls = [];
     env.send = async (type, payload) => {
+      if (type.endsWith("/get_catalog")) return {categories:[],supermarkets:[],products:[]};
       calls.push({ type, ...payload });
       const snapshot = snapshots[payload.entry_id];
       if (type.endsWith("/apply_operation")) {
@@ -64,6 +67,11 @@ async function runTests() {
       let entryId = "a", currentItems = [], deletedUids = new Set(), pendingOperations = [],
         lastOperationTime = 0, busy = false, authenticated = false;
       let syncPromise, syncRequested = false, fullSyncRequested = false, syncTimer, listRefreshPromise;
+      let products = [];
+      const cacheCatalog = () => {};
+      const refreshSupermarkets = async () => {};
+      ${productHelpers}
+      ${productReplay}
       let availableLists = [{ entry_id: "a", name: "Test" }];
       const setBusy = value => { busy = value; env.busyStates.push(value); };
       const render = () => { env.renders.push(structuredClone(currentItems)); };
@@ -88,7 +96,7 @@ async function runTests() {
         flush: () => syncPromise,
         lists: value => { availableLists = value; },
         select: async id => { entryId = id; await loadSelectedList(); },
-        state: () => ({ currentItems, pendingOperations, message: elements.message.textContent, busy, syncing: !!syncPromise }) };
+        state: () => ({ currentItems, pendingOperations, products, message: elements.message.textContent, busy, syncing: !!syncPromise }) };
     `);
     const api = create(env);
     try { await test(api, env); }
@@ -394,6 +402,24 @@ async function runTests() {
     assert((await api.readQueue()).length === 2, "Unconfirmed actions lost");
     assert(api.state().currentItems.find(i=>i.uid==="one").status === "completed", "Durable overlay lost after error/reload");
     assert(api.state().currentItems.some(i=>i.uid==="two"), "Editing stopped after error");
+  });
+
+  await test("Offline category assignments survive article deletion and apply to new names on other lists", async api => {
+    await api.saveList({entry_id:"a",name:"A",items:[{uid:"milk",summary:"Milch",status:"needs_action"}]});
+    await api.saveList({entry_id:"b",name:"B",items:[]});
+    await api.loadSelectedList();
+    await api.enqueue({type:"update_item",uid:"milk",metadata:{category_id:"dairy"}});
+    await api.enqueue({type:"delete_item",uid:"milk"});
+    await api.select("b");
+    await api.enqueue({type:"add_item",uid:"fresh",summary:" MILCH "});
+    assert(api.state().currentItems[0].metadata.category_id==="dairy", "New article on another list did not inherit offline rule");
+    assert(api.state().products.find(product=>product.key==="milch").category_id==="dairy", "Deleting article deleted product rule");
+    await api.loadSelectedList();
+    assert(api.state().currentItems[0].metadata.category_id==="dairy", "Reload lost pending category rule from other list");
+    await api.enqueue({type:"update_item",uid:"fresh",metadata:{category_id:null}});
+    await api.enqueue({type:"delete_item",uid:"fresh"});
+    await api.enqueue({type:"add_item",uid:"again",summary:"Milch"});
+    assert(api.state().currentItems[0].metadata.category_id===null, "Explicit category removal was relearned");
   });
 
   await test("Real UI stays interactive during a delayed response, including check, delete and add", async (api, env) => {
