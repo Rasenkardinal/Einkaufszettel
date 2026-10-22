@@ -98,6 +98,38 @@ let currentItems = [];
 let deletedUids = new Set();
 let pendingOperations = [];
 let busy = false;
+let longPressTouchPointerId = null;
+let releasedLongPressTouchPointerId = null;
+
+document.addEventListener("pointerdown", event => {
+  if (longPressTouchPointerId !== null) {
+    if (event.pointerId !== longPressTouchPointerId) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+    return;
+  }
+  releasedLongPressTouchPointerId = null;
+}, true);
+
+window.addEventListener("pointerup", event => {
+  if (event.pointerId !== longPressTouchPointerId) return;
+  releasedLongPressTouchPointerId = longPressTouchPointerId;
+  longPressTouchPointerId = null;
+}, true);
+
+window.addEventListener("pointercancel", event => {
+  if (event.pointerId !== longPressTouchPointerId) return;
+  longPressTouchPointerId = null;
+  releasedLongPressTouchPointerId = null;
+}, true);
+
+document.addEventListener("click", event => {
+  if (event.pointerId !== releasedLongPressTouchPointerId) return;
+  releasedLongPressTouchPointerId = null;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, true);
 let syncPromise;
 let syncRequested = false;
 let fullSyncRequested = false;
@@ -899,10 +931,14 @@ function enableItemLongPress(label, openDetails) {
   label.addEventListener("pointerdown", event => {
     cancelPress();
     if (busy || event.button !== 0 || !event.isPrimary) return;
-    press = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    press = { id: event.pointerId, type: event.pointerType, x: event.clientX, y: event.clientY };
     press.timer = window.setTimeout(() => {
+      const { id, type } = press;
       cancelPress();
-      if (label.isConnected && !busy && !document.hidden) openDetails();
+      if (label.isConnected && !busy && !document.hidden) {
+        if (type === "touch") longPressTouchPointerId = id;
+        openDetails();
+      }
     }, 500);
   });
   label.addEventListener("pointermove", event => {
@@ -1250,6 +1286,17 @@ elements.editItem.addEventListener("close", () => {
   editingTrigger = undefined;
 });
 
+function closeEditItem() {
+  const trigger = editingTrigger;
+  elements.editItem.close();
+  window.setTimeout(() => {
+    const target = trigger?.isConnected
+      ? trigger
+      : [...elements.items.querySelectorAll(".item-name")].find(label => label.dataset.uid === editingUid);
+    target?.focus({ preventScroll: true });
+  }, 0);
+}
+
 elements.syncDetailsToggle.addEventListener("click", () => {
   const open = elements.syncFlyout.hidden;
   if (open) {
@@ -1408,7 +1455,7 @@ async function selectList(listId) {
   synchronize().catch(showError);
 }
 
-elements.cancelEdit.addEventListener("click", () => elements.editItem.close());
+elements.cancelEdit.addEventListener("click", closeEditItem);
 elements.editItemForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const summary = elements.editSummary.value.trim();
@@ -1427,10 +1474,10 @@ elements.editItemForm.addEventListener("submit", async (event) => {
         quantity: elements.editQuantity.value.trim() || null,
       },
     });
-    elements.editItem.close();
+    closeEditItem();
   } catch (error) {
     showError(error);
-    elements.editItem.close();
+    closeEditItem();
   }
 });
 elements.editSummary.addEventListener("input", () => elements.editSummary.setCustomValidity(""));
