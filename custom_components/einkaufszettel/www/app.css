@@ -238,5 +238,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 #sync-conflicts-content section { padding: 12px 0; border-top: 1px solid var(--line); }
 #sync-conflicts-content select { width: 100%; min-height: 44px; margin: 8px 0; background: var(--surface2); color: inherit; }
 #sync-conflicts-content .dialog-actions { flex-wrap: wrap; }
+#sync-conflicts-content .sync-conflict-choice { flex: 1 1 240px; min-width: 0; }
+#sync-conflicts-content .sync-conflict-choice button { width: 100%; }
+#sync-conflicts-content .sync-conflict-choice p { margin: 8px 0 16px; font-size: 13px; color: var(--muted); }
 #sync-conflicts-content p { overflow-wrap: anywhere; }
 #resolve-sync-conflicts { margin-bottom: 12px; }

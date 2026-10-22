@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.2">
+    <link rel="stylesheet" href="./app.css?v=0.4.3">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -114,12 +114,12 @@
       <p id="message" class="message" role="status"></p>
       <button id="resolve-sync-conflicts" class="secondary" type="button" hidden>Sync-Konflikte auflösen</button>
       <ul id="items" class="items"></ul>
-      <p id="empty" class="empty" hidden>Noch nichts auf der Liste.</p>
+      <p id="empty" class="empty" hidden>Diese App-Liste ist leer. Wähle oben ggf. eine andere Liste oder füge einen Artikel hinzu.</p>
 
     </main>
     <dialog id="sync-conflicts" aria-labelledby="sync-conflicts-title">
-      <h2 id="sync-conflicts-title">Quellanlage klären</h2>
-      <p>Die Anlage konnte nicht eindeutig bestätigt werden. Bitte entscheide pro Artikel. Andere Artikel werden weiter abgeglichen.</p>
+      <h2 id="sync-conflicts-title">Artikel mit verbundener Liste abgleichen</h2>
+      <p>Unsere App-Liste und die verbundene HA-/Alexa-Liste sind zwei getrennte Listen. Manchmal ist unklar, ob ein Artikel bereits in beiden steht. Beispiel: Du fügst hier „Milch“ hinzu, aber die Bestätigung aus Alexa fehlt. Bitte prüfe dann, ob „Milch“ dort schon steht, bevor du ihn erneut anlegst. Andere Artikel werden weiter abgeglichen. „Später entscheiden“ ändert nichts.</p>
       <p id="sync-conflicts-message" class="message" role="status"></p>
       <div id="sync-conflicts-content"></div>
       <form method="dialog"><button class="secondary">Später entscheiden</button></form>
@@ -162,6 +162,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.2" defer></script>
+    <script src="./app.js?v=0.4.3" defer></script>
   </body>
 </html>

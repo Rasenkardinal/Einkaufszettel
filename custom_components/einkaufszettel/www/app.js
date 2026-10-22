@@ -1558,9 +1558,15 @@ async function synchronize() {
     }
     await refreshSyncConflicts();
   }
-  updateConnection("online", warnings.length
-    ? "App-Änderungen in HA gespeichert. Hinweise zum Abgleich beachten."
-    : "Alle Änderungen wurden synchronisiert.");
+  const decisions = syncConflicts.filter(conflict => !conflict.local_only).length;
+  const localItems = syncConflicts.filter(conflict => conflict.local_only).length;
+  updateConnection("online", decisions
+    ? `In Home Assistant gespeichert. Für ${decisions} Artikel ist noch eine Entscheidung nötig.`
+    : warnings.length
+      ? "In Home Assistant gespeichert. Der Abgleich mit einer verbundenen Liste ist noch nicht vollständig."
+      : localItems
+        ? `Abgleich abgeschlossen. ${localItems} Artikel bleiben nur in der App-Liste.`
+        : "App und verbundene Listen sind abgeglichen.");
   elements.message.textContent = [...new Set(warnings)].join(" ");
 }
 
@@ -1572,7 +1578,8 @@ async function refreshSyncConflicts() {
   const enabledIds = new Set(availableLists.map(list => list.entry_id));
   syncConflicts = (await readCachedLists())
     .filter(list => list.enabled !== false && enabledIds.has(list.entry_id))
-    .flatMap(list => [...(list.source_conflicts || []), ...(list.source_local_items || [])].map(conflict => ({
+    .flatMap(list => [...(list.source_conflicts || []), ...(list.source_local_items || [])]
+      .filter(conflict => !(conflict.local_only && conflict.deleted)).map(conflict => ({
       ...conflict, entry_id: list.entry_id, list_name: list.name,
     })));
   elements.resolveSyncConflicts.hidden = !syncConflicts.length;
@@ -1602,37 +1609,55 @@ function renderSyncConflicts() {
   for (const conflict of syncConflicts) {
     const section = document.createElement("section");
     const title = document.createElement("h3");
-    title.textContent = `${conflict.list_name}: ${conflict.summary}`;
+    title.textContent = `${conflict.list_name}: ${conflict.summary}${conflict.deleted ? " (gelöscht)" : ""}`;
     const detail = document.createElement("p");
     detail.textContent = conflict.reason === "multiple"
-      ? "Mehrere passende neue Quellartikel gefunden. Bitte entscheide ausdrücklich."
-      : "Keine eindeutige Anlagenbestätigung. Bitte entscheide ausdrücklich.";
-    detail.textContent += conflict.candidates.length
-      ? " Verfügbare unzugeordnete Quellartikel stehen zur Auswahl."
-      : " Aktuell ist kein freier Quellartikel zur Zuordnung verfügbar.";
-    if (conflict.local_only) {
-      detail.textContent = "Dieser Artikel bleibt nur lokal. Hier kannst du ihn später zuordnen oder ausdrücklich erneut in der Quelle anlegen.";
+      ? `„${conflict.summary}“ ist in unserer App-Liste gespeichert. Mehrere neue Einträge in der verbundenen HA-/Alexa-Liste könnten dazugehören. Wir wählen keinen davon automatisch aus.`
+      : `„${conflict.summary}“ ist in unserer App-Liste gespeichert. Ob derselbe Artikel auch in der verbundenen HA-/Alexa-Liste angekommen ist, wissen wir noch nicht. Das bedeutet nicht, dass er verloren ist.`;
+    if (conflict.deleted) {
+      detail.textContent = `Du hast „${conflict.summary}“ in unserer App-Liste gelöscht. Ein früherer Versuch, ihn in der verbundenen HA-/Alexa-Liste anzulegen, ist noch ungeklärt. Es könnte dort noch ein Eintrag übrig sein.`;
     }
-    if (conflict.deleted) detail.textContent += " Der lokale Artikel ist bereits gelöscht.";
+    detail.textContent += conflict.candidates.length
+      ? " Unten stehen noch nicht verknüpfte Einträge dieser verbundenen Liste. Wähle nur einen Eintrag, der wirklich dazugehört."
+      : " Aktuell wurde dort kein noch nicht verknüpfter Eintrag gefunden. Du kannst später erneut prüfen.";
+    if (conflict.local_only) {
+      detail.textContent = `„${conflict.summary}“ bleibt nur lokal: Er ist in unserer App-Liste und in Home Assistant gespeichert, wird aber nicht mit einem Eintrag der verbundenen HA-/Alexa-Liste abgeglichen. Deine anderen Geräte sehen ihn weiterhin. Hier kannst du diese Entscheidung ändern.`;
+    }
     const select = document.createElement("select");
     select.setAttribute("aria-label", `Quellartikel für ${conflict.summary}`);
     select.add(new Option("Quellartikel auswählen", ""));
-    for (const candidate of conflict.candidates) {
+    for (const [index, candidate] of conflict.candidates.entries()) {
       select.add(new Option(
-        `${candidate.summary} – ${candidate.status === "completed" ? "erledigt" : "offen"} (${candidate.uid})`,
+        `${candidate.summary} – ${candidate.status === "completed" ? "erledigt" : "offen"} (Eintrag ${index + 1})`,
         candidate.uid,
       ));
     }
     const actions = document.createElement("div");
     actions.className = "dialog-actions";
-    for (const [action, label] of [
-      ["link", "Quellartikel zuordnen"], ["retry", "Bewusst erneut anlegen"], ["local", "Nur lokal behalten"],
+    for (const [action, label, explanation] of [
+      ["link", conflict.deleted ? "Gewählten Eintrag löschen" : "Quellartikel zuordnen",
+        conflict.deleted
+          ? `Beispiel: „${conflict.summary}“ steht noch in Alexa, obwohl du ihn hier gelöscht hast. Nur der oben ausgewählte Eintrag wird dort gelöscht.`
+          : `Beispiel: „${conflict.summary}“ steht schon in Alexa. Wähle diesen Eintrag oben aus. Er wird mit unserem Artikel verbunden, statt einen zweiten anzulegen. Name und Erledigt-Status aus unserer App werden übernommen; Notizen und Kategorie bleiben erhalten.`],
+      ["retry", "Bewusst erneut anlegen",
+        conflict.deleted
+          ? "Nicht möglich: Der Artikel wurde hier bereits gelöscht."
+          : `Beispiel: „${conflict.summary}“ fehlt auch nach erneutem Prüfen in Alexa. Ein neuer Eintrag wird angelegt. Falls er dort doch schon existiert, entsteht möglicherweise ein Duplikat.`],
+      ["local", conflict.deleted ? "Löschung hier abschließen" : "Nur lokal behalten",
+        conflict.deleted
+          ? "Der Artikel bleibt hier gelöscht. In der verbundenen Liste wird nichts geändert. Diese Rückfrage wird abgeschlossen."
+          : `„${conflict.summary}“ bleibt in unserer App-Liste für alle Geräte erhalten. In der verbundenen HA-/Alexa-Liste wird nichts angelegt oder geändert. Ein eventuell schon vorhandener Eintrag dort bleibt unabhängig bestehen.`],
     ]) {
+      const choice = document.createElement("div");
+      choice.className = "sync-conflict-choice";
+      const help = document.createElement("p");
+      help.textContent = explanation;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "secondary";
       button.textContent = label;
-      button.disabled = (action === "retry" && conflict.deleted) || (action === "local" && conflict.local_only);
+      button.disabled = (action === "link" && !conflict.candidates.length) ||
+        (action === "retry" && conflict.deleted) || (action === "local" && conflict.local_only);
       button.addEventListener("click", () => {
         if (action === "link" && !select.value) {
           elements.syncConflictsMessage.textContent = "Bitte zuerst einen Quellartikel auswählen.";
@@ -1642,14 +1667,17 @@ function renderSyncConflicts() {
           `„${conflict.summary}“ wirklich erneut in der Quelle anlegen? Falls der erste Versuch bereits erfolgreich war, kann ein Duplikat entstehen.`,
         )) return;
         if (action === "link" && !confirm(
-          `„${conflict.summary}“ mit „${select.selectedOptions[0].textContent}“ verknüpfen? Name und Status des lokalen Artikels werden beim nächsten Abgleich in die Quelle übertragen.${conflict.deleted ? " Der zugeordnete Quellartikel wird gelöscht." : ""}`,
+          conflict.deleted
+            ? `„${select.selectedOptions[0].textContent}“ wirklich aus der verbundenen HA-/Alexa-Liste löschen? „${conflict.summary}“ bleibt hier gelöscht.`
+            : `„${conflict.summary}“ mit „${select.selectedOptions[0].textContent}“ verbinden? Name und Erledigt-Status aus unserer App-Liste werden übernommen. Notizen und Kategorie bleiben erhalten.`,
         )) return;
         resolveSyncConflict(conflict, action, select.value).catch(error => {
           elements.syncConflictsMessage.textContent = error.message;
           if (!elements.syncConflicts.open) showError(error);
         });
       });
-      actions.append(button);
+      choice.append(button, help);
+      actions.append(choice);
     }
     section.append(title, detail, select, actions);
     elements.syncConflictsContent.append(section);
@@ -1670,7 +1698,9 @@ async function resolveSyncConflict(conflict, action, sourceUid) {
     await refreshSyncConflicts();
     renderSyncConflicts();
     elements.syncConflictsMessage.textContent = action === "local"
-      ? "Der Artikel bleibt in unserer Liste und wird nicht erneut in der Quelle angelegt."
+      ? conflict.deleted
+        ? "Die Rückfrage ist abgeschlossen. Der Artikel bleibt hier gelöscht; die verbundene Liste wurde nicht verändert."
+        : "Der Artikel bleibt für alle Geräte in unserer App-Liste gespeichert. Die verbundene HA-/Alexa-Liste wird für diesen Artikel nicht verändert."
       : "Entscheidung gespeichert. Der Abgleich wird fortgesetzt.";
     if (!syncConflicts.length) elements.syncConflicts.close();
   } finally {

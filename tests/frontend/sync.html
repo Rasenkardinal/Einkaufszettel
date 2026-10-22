@@ -219,6 +219,40 @@ async function runTests() {
     assert(!env.conflictElements.syncConflicts.open && env.conflictElements.resolveSyncConflicts.hidden, "Resolved dialog remained stale");
   });
 
+  await test("Deleted local-only leftovers are not presented as existing articles", async (api, env) => {
+    await api.saveList({ entry_id: "a", name: "A", items: [], source_conflicts: [],
+      source_local_items: [{uid:"deleted", summary:"Milch", token:"old", candidates:[], local_only:true, deleted:true}] });
+    await api.refreshSyncConflicts();
+    assert(env.conflictElements.resolveSyncConflicts.hidden, "Deleted item counted as local article");
+    assert(!env.conflictElements.syncConflicts.open, "Deleted local-only item prompted");
+  });
+
+  await test("Status distinguishes waiting decisions and intentionally app-only articles", async (api, env) => {
+    const conflict = {uid:"one", summary:"Milch", token:"new", candidates:[], reason:"unconfirmed"};
+    let snapshot = {entry_id:"a", name:"A", revision:1, items:[], source_conflicts:[conflict]};
+    env.send = async () => snapshot;
+    api.online();
+    await api.synchronize();
+    assert(env.states.at(-1).message.includes("Entscheidung nötig"), "Unresolved article reported as full success");
+    assert(env.conflictElements.syncConflictsContent.textContent.includes("Beispiel"), "Missing understandable examples");
+    assert(env.conflictElements.syncConflictsContent.textContent.includes("für alle Geräte"), "Local-only misunderstood as device-only");
+    snapshot = {...snapshot, source_conflicts:[], source_local_items:[{...conflict, local_only:true}]};
+    await api.synchronize();
+    assert(env.states.at(-1).message.includes("nur in der App-Liste"), "App-only article reported as fully synchronized");
+  });
+
+  await test("A deleted conflict explains deletion, never retention or recreation", async (api, env) => {
+    const conflict = {uid:"one", summary:"Milch", token:"deleted", candidates:[], deleted:true, reason:"unconfirmed"};
+    await api.saveList({entry_id:"a", name:"A", items:[], source_conflicts:[conflict]});
+    await api.refreshSyncConflicts();
+    const text = env.conflictElements.syncConflictsContent.textContent;
+    assert(text.includes("Löschung hier abschließen") && text.includes("bleibt hier gelöscht"), "Deletion semantics missing");
+    assert(!text.includes("Nur lokal behalten") && !text.includes("nicht, dass er verloren"), "Deleted item described as existing");
+    const retry = [...env.conflictElements.syncConflictsContent.querySelectorAll("button")]
+      .find(button => button.textContent === "Bewusst erneut anlegen");
+    assert(retry.disabled, "Deleted article can be recreated");
+  });
+
   document.querySelector("#results").textContent = results.join("\n");
   document.body.dataset.result = "passed";
 }

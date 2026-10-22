@@ -1340,6 +1340,164 @@ async def conflict_environment(env, monkeypatch, *, ambiguous=False):
     return ctx
 
 
+@pytest.mark.parametrize("mode", ["create", "restart", "link", "rename"])
+async def test_source_accepts_case_and_whitespace_normalization(
+    integration, monkeypatch, mode
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    real_service = env.hass.services.async_call.side_effect
+
+    async def normalizing(domain, service, payload, **kwargs):
+        result = await real_service(domain, service, payload, **kwargs)
+        if service in ("add_item", "update_item"):
+            for item in ctx.remote:
+                item["summary"] = " ".join(item["summary"].split()).capitalize()
+        return result
+
+    env.hass.services.async_call.side_effect = normalizing
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "add-normalized",
+        "add_item",
+        "normalized",
+        {"summary": "SYNC TEST   Brot", "metadata": {"note": "Behalten"}},
+    )
+    if mode in ("restart", "link"):
+        state = deepcopy(ctx.data.sync)
+        state["creates"]["normalized"] = {
+            "before": ["a"],
+            "summary": "SYNC TEST   Brot",
+            "needs_decision": mode == "link",
+        }
+        await ctx.protocol.persist_items(ctx.data, ctx.data.items, state)
+        ctx.remote.append(
+            {
+                "uid": "normalized-source",
+                "summary": "Sync test brot",
+                "status": "needs_action",
+            }
+        )
+        if mode == "link":
+            conflict = ctx.source.source_conflicts(ctx.data)[0]
+            await ctx.source.resolve_source_conflict(
+                env.hass,
+                env.entry,
+                "normalized",
+                conflict["token"],
+                "link",
+                "normalized-source",
+            )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    if mode == "rename":
+        await ctx.protocol.apply_operation(
+            ctx.data,
+            "rename-normalized",
+            "update_item",
+            "normalized",
+            {"summary": "NEUER   Name", "status": "completed"},
+        )
+        await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.source_error is None
+    assert not ctx.source.source_conflicts(ctx.data)
+    assert not ctx.data.sync["creates"]
+    article = next(item for item in ctx.data.items if item.uid == "normalized")
+    assert article.source_uid
+    assert article.metadata == {"note": "Behalten"}
+    writes = sum(service != "get_items" for service, _ in ctx.calls)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.source_error is None
+    assert sum(service != "get_items" for service, _ in ctx.calls) == writes
+
+
+async def test_deleted_local_only_conflicts_are_not_existing_articles(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await conflict_environment(env, monkeypatch)
+    await ctx.protocol.apply_operation(
+        ctx.data, "delete-pending", "delete_item", "pending", {}
+    )
+    conflict = ctx.source.source_conflicts(ctx.data)[0]
+    await ctx.source.resolve_source_conflict(
+        env.hass, env.entry, "pending", conflict["token"], "local"
+    )
+    assert not ctx.source.source_conflicts(ctx.data, include_local=True)
+    assert "pending" in ctx.data.sync["deleted"]
+    assert ctx.data.sync["creates"]["pending"]["local_only"]
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert not any(service == "add_item" for service, _ in ctx.calls)
+
+
+async def test_deleted_article_rejects_earlier_link_decision(integration, monkeypatch):
+    env = integration
+    ctx = await conflict_environment(env, monkeypatch, ambiguous=True)
+    before = ctx.source.source_conflicts(ctx.data)[0]
+    await ctx.protocol.apply_operation(
+        ctx.data, "delete-pending", "delete_item", "pending", {}
+    )
+    after = ctx.source.source_conflicts(ctx.data)[0]
+    assert after["token"] != before["token"]
+    with pytest.raises(ValueError, match="bereits geändert"):
+        await ctx.source.resolve_source_conflict(
+            env.hass, env.entry, "pending", before["token"], "link", "b1"
+        )
+    assert not ctx.data.sync["deleted"]["pending"].get("source_uid")
+
+
+async def test_normalized_names_still_require_unique_new_source(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.protocol.apply_operation(
+        ctx.data, "add", "add_item", "new", {"summary": "BROT"}
+    )
+    service = env.hass.services.async_call.side_effect
+
+    async def ambiguous(domain, name, payload, **kwargs):
+        result = await service(domain, name, payload, **kwargs)
+        if name == "add_item":
+            ctx.remote[-1]["summary"] = "Brot"
+            ctx.remote.append(
+                {"uid": "second-bread", "summary": "brot", "status": "needs_action"}
+            )
+        return result
+
+    env.hass.services.async_call.side_effect = ambiguous
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.source.source_conflicts(ctx.data)[0]["reason"] == "multiple"
+    assert next(item for item in ctx.data.items if item.uid == "new").source_uid is None
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert sum(name == "add_item" for name, _ in ctx.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "changes", [{"summary": "Anderer Artikel"}, {"status": "completed"}]
+)
+async def test_normalization_does_not_acknowledge_unapplied_changes(
+    integration, monkeypatch, changes
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(ctx.data, "change", "update_item", uid, changes)
+    service = env.hass.services.async_call.side_effect
+
+    async def ignored_write(domain, name, payload, **kwargs):
+        if name == "update_item":
+            ctx.remote[0]["summary"] = ctx.remote[0]["summary"].lower()
+            return None
+        return await service(domain, name, payload, **kwargs)
+
+    env.hass.services.async_call.side_effect = ignored_write
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert "noch nicht bestätigt" in ctx.data.source_error
+    assert ctx.data.sync["source"]["a"]["status"] == "needs_action"
+
+
 @pytest.mark.parametrize("ambiguous", [False, True])
 async def test_conflict_does_not_block_other_items_and_requires_explicit_decision(
     integration, monkeypatch, ambiguous
@@ -1960,7 +2118,8 @@ async def test_unconfirmed_source_creation_does_not_guess_or_duplicate(
     await ctx.source.synchronize_source(env.hass, env.entry)
     assert attempts == 1
     assert len(ctx.data.items) == 2
-    assert "unbestätigt" in ctx.data.source_error
+    assert "Sync-Konflikte auflösen" in ctx.data.source_error
+    assert ctx.source.source_conflicts(ctx.data)[0]["reason"] == "unconfirmed"
     assert "new" in ctx.data.sync["creates"]
 
 
@@ -2067,7 +2226,8 @@ async def test_ambiguous_new_source_ids_remain_unlinked_and_are_not_created_twic
     assert ctx.data.source_error
     assert next(item for item in ctx.data.items if item.uid == "new").source_uid is None
     await ctx.source.synchronize_source(env.hass, env.entry)
-    assert "mehrdeutig" in ctx.data.source_error
+    assert "Sync-Konflikte auflösen" in ctx.data.source_error
+    assert ctx.source.source_conflicts(ctx.data)[0]["reason"] == "multiple"
     assert sum(service == "add_item" for service, _ in ctx.calls) == 1
 
 
