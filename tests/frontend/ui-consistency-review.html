@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Einkaufszettel · UI-Konsistenzprüfung</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; background: #141414; color: #f4f4f4; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    body { --bg: #141414; --surface: #202020; --surface2: #2b2b2b; --line: #383838; --accent: #f5f5f5; --accent-text: #171717; --muted: #aaa; margin: 0; background: var(--bg); }
+    body[data-theme="botanical"] { --bg: #111813; --surface: #1b251e; --surface2: #26362a; --line: #304035; --accent: #a3e635; --accent-text: #17220d; --muted: #aab7ac; }
+    body[data-theme="midnight-plum"] { --bg: #15121c; --surface: #211b2b; --surface2: #30243e; --line: #3b3148; --accent: #c4a7ff; --accent-text: #20152f; --muted: #b9adc8; }
+    body[data-theme="market-journal"] { --bg: #1a1411; --surface: #271d18; --surface2: #38281d; --line: #49382e; --accent: #ffb454; --accent-text: #38200b; --muted: #c7b3a5; }
+    body[data-theme="fresh-signal"] { --bg: #0d171b; --surface: #13242a; --surface2: #19343b; --line: #24444c; --accent: #55e0d0; --accent-text: #06201d; --muted: #9db8ba; }
+    body[data-theme="tomato"] { --bg: #1b1315; --surface: #281c1f; --surface2: #382327; --line: #493137; --accent: #ff8977; --accent-text: #351512; --muted: #c2a7a6; }
+    body[data-theme="lime-focus"] { --bg: #0c0f0c; --surface: #171c16; --surface2: #222b1e; --line: #343e2d; --accent: #d4ff00; --accent-text: #161b00; --muted: #a9b197; }
+    body[data-theme="indigo-pocket"] { --bg: #101522; --surface: #192033; --surface2: #222d49; --line: #303b56; --accent: #83a7ff; --accent-text: #111b34; --muted: #aab5ca; }
+    button, select { font: inherit; }
+    button { cursor: pointer; }
+    .page { width: min(1500px, 100%); margin: 0 auto; padding: 28px clamp(16px, 3vw, 40px) 60px; }
+    .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+    .eyebrow { margin: 0 0 8px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .16em; }
+    h1 { margin: 0; font-size: clamp(28px, 5vw, 42px); letter-spacing: -.04em; }
+    .intro { max-width: 780px; margin: 12px 0 0; color: var(--muted); line-height: 1.55; }
+    .theme-control { display: grid; gap: 6px; min-width: 190px; color: var(--muted); font-size: 12px; }
+    .theme-control select { min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: #f4f4f4; }
+    .good-pattern { display: flex; align-items: center; gap: 12px; margin: 24px 0 36px; padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: 12px; background: var(--surface); }
+    .good-pattern strong { color: var(--accent); }
+    .good-pattern p { margin: 3px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .good-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 10px; background: var(--accent); color: var(--accent-text); font-size: 20px; font-weight: 800; }
+    .case { margin: 0 0 42px; scroll-margin-top: 16px; }
+    .case-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px 20px; margin-bottom: 14px; }
+    .case-heading h2 { margin: 0; font-size: 21px; letter-spacing: -.02em; }
+    .case-heading p { max-width: 900px; margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .case-number { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+    .options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .option { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .option-title { display: flex; align-items: baseline; gap: 8px; min-height: 38px; margin: 0 0 8px; font-size: 14px; }
+    .option-title span { color: var(--accent); font-size: 11px; font-weight: 800; }
+    .option-note { min-height: 42px; margin: 9px 1px 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .mock { --dock-height: 66px; position: relative; height: 320px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+    .mock-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; height: 46px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--surface); font-size: 12px; font-weight: 700; }
+    .mock-head small { color: var(--muted); font-size: 10px; font-weight: 500; }
+    .mock-scroll { position: absolute; inset: 46px 0 0; overflow: auto; padding: 10px 10px 16px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+    .mock-scroll.with-dock { bottom: var(--dock-height); }
+    .mock-scroll.with-top-action { top: 96px; }
+    .mock-top-action { position: absolute; z-index: 3; top: 46px; right: 0; left: 0; display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 50px; padding: 6px 9px; border-bottom: 1px solid var(--line); background: var(--surface); }
+    .mock-row { display: flex; align-items: center; gap: 8px; min-height: 42px; margin-bottom: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface2); font-size: 11px; }
+    .mock-row .check { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; border: 1px solid #888; border-radius: 4px; color: var(--accent-text); font-size: 11px; }
+    .mock-row .check.on { border-color: var(--accent); background: var(--accent); }
+    .mock-row .row-muted { margin-left: auto; color: var(--muted); font-size: 9px; white-space: nowrap; }
+    .mock-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); color: #f4f4f4; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .mock-button.primary { border-color: transparent; background: var(--accent); color: var(--accent-text); }
+    .mock-button.full { width: 100%; }
+    .mock-button.slim { min-height: 36px; padding-inline: 10px; }
+    .mock-button.icon { width: 40px; padding: 0; font-size: 17px; }
+    .mock-button.finish { border-color: color-mix(in srgb, var(--accent) 28%, var(--line)); border-top-width: 2px; background: color-mix(in srgb, var(--accent) 22%, var(--surface)); color: #f4f4f4; }
+    .finish-sequence { display: inline-flex; align-items: center; gap: 4px; color: #fff; }
+    .finish-sequence svg { display: block; flex: none; }
+    .mock-footer { position: absolute; z-index: 3; right: 0; bottom: 0; left: 0; display: flex; align-items: center; gap: 7px; min-height: var(--dock-height); padding: 9px 10px max(9px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); box-shadow: 0 -8px 18px #0003; }
+    .mock-footer > * { min-width: 0; flex: 1; }
+    .mock-footer .mock-label { color: var(--muted); font-size: 10px; line-height: 1.3; }
+    .mock-footer.single { justify-content: center; }
+    .mock-footer.single > * { flex: initial; }
+    .mock-footer.compact { min-height: 52px; }
+    .mock-footer.edge { right: 8px; bottom: 8px; left: 8px; border: 1px solid var(--line); border-radius: 12px; }
+    .mock-floating { position: absolute; z-index: 4; right: 12px; bottom: 12px; box-shadow: 0 6px 20px #0009; }
+    .mock-floating.left { right: auto; left: 12px; }
+    .mock-inline-action { margin-top: 8px; }
+    .mock-section { padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .mock-section h4 { margin: 0 0 5px; font-size: 11px; }
+    .mock-section p { margin: 0 0 7px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+    .mock-section .mock-button { width: 100%; min-height: 30px; margin-bottom: 5px; font-size: 9px; }
+    .mock-select { width: 100%; min-height: 34px; margin: 5px 0; border: 1px solid var(--line); border-radius: 7px; background: var(--surface2); color: #f4f4f4; font-size: 10px; }
+    .mock-image { display: grid; place-items: center; height: 130px; margin: 7px 0; border: 1px solid var(--line); border-radius: 9px; background: repeating-linear-gradient(45deg, var(--surface) 0 8px, var(--surface2) 8px 16px); color: var(--muted); font-size: 11px; }
+    .mock-list-name { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; padding: 0 2px; color: var(--muted); font-size: 10px; }
+    .mock-pill { display: inline-flex; align-items: center; min-height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); font-size: 9px; white-space: nowrap; }
+    .mock-title { margin: 2px 0 10px; font-size: 13px; font-weight: 700; }
+    .mock-form-row { min-height: 38px; margin: 7px 0; padding: 9px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: 10px; }
+    .mock-alert { margin: 3px 0 10px; color: #ffb4a8; font-size: 9px; }
+    .footer-caption { margin: 0 0 6px; color: var(--muted); font-size: 8px; text-align: center; }
+    .rating { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; color: var(--muted); font-size: 11px; }
+    .rating button { min-width: 34px; min-height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: inherit; }
+    .rating button[aria-pressed="true"] { border-color: var(--accent); background: var(--surface2); color: var(--accent); }
+    @media (max-width: 1100px) { .options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 650px) { .page { padding-top: 20px; } .page-header { align-items: stretch; flex-direction: column; } .theme-control { width: 100%; } .options { grid-template-columns: 1fr; } .mock { height: 340px; } .case-heading { grid-template-columns: 1fr; } .case-number { order: -1; } }
+  </style>
+</head>
+<body data-theme="mono">
+  <main class="page">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">EINKAUFSZETTEL · UI-KONSISTENZ</p>
+        <h1>Aktionsflächen bei langen Inhalten</h1>
+        <p class="intro">Ich habe die Bestätigungs- und Abbruchaktionen in der Listen-, Auswahl- und Verwaltungsansicht geprüft. Jede Situation zeigt vier Platzierungsideen im bestehenden dunklen App-Stil. Die Vorschau ändert nichts am Produktiv-UI; bewerte jede Situation einzeln mit A, B, C oder D.</p>
+      </div>
+      <label class="theme-control">Farbschema der Vorschau
+        <select id="theme-select">
+          <option value="mono">Mono</option><option value="botanical">Botanical</option><option value="midnight-plum">Midnight Plum</option><option value="market-journal">Market Journal</option><option value="fresh-signal">Fresh Signal</option><option value="tomato">Tomato</option><option value="lime-focus">Lime Focus</option><option value="indigo-pocket">Indigo Pocket</option>
+        </select>
+      </label>
+    </header>
+    <aside class="good-pattern">
+      <span class="good-icon" aria-hidden="true">✓</span>
+      <div><strong>Gutes Referenzmuster: Artikelliste über „＋“</strong><p>Diese Auswahl hält den Kopf und den Aktionsfooter sichtbar und scrollt nur die Artikelliste. Das ist die bereits umgesetzte Lösung; die folgenden Vorschläge prüfen, wo sie sich noch lohnt.</p></div>
+    </aside>
+    <div id="cases"></div>
+  </main>
+  <script>
+    const rows = {
+      products: ["Äpfel", "Bananen", "Brot", "Butter", "Hafermilch", "Kaffee", "Kartoffeln", "Nudeln", "Tomaten", "Zwiebeln"],
+      categories: ["Backwaren", "Drogerie", "Getränke", "Haushalt", "Milchprodukte", "Obst", "Süßwaren", "Tiefkühl", "Vorrat", "Zwiebeln"],
+      ordered: ["Backwaren", "Getränke", "Haushalt", "Milchprodukte", "Obst", "Tiefkühl", "Vorrat", "Ohne Kategorie"],
+    };
+    const choices = {
+      shopping: [
+        ["A", "Feste Fußleiste", "Maximal sichtbar; nimmt dauerhaft etwas Höhe ein.", "dock"],
+        ["B", "Schmale Aktionsleiste", "Kompakter Footer mit unverändertem Einkaufsabschluss-Button.", "compact"],
+        ["C", "Schwebender Button", "Wenig Platzbedarf; kann Inhalte überdecken.", "float"],
+        ["D", "Fixierter Listen-Kopf", "Aktion direkt bei „Auf der Liste“; spart Footerhöhe.", "top"],
+      ],
+      select: [
+        ["A", "Zurück + Übernehmen", "Beide Aktionen bleiben erreichbar; die Auswahl ist noch nicht gespeichert.", "dock"],
+        ["B", "Übernehmen + Auswahlzahl", "Eine klare Hauptaktion; Zurück bleibt im Seitenkopf.", "count"],
+        ["C", "Schwebende Übernehmen-Aktion", "Kompakt, aber kann letzte Einträge überlagern.", "float"],
+        ["D", "Aktionen oben fixiert", "Auswahlstatus und Bestätigung direkt unter dem Titel.", "top"],
+      ],
+      order: [
+        ["A", "Fester Aktionsfooter", "Beide Entscheidungen bleiben am unteren Rand verfügbar.", "dock"],
+        ["B", "Schmaler Speichern-Footer", "Speichern prominent; Abbrechen bleibt als Zurück oben.", "compact"],
+        ["C", "Schwebendes Aktionspaar", "Schnell erreichbar, überlagert möglicherweise die letzte Zeile.", "float"],
+        ["D", "Feste Kopfaktionen", "Speichern und Abbrechen oben neben dem Titel.", "top"],
+      ],
+      conflicts: [
+        ["A", "Fester Dialogfooter", "„Später entscheiden“ bleibt unabhängig von Konfliktanzahl erreichbar.", "dock"],
+        ["B", "Kompakter Footer", "Weniger Höhe; Konfliktliste bekommt mehr Platz.", "compact"],
+        ["C", "Schwebende Schließen-Aktion", "Minimaler Eingriff in den Dialog, aber kann Text überdecken.", "float"],
+        ["D", "Aktion im Dialogkopf", "Sofort sichtbar; der lange Konfliktinhalt scrollt darunter.", "top"],
+      ],
+      bonus: [
+        ["A", "Fester Aktionsfooter", "Speichern und Abbrechen sind auch bei großem Bild direkt erreichbar.", "dock"],
+        ["B", "Einzelner Speichern-Footer", "Kompakt; Abbrechen erfolgt über Zurück im Kopf.", "compact"],
+        ["C", "Schwebende Speichern-Aktion", "Viel Bildfläche; kann Vorschaudetails überdecken.", "float"],
+        ["D", "Feste Kopfaktionen", "Aktionen bleiben sichtbar, ohne unten Platz zu belegen.", "top"],
+      ],
+    };
+    const scenarioData = [
+      ["shopping", "Einkauf beenden · lange Einkaufsliste", "Im Einkaufsmodus wird der Abschluss-Button als letzte Zeile an die Artikelliste angehängt. Bei vielen Artikeln muss man bis ganz nach unten scrollen, um den Einkauf zu beenden. Wagen-Design und Auslösung (Longpress bzw. Tastatur) sollen gleich bleiben; nur die Position ändert sich."],
+      ["select", "Marktkategorien auswählen", "„Auswahl übernehmen“ wird nach allen Kategorien angefügt. Bei einem großen Katalog steht die einzige Bestätigungsaktion erst hinter der kompletten Checkboxliste."],
+      ["order", "Kategorien für einen Markt sortieren", "„Abbrechen“ und „Speichern“ stehen nach der sortierbaren Kategorienliste. Bei vielen Zeilen verschwinden beide Aktionen weit unter dem Inhalt."],
+      ["conflicts", "Sync-Konflikte auflösen", "Die Konflikte werden als lange Abschnitte untereinander dargestellt. „Später entscheiden“ befindet sich erst hinter sämtlichen Konflikten; Erklärtexte machen den Dialog zusätzlich hoch."],
+      ["bonus", "Bonuskarte / APP-Code bearbeiten", "Eine gespeicherte Bildvorschau kann viel Höhe einnehmen. Zusammen mit den Upload-Aktionen rutschen „Abbrechen“ und „Speichern“ auf kleinen Bildschirmen weit nach unten."],
+    ];
+    const rowHtml = (items, checked = false) => items.map((name, i) => `<div class="mock-row"><span class="check ${checked && i < 2 ? "on" : ""}">${checked && i < 2 ? "✓" : ""}</span><span>${name}</span><span class="row-muted">${checked && i < 2 ? "ausgewählt" : ""}</span></div>`).join("");
+    const categoryRows = () => rows.categories.map((name, i) => `<div class="mock-row"><span class="check ${i % 3 === 0 ? "on" : ""}">${i % 3 === 0 ? "✓" : ""}</span><span>${name}</span></div>`).join("");
+    const orderRows = () => rows.ordered.map((name, i) => `<div class="mock-row"><span class="row-muted">${i + 1}.</span><span>${name}</span><span class="row-muted">⠿　↑　↓</span></div>`).join("");
+    const conflictRows = () => [1, 2, 3, 4].map((n) => `<section class="mock-section"><h4>Einkaufsliste: Artikel ${n}</h4><p>Es ist unklar, ob dieser Artikel bereits in der verbundenen HA-/Alexa-Liste steht. Prüfe den Quellartikel, bevor du eine Entscheidung triffst.</p><select class="mock-select"><option>Quellartikel auswählen</option></select><button class="mock-button">Quellartikel zuordnen</button><button class="mock-button">Bewusst erneut anlegen</button><button class="mock-button">Nur lokal behalten</button></section>`).join("");
+    function contentFor(type) {
+      if (type === "shopping") return `<div class="mock-list-name"><span>AUF DER LISTE</span><small>8 Artikel</small></div>${rowHtml(rows.products, true)}`;
+      if (type === "select") return `<div class="mock-title">Kategorien auswählen <span class="mock-pill">A–Z</span></div>${categoryRows()}`;
+      if (type === "order") return `<div class="mock-title">Produktkategorien bearbeiten</div><button class="mock-button full">＋ Kategorien aus dem Speicher auswählen　›</button><p class="footer-caption">Ziehen oder mit ↑ / ↓ verschieben</p>${orderRows()}`;
+      if (type === "conflicts") return `<div class="mock-alert">2 Entscheidungen ausstehend</div>${conflictRows()}`;
+      return `<div class="mock-title">Bonuskarte / APP-Code</div><div class="mock-form-row">Bild aus Dateien auswählen　＋</div><div class="mock-form-row">QR-Code fotografieren　⌁</div><div class="mock-image">Gespeicherte Kartenvorschau</div><p class="footer-caption">PNG, JPEG oder WebP · optimiertes Bild</p><button class="mock-button">Bild entfernen</button><div class="mock-form-row">Bild bereit · auf allen Geräten verfügbar</div>`;
+    }
+    function actionMarkup(type, variant) {
+      if (type === "shopping") return `<button class="mock-button finish full"><span class="finish-sequence" aria-hidden="true"><svg width="26" height="24" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5h2.3l2.1 10.7c.2 1.1 1.1 1.8 2.2 1.8h8.5c1.1 0 2-.7 2.3-1.8L22 7H6"/><path d="M9.1 10h2.1v3H9.1zm3.4-1h2.1v4h-2.1zm3.4 1h2.1v3h-2.1z" fill="#fff" stroke="none"/><circle cx="9.8" cy="20" r="1.45"/><circle cx="18.3" cy="20" r="1.45"/></svg><svg width="24" height="18" viewBox="0 0 28 18"><path d="M1 9h22M16 2l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><svg width="26" height="24" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5h2.3l2.1 10.7c.2 1.1 1.1 1.8 2.2 1.8h8.5c1.1 0 2-.7 2.3-1.8L22 7H6"/><circle cx="9.8" cy="20" r="1.45"/><circle cx="18.3" cy="20" r="1.45"/></svg></span><span>Einkauf beenden</span><span aria-hidden="true">›</span></button>`;
+      if (type === "select") return `<button class="mock-button">Zurück</button><button class="mock-button primary">Auswahl übernehmen</button>`;
+      if (type === "order") return variant === "compact" ? `<button class="mock-button primary">Speichern</button>` : `<button class="mock-button">Abbrechen</button><button class="mock-button primary">Speichern</button>`;
+      if (type === "conflicts") return `<button class="mock-button primary full">Später entscheiden</button>`;
+      return variant === "compact" ? `<button class="mock-button primary">Speichern</button>` : `<button class="mock-button">Abbrechen</button><button class="mock-button primary">Speichern</button>`;
+    }
+    function mock(type, variant) {
+      const head = type === "shopping" ? `<div class="mock-head"><span>Wocheneinkauf</span><small>● online</small></div>` :
+        type === "select" ? `<div class="mock-head"><span>Marktkategorien</span><small>‹ Zurück</small></div>` :
+        type === "order" ? `<div class="mock-head"><span>Markt bearbeiten</span><small>‹ Zurück</small></div>` :
+        type === "conflicts" ? `<div class="mock-head"><span>Sync-Konflikte</span><small>2 offen</small></div>` :
+        `<div class="mock-head"><span>Supermarkt bearbeiten</span><small>‹ Zurück</small></div>`;
+      const topAction = variant === "top"
+        ? `<div class="mock-top-action">${type === "shopping" ? actionMarkup(type, variant) : type === "select" ? actionMarkup(type, variant) : type === "order" ? actionMarkup(type, variant) : type === "conflicts" ? actionMarkup(type, variant) : actionMarkup(type, variant)}</div>` : "";
+      const dock = ["dock", "compact", "count"].includes(variant);
+      const scrollClass = `${dock ? "with-dock" : ""} ${variant === "top" ? "with-top-action" : ""}`;
+      const footer = dock
+        ? `<div class="mock-footer ${variant === "compact" || variant === "count" ? "compact" : ""}">${variant === "count" && type === "select" ? `<span class="mock-label">3 ausgewählt</span><button class="mock-button primary">Übernehmen</button>` : actionMarkup(type, variant)}</div>`
+        : "";
+      let float = "";
+      if (variant === "float") {
+        float = type === "shopping" ? actionMarkup(type).replace('class="mock-button finish full"', 'class="mock-button finish mock-floating"') :
+          type === "select" ? `<button class="mock-button primary mock-floating">3 gewählt · Übernehmen</button>` :
+          type === "order" || type === "bonus" ? `<button class="mock-button primary mock-floating">Speichern</button><button class="mock-button mock-floating left">Abbrechen</button>` :
+          `<button class="mock-button primary mock-floating">Später entscheiden</button>`;
+      }
+      let endAction = "";
+      if (!dock && variant !== "float" && variant !== "top") endAction = `<div class="mock-inline-action">${actionMarkup(type, variant)}</div>`;
+      const postContent = type === "shopping" ? `<div class="mock-row" style="border-color:var(--accent);color:var(--accent)">Einkauf beenden　›</div>` : "";
+      const scrollContents = contentFor(type) + (variant === "current" ? postContent : "");
+      const scrollArea = variant === "top" && type !== "shopping" && type !== "conflicts" && type !== "bonus"
+        ? `<div class="mock-scroll ${scrollClass}">${scrollContents}</div>`
+        : `<div class="mock-scroll ${scrollClass}">${scrollContents}${endAction}</div>`;
+      return `<div class="mock">${head}${topAction}${scrollArea}${footer}${float}</div>`;
+    }
+    const container = document.querySelector("#cases");
+    for (const [index, [type, title, description]] of scenarioData.entries()) {
+      const section = document.createElement("section");
+      section.className = "case";
+      section.innerHTML = `<div class="case-heading"><div><h2>${title}</h2><p>${description}</p></div><span class="case-number">SITUATION ${String(index + 1).padStart(2, "0")}</span></div><div class="options"></div><div class="rating" role="group" aria-label="Bewertung für ${title}"><strong>Deine Bewertung:</strong><span>A–D wählen</span></div>`;
+      const options = section.querySelector(".options");
+      for (const [letter, name, note, variant] of choices[type]) {
+        const card = document.createElement("article");
+        card.className = "option";
+        card.innerHTML = `<h3 class="option-title"><span>${letter}</span>${name}</h3>${mock(type, variant)}<p class="option-note">${note}</p>`;
+        options.append(card);
+      }
+      const rating = section.querySelector(".rating");
+      for (const [letter] of choices[type]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = letter;
+        button.setAttribute("aria-pressed", "false");
+        button.addEventListener("click", () => {
+          rating.querySelectorAll("button").forEach(option => option.setAttribute("aria-pressed", String(option === button)));
+        });
+        rating.append(button);
+      }
+      container.append(section);
+    }
+    document.querySelector("#theme-select").addEventListener("change", event => {
+      document.body.dataset.theme = event.target.value;
+    });
+  </script>
+</body>
+</html>

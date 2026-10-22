@@ -30,7 +30,7 @@ async function runTests() {
         availableLists = [{entry_id:"a",name:"A"},{entry_id:"b",name:"B"}];
         categories = [{id:"food",name:"Lebensmittel"}];
         products = [
-          {key:"butter",name:"Butter",category_id:"food",usage:{a:{added:5,last_added:100,weeks:{}},b:{added:1,last_added:1,weeks:{}}}},
+          {key:"butter",name:"Butter",category_id:"food",usage:{a:{added:5,last_added:100,weeks:{"2026-W42":2,"2026-W43":1}},b:{added:1,last_added:1,weeks:{}}}},
           {key:"bananen",name:"Bananen",category_id:null,usage:{a:{added:3,last_added:200,weeks:{}},b:{added:9,last_added:1,weeks:{}}}},
           {key:"bier",name:"Bier",category_id:null,usage:{a:{added:3,last_added:150,weeks:{}}}},
           ...Array.from({length:12},(_,i)=>({key:"brot "+i,name:"Brot "+i,category_id:null}))
@@ -48,6 +48,21 @@ async function runTests() {
   try {
     await api.setup();
     const input = doc.querySelector("#new-item"), list = doc.querySelector("#product-suggestions");
+    const commonItemsDialog = doc.querySelector("#common-items-dialog");
+    doc.querySelector("#open-common-items").click();
+    assert(commonItemsDialog.open, "Plus did not open the common-items dialog");
+    assert(!commonItemsDialog.textContent.includes("Art der Liste"), "Unwanted list-type heading is visible");
+    assert([...commonItemsDialog.querySelectorAll('[role="tab"]')].map(tab=>tab.textContent).join("|")==="Häufigste|Kürzlich|Regelmäßig","List types are missing or reordered");
+    assert([...doc.querySelectorAll("#common-items-list .common-item-name")].slice(0,3).map(item=>item.textContent).join("|")==="Butter|Bananen|Bier","Most-frequent ranking is wrong");
+    commonItemsDialog.querySelector('[data-common-items-type="recent"]').click();
+    assert(doc.querySelector("#common-items-list .common-item-name").textContent==="Bananen","Recent ranking is wrong");
+    commonItemsDialog.querySelector('[data-common-items-type="regular"]').click();
+    assert([...doc.querySelectorAll("#common-items-list .common-item-name")].map(item=>item.textContent).join()==="Butter","Regular list did not use recurring weeks");
+    doc.querySelector('#common-items-list input[aria-label="Butter"]').click();
+    assert(doc.querySelector("#common-items-selection").textContent==="1 ausgewählt","Selection count did not update");
+    doc.querySelector("#cancel-common-items").click();
+    assert(!commonItemsDialog.open && (await api.queue()).length===0,"Cancel added selected articles");
+    results.push("PASS Plus opens ranked checkbox lists with the selected underlined tabs and cancel preserves the list");
     function type(text) { input.focus(); input.value=text; input.dispatchEvent(new win.Event("input",{bubbles:true})); }
     const names = () => [...list.children].map(option=>option.textContent);
     type("B");
@@ -101,6 +116,16 @@ async function runTests() {
       assert(list.getBoundingClientRect().right<=doc.documentElement.clientWidth,"Suggestion popup overflows");
     }
     results.push("PASS Mode switch hides suggestions; popup fits 320/390/700px");
+    const plus = doc.querySelector("#open-common-items");
+    plus.click();
+    doc.querySelector('#common-items-list input[aria-label="Bananen"]').click();
+    const addSelected = doc.querySelector("#add-common-items");
+    assert(!addSelected.disabled && addSelected.textContent==="Auf die Liste (1)","Add button did not enable for a selection");
+    addSelected.click();
+    await pause();
+    assert(api.state().items.some(item=>item.summary==="Bananen"),"Selected article was not added to the list");
+    assert(input.value==="b","Opening and confirming the list lost the typed input");
+    results.push("PASS Selected articles are added offline and the typed draft remains intact");
     api.failNext(); type("Neue Sache");
     doc.querySelector("#add-form").requestSubmit(); await pause();
     assert(input.value==="Neue Sache","Failed persistence lost typed input");

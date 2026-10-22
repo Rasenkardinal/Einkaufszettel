@@ -23,6 +23,7 @@ const elements = {
   catalogHelp: document.querySelector("#catalog-help"),
   catalogMessage: document.querySelector("#catalog-message"),
   catalogContent: document.querySelector("#catalog-content"),
+  catalogFixedActions: document.querySelector("#catalog-fixed-actions"),
   catalogBack: document.querySelector("#catalog-back"),
   manageCategories: document.querySelector("#manage-categories"),
   designOptions: document.querySelector("#design-options"),
@@ -33,6 +34,16 @@ const elements = {
   managementMessage: document.querySelector("#management-message"),
   sourceLists: document.querySelector("#source-lists"),
   addForm: document.querySelector("#add-form"),
+  openCommonItems: document.querySelector("#open-common-items"),
+  commonItemsDialog: document.querySelector("#common-items-dialog"),
+  commonItemsList: document.querySelector("#common-items-list"),
+  commonItemsListTitle: document.querySelector("#common-items-list-title"),
+  commonItemsListCount: document.querySelector("#common-items-list-count"),
+  commonItemsEmpty: document.querySelector("#common-items-empty"),
+  commonItemsSelection: document.querySelector("#common-items-selection"),
+  cancelCommonItems: document.querySelector("#cancel-common-items"),
+  closeCommonItems: document.querySelector("#close-common-items"),
+  addCommonItems: document.querySelector("#add-common-items"),
   modeToggle: document.querySelector("#mode-toggle"),
   newItem: document.querySelector("#new-item"),
   productSuggestions: document.querySelector("#product-suggestions"),
@@ -479,6 +490,7 @@ async function saveCatalog(command, payload, nextView) {
   if (managingSupermarkets) return;
   managingSupermarkets = true;
   elements.catalogContent.inert = true;
+  elements.catalogFixedActions.inert = true;
   elements.catalogBack.disabled = true;
   elements.catalogMessage.textContent = "Wird gespeichert …";
   let saved = false;
@@ -502,6 +514,7 @@ async function saveCatalog(command, payload, nextView) {
   } finally {
     managingSupermarkets = false;
     elements.catalogContent.inert = false;
+    elements.catalogFixedActions.inert = false;
     elements.catalogBack.disabled = false;
     if (saved) {
       const message = elements.catalogMessage.textContent;
@@ -514,11 +527,16 @@ async function saveCatalog(command, payload, nextView) {
 }
 
 let cancelCategoryDrag;
+let marketSelectionSnapshot;
 
 function renderCatalogPage() {
   cancelCategoryDrag?.();
   const content = elements.catalogContent;
   content.replaceChildren();
+  elements.catalogFixedActions.replaceChildren();
+  elements.catalogFixedActions.hidden = true;
+  const hasFixedActions = ["market-select", "market-order", "market-bonus-card"].includes(catalogView);
+  elements.catalogPage.classList.toggle("has-fixed-actions", hasFixedActions);
   elements.catalogMessage.textContent = "";
   const isMarket = catalogView?.startsWith("market");
   const isList = catalogView === "markets" || catalogView === "categories";
@@ -534,8 +552,7 @@ function renderCatalogPage() {
     else if (catalogView === "category-products") openCatalog("category-edit", catalogDraft);
     else if (catalogView === "market-order" || catalogView === "market-bonus-card") openCatalog("market-edit", catalogDraft);
     else if (catalogView === "market-select") {
-      catalogView = "market-order";
-      renderCatalogPage();
+      leaveMarketCategorySelection(false);
     } else openCatalog(isMarket ? "markets" : "categories");
   };
   elements.catalogHelp.textContent = "Gemeinsamer Katalog für alle Nutzer. Speichern benötigt eine Verbindung und HA-Administratorrechte.";
@@ -664,6 +681,16 @@ function renderCatalogPage() {
   elements.catalogTitle.focus();
 }
 
+function leaveMarketCategorySelection(apply) {
+  if (!apply && marketSelectionSnapshot) {
+    catalogDraft.category_ids = [...marketSelectionSnapshot.categoryIds];
+    catalogDirty = marketSelectionSnapshot.dirty;
+  }
+  marketSelectionSnapshot = null;
+  catalogView = "market-order";
+  renderCatalogPage();
+}
+
 function renderMarketBonusCard() {
   const content = elements.catalogContent;
   const market = supermarkets.find(value => value.id === catalogDraft.id);
@@ -724,16 +751,16 @@ function renderMarketBonusCard() {
   };
   upload.addEventListener("change", () => processFile(upload.files[0]));
   camera.addEventListener("change", () => processFile(camera.files[0]));
-  const actions = document.createElement("div");
-  actions.className = "page-actions";
-  actions.append(
+  const actions = [
     button("Abbrechen", () => openCatalog("market-edit", supermarkets.find(value => value.id === catalogDraft.id))),
     button("Speichern", () => saveCatalog("save_market_bonus_card", {
       market_id: catalogDraft.id, bonus_card: catalogDraft.bonus_card || "",
     }, "market-edit"), "primary"),
-  );
-  form.append(upload, camera, choose, takePhoto, previewLabel, preview, status, remove, actions);
+  ];
+  form.append(upload, camera, choose, takePhoto, previewLabel, preview, status, remove);
   content.append(form);
+  elements.catalogFixedActions.append(...actions);
+  elements.catalogFixedActions.hidden = false;
 }
 
 async function prepareBonusCardImage(file) {
@@ -802,10 +829,18 @@ function renderMarketCategories() {
       content.append(label);
     }
     if (!categories.length) content.append(paragraph("Noch keine Kategorien im Speicher. Bitte zuerst unter Produktkategorien verwalten anlegen."));
-    content.append(button("Auswahl übernehmen", () => { catalogView = "market-order"; renderCatalogPage(); }, "primary full-width"));
+    elements.catalogFixedActions.append(
+      button("Zurück", () => leaveMarketCategorySelection(false)),
+      button("Auswahl übernehmen", () => leaveMarketCategorySelection(true), "primary"),
+    );
+    elements.catalogFixedActions.hidden = false;
     return;
   }
   content.append(button("＋ Kategorien aus dem Speicher auswählen  ›", () => {
+    marketSelectionSnapshot = {
+      categoryIds: [...catalogDraft.category_ids],
+      dirty: catalogDirty,
+    };
     catalogView = "market-select";
     renderCatalogPage();
   }, "primary full-width"));
@@ -869,13 +904,11 @@ function renderMarketCategories() {
   content.append(list);
   initializeCategorySorting(list);
   if (!catalogDraft.category_ids.some(Boolean)) content.append(paragraph("Noch keine Kategorien für diesen Markt ausgewählt."));
-  const actions = document.createElement("div");
-  actions.className = "page-actions";
-  actions.append(button("Abbrechen", () => openCatalog("market-edit", supermarkets.find(m => m.id === catalogDraft.id))),
+  elements.catalogFixedActions.append(button("Abbrechen", () => openCatalog("market-edit", supermarkets.find(m => m.id === catalogDraft.id))),
     button("Speichern", () => saveCatalog("save_market_categories", {
       market_id: catalogDraft.id, category_ids: catalogDraft.category_ids,
     }, "markets"), "primary"));
-  content.append(actions);
+  elements.catalogFixedActions.hidden = false;
 }
 
 function initializeCategorySorting(list) {
@@ -2682,6 +2715,14 @@ elements.manageLists.addEventListener("click", async () => {
 let suggestionIndex = -1;
 let suggestionMatches = [];
 const addingProducts = new Set();
+const commonItemsTypes = {
+  frequent: "Häufigste",
+  recent: "Kürzlich",
+  regular: "Regelmäßig",
+};
+let commonItemsType = "frequent";
+let commonItemsListId = "";
+let commonItemsSelection = new Set();
 
 function closeProductSuggestions() {
   elements.productSuggestions.hidden = true;
@@ -2739,11 +2780,11 @@ async function addSuggestedProduct(name) {
   const summary = name.trim();
   const listId = entryId;
   const identity = `${listId}:${productNameKey(summary)}`;
-  if (!summary || busy || addingProducts.has(identity)) return;
+  if (!summary || busy || addingProducts.has(identity)) return false;
   if (currentItems.some(item => item.status === "needs_action" && productNameKey(item.summary) === productNameKey(summary))) {
     closeProductSuggestions();
     showError(new Error(`„${summary}“ steht bereits offen auf der Liste.`));
-    return;
+    return false;
   }
   addingProducts.add(identity);
   const original = elements.newItem.value;
@@ -2751,14 +2792,171 @@ async function addSuggestedProduct(name) {
   closeProductSuggestions();
   try {
     await enqueue({ type: "add_item", uid: crypto.randomUUID(), summary }, listId);
+    return true;
   } catch (error) {
     if (entryId === listId && !elements.newItem.value) elements.newItem.value = original || summary;
     showError(error);
+    return false;
   } finally {
     addingProducts.delete(identity);
     if (entryId === listId && !elements.addForm.hidden) elements.newItem.focus();
   }
 }
+
+function productUsageForList(product, listId) {
+  const stored = product.usage?.[listId];
+  const weeks = new Map(Object.entries(stored?.weeks || {}));
+  let added = stored?.added || 0;
+  let lastAdded = stored?.last_added || 0;
+  for (const operation of pendingOperations) {
+    if (operation.type !== "add_item" || operation.entry_id !== listId ||
+      productNameKey(operation.summary) !== product.key) continue;
+    added += 1;
+    lastAdded = Math.max(lastAdded, operation.created_at);
+    const date = new Date(operation.created_at);
+    const day = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - day);
+    const yearStart = Date.UTC(date.getUTCFullYear(), 0, 1);
+    const week = Math.ceil(((date.getTime() - yearStart) / 86400000 + 1) / 7);
+    const weekKey = `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+    weeks.set(weekKey, (weeks.get(weekKey) || 0) + 1);
+  }
+  return { added, lastAdded, weeks };
+}
+
+function commonItemsForCurrentList() {
+  const open = new Set(currentItems
+    .filter(item => item.status === "needs_action")
+    .map(item => productNameKey(item.summary)));
+  const ranked = products
+    .filter(product => !open.has(product.key))
+    .map(product => ({ product, usage: productUsageForList(product, commonItemsListId) }))
+    .filter(({ usage }) => commonItemsType !== "regular" || usage.weeks.size > 1);
+  ranked.sort((a, b) => {
+    if (commonItemsType === "recent") {
+      return b.usage.lastAdded - a.usage.lastAdded ||
+        b.usage.added - a.usage.added || nameOrder.compare(a.product.name, b.product.name);
+    }
+    if (commonItemsType === "regular") {
+      const aWeeklyCount = [...a.usage.weeks.values()].reduce((sum, count) => sum + count, 0);
+      const bWeeklyCount = [...b.usage.weeks.values()].reduce((sum, count) => sum + count, 0);
+      return b.usage.weeks.size - a.usage.weeks.size ||
+        bWeeklyCount - aWeeklyCount || b.usage.lastAdded - a.usage.lastAdded ||
+        nameOrder.compare(a.product.name, b.product.name);
+    }
+    return b.usage.added - a.usage.added ||
+      b.usage.lastAdded - a.usage.lastAdded || nameOrder.compare(a.product.name, b.product.name);
+  });
+  return ranked;
+}
+
+function renderCommonItems() {
+  const titles = {
+    frequent: "Häufigste Artikel",
+    recent: "Kürzlich hinzugefügt",
+    regular: "Regelmäßig hinzugefügt",
+  };
+  elements.commonItemsDialog.querySelectorAll("[data-common-items-type]").forEach(tab => {
+    const selected = tab.dataset.commonItemsType === commonItemsType;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  });
+  elements.commonItemsListTitle.textContent = titles[commonItemsType];
+  const ranked = commonItemsForCurrentList();
+  elements.commonItemsListCount.textContent = `${ranked.length} Artikel`;
+  elements.commonItemsList.replaceChildren();
+  for (const { product, usage } of ranked) {
+    const label = document.createElement("label");
+    label.className = "common-item-option";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = commonItemsSelection.has(product.key);
+    checkbox.setAttribute("aria-label", product.name);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) commonItemsSelection.add(product.key);
+      else commonItemsSelection.delete(product.key);
+      updateCommonItemsSelection();
+    });
+    const name = document.createElement("span");
+    name.className = "common-item-name";
+    name.textContent = product.name;
+    const frequency = document.createElement("span");
+    frequency.className = "common-item-frequency";
+    if (commonItemsType === "regular") frequency.textContent = `${usage.weeks.size} Wochen`;
+    else if (commonItemsType === "frequent" && usage.added) frequency.textContent = `${usage.added}×`;
+    label.append(checkbox, name, frequency);
+    elements.commonItemsList.append(label);
+  }
+  elements.commonItemsEmpty.hidden = ranked.length > 0;
+  elements.commonItemsEmpty.textContent = commonItemsType === "regular"
+    ? "Noch keine Artikel, die in mehreren Wochen hinzugefügt wurden."
+    : "Noch keine bekannten Artikel für diese Liste.";
+  updateCommonItemsSelection();
+}
+
+function updateCommonItemsSelection() {
+  const selectedCount = commonItemsSelection.size;
+  elements.commonItemsSelection.textContent = selectedCount ? `${selectedCount} ausgewählt` : "";
+  elements.addCommonItems.disabled = !selectedCount || busy;
+  elements.addCommonItems.textContent = selectedCount > 0 ? `Auf die Liste (${selectedCount})` : "Auf die Liste";
+}
+
+function openCommonItems() {
+  if (busy || !entryId || elements.commonItemsDialog.open) return;
+  closeProductSuggestions();
+  commonItemsType = "frequent";
+  commonItemsListId = entryId;
+  commonItemsSelection = new Set();
+  renderCommonItems();
+  elements.commonItemsDialog.showModal();
+  elements.commonItemsDialog.querySelector('[data-common-items-type="frequent"]').focus({ preventScroll: true });
+}
+
+function closeCommonItems() {
+  if (elements.commonItemsDialog.open) elements.commonItemsDialog.close();
+}
+
+async function addSelectedCommonItems() {
+  if (elements.addCommonItems.disabled || entryId !== commonItemsListId) return;
+  const listId = commonItemsListId;
+  const original = elements.newItem.value;
+  const selectedNames = [...commonItemsSelection]
+    .map(key => products.find(product => product.key === key)?.name)
+    .filter(Boolean);
+  closeCommonItems();
+  for (const name of selectedNames) {
+    if (!await addSuggestedProduct(name)) break;
+  }
+  if (entryId === listId) {
+    elements.newItem.value = original;
+    elements.newItem.focus();
+    elements.newItem.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+elements.openCommonItems.addEventListener("click", openCommonItems);
+elements.cancelCommonItems.addEventListener("click", closeCommonItems);
+elements.closeCommonItems.addEventListener("click", closeCommonItems);
+elements.addCommonItems.addEventListener("click", () => addSelectedCommonItems().catch(showError));
+elements.commonItemsDialog.querySelectorAll("[data-common-items-type]").forEach(tab => {
+  tab.addEventListener("click", () => {
+    commonItemsType = tab.dataset.commonItemsType;
+    renderCommonItems();
+  });
+  tab.addEventListener("keydown", event => {
+    if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    const tabs = [...elements.commonItemsDialog.querySelectorAll("[data-common-items-type]")];
+    const currentIndex = tabs.indexOf(tab);
+    const delta = event.key === "ArrowRight" ? 1 : -1;
+    tabs[(currentIndex + delta + tabs.length) % tabs.length].click();
+    elements.commonItemsDialog.querySelector('[data-common-items-type="' + commonItemsType + '"]').focus();
+  });
+});
+elements.commonItemsDialog.addEventListener("close", () => {
+  commonItemsSelection = new Set();
+  updateCommonItemsSelection();
+});
 
 elements.newItem.addEventListener("input", renderProductSuggestions);
 elements.newItem.addEventListener("focus", renderProductSuggestions);

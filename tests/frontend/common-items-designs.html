@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Einkaufszettel · Artikelliste · Designvorschläge</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:#141414;color:#f4f4f4}
+*{box-sizing:border-box}
+body{margin:0;padding:30px 18px 56px}
+header,.gallery{width:min(100%,1240px);margin-inline:auto}
+.kicker{margin:0 0 8px;color:#aaa;font-size:11px;font-weight:700;letter-spacing:.15em}
+h1{margin:0;font-size:clamp(25px,5vw,36px);letter-spacing:-.035em}
+.intro{max-width:850px;margin:12px 0 26px;color:#aaa;font-size:14px;line-height:1.6}
+.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,350px),1fr));gap:18px}
+.card{--bg:#141414;--surface:#202020;--surface2:#2b2b2b;--line:#383838;--accent:#f5f5f5;--muted:#aaa;overflow:hidden;border:1px solid var(--line);border-radius:13px;background:var(--bg);color:#f4f4f4}
+.card[data-theme="Botanical"]{--bg:#111813;--surface:#1b251e;--surface2:#26362a;--line:#304035;--accent:#a3e635;--muted:#aab7ac}
+.card[data-theme="Midnight Plum"]{--bg:#15121c;--surface:#211b2b;--surface2:#30243e;--line:#3b3148;--accent:#c4a7ff;--muted:#b9adc8}
+.card[data-theme="Market Journal"]{--bg:#1a1411;--surface:#271d18;--surface2:#38281d;--line:#49382e;--accent:#ffb454;--muted:#c7b3a5}
+.card[data-theme="Fresh Signal"]{--bg:#0d171b;--surface:#13242a;--surface2:#19343b;--line:#24444c;--accent:#55e0d0;--muted:#9db8ba}
+.card[data-theme="Tomato"]{--bg:#1b1315;--surface:#281c1f;--surface2:#382327;--line:#493137;--accent:#ff8977;--muted:#c2a7a6}
+.card[data-theme="Lime Focus"]{--bg:#0c0f0c;--surface:#171c16;--surface2:#222b1e;--line:#343e2d;--accent:#d4ff00;--muted:#a9b197}
+.card[data-theme="Indigo Pocket"]{--bg:#101522;--surface:#192033;--surface2:#222d49;--line:#303b56;--accent:#83a7ff;--muted:#aab5ca}
+.card-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.number{display:grid;place-items:center;width:28px;height:28px;flex:none;border:1px solid var(--line);border-radius:50%;color:var(--muted);font-size:12px;font-weight:700}
+.card-head h2{flex:1;margin:0;font-size:14px}
+.card-head small{color:var(--muted);font-size:10px}
+.preview{display:grid;place-items:center;min-height:670px;padding:22px 14px;background:radial-gradient(ellipse at 50% 0,color-mix(in srgb,var(--accent) 8%,transparent),transparent 65%)}
+.dialog{display:flex;flex-direction:column;width:min(100%,340px);height:620px;max-height:calc(100vh - 60px);overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:0 12px 40px #0008}
+.dialog-head{display:flex;align-items:flex-start;gap:12px;padding:18px 17px 14px}
+.title-block{min-width:0;flex:1}
+.dialog h3{margin:0;font-size:18px;letter-spacing:-.02em}
+.hint{margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.4}
+.close{display:grid;place-items:center;width:34px;height:34px;flex:none;margin:-4px -4px 0 0;border:1px solid var(--line);border-radius:9px;background:var(--surface2);color:var(--muted);font-size:19px}
+.picker{padding:0 16px 13px}
+.picker-label{margin:0 0 8px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.tabs{display:flex;gap:5px}
+.tab{display:flex;align-items:center;justify-content:center;gap:5px;min-width:0;min-height:38px;flex:1;padding:6px 7px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--muted);font-size:11px;font-weight:650;line-height:1.15;text-align:center}
+.tab.active{border-color:color-mix(in srgb,var(--accent) 48%,var(--line));background:color-mix(in srgb,var(--accent) 14%,var(--surface2));color:#fff}
+.tab-mark{display:none}
+.list-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 17px 7px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}
+.list-meta strong{color:#f4f4f4;font-weight:650}
+.items{flex:1;min-height:0;overflow:auto;padding:0 12px 12px}
+.item{display:flex;align-items:center;gap:12px;min-height:54px;margin-top:6px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface2)}
+.check{appearance:none;display:grid;place-items:center;width:21px;height:21px;flex:none;margin:0;border:1.5px solid #888;border-radius:6px;background:transparent}
+.check:checked{border-color:var(--accent);background:var(--accent)}
+.check:checked::after{content:"";width:9px;height:5px;margin-top:-2px;border-left:2px solid #171717;border-bottom:2px solid #171717;transform:rotate(-45deg)}
+.item-name{min-width:0;flex:1;overflow:hidden;color:#f4f4f4;font-size:14px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+.item-detail{color:var(--muted);font-size:11px;white-space:nowrap}
+.item.selected{border-color:color-mix(in srgb,var(--accent) 30%,var(--line))}
+.footer{position:relative;display:flex;align-items:center;gap:9px;margin-top:auto;padding:13px 15px max(14px,env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--surface);box-shadow:0 -8px 18px #0002}
+.footer-button{display:flex;align-items:center;justify-content:center;min-height:46px;flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);color:#f4f4f4;font-size:13px;font-weight:650}
+.footer-button.primary{border-color:var(--accent);background:var(--accent);color:var(--accent-text,#171717)}
+.card[data-theme="Botanical"] .footer-button.primary{--accent-text:#17220d}
+.card[data-theme="Midnight Plum"] .footer-button.primary{--accent-text:#20152f}
+.card[data-theme="Market Journal"] .footer-button.primary{--accent-text:#38200b}
+.card[data-theme="Fresh Signal"] .footer-button.primary{--accent-text:#06201d}
+.card[data-theme="Tomato"] .footer-button.primary{--accent-text:#351512}
+.card[data-theme="Lime Focus"] .footer-button.primary{--accent-text:#161b00}
+.card[data-theme="Indigo Pocket"] .footer-button.primary{--accent-text:#111b34}
+.selection-count{position:absolute;right:16px;top:-22px;padding:4px 8px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);font-size:10px}
+.v2 .tabs{gap:0;border-bottom:1px solid var(--line)}
+.v2 .tab{position:relative;border:0;border-radius:0;background:transparent}
+.v2 .tab.active{color:var(--accent)}
+.v2 .tab.active::after{position:absolute;right:8px;bottom:-1px;left:8px;height:2px;background:var(--accent);content:""}
+.v2 .picker-label{display:none}
+.v3 .picker{padding:10px 14px 12px}
+.v3 .picker-label{display:flex;justify-content:space-between}
+.v3 .tab{min-height:50px;flex-direction:column;gap:3px;border-radius:11px}
+.v3 .tab.active{background:var(--accent);color:var(--accent-text,#171717)}
+.v3 .tab small{font-size:9px;font-weight:500;opacity:.78}
+.v4 .picker{padding:0 16px 12px}
+.v4 .tabs{padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.v4 .tab{min-height:34px;border:0;border-radius:8px;background:transparent}
+.v4 .tab.active{background:var(--surface2);box-shadow:0 1px 4px #0005;color:#fff}
+.v5 .tab{min-height:42px;border-radius:999px}
+.v5 .tab.active{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,var(--surface));color:#fff}
+.v6 .picker{padding-bottom:10px}
+.v6 .tabs{display:grid;grid-template-columns:1fr}
+.v6 .tab{justify-content:flex-start;min-height:36px;padding:6px 10px;border-radius:8px;text-align:left}
+.v6 .tab.active{background:color-mix(in srgb,var(--accent) 14%,var(--surface2))}
+.v6 .tab.active .tab-mark{display:inline;color:var(--accent)}
+.v7 .picker{padding-top:9px}
+.v7 .picker-label{display:inline-block;margin:0 0 8px;padding:3px 7px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+.v7 .tab{border-radius:7px}
+.v7 .tab.active{border-width:2px}
+.v8 .dialog{border-radius:12px}
+.v8 .dialog-head{padding-bottom:10px}
+.v8 .picker{padding:11px 14px;background:color-mix(in srgb,var(--accent) 5%,var(--bg));border-block:1px solid var(--line)}
+.v8 .tab{border-radius:6px}
+.v8 .tab.active{background:color-mix(in srgb,var(--accent) 24%,var(--surface2));border-color:var(--accent)}
+.v8 .item{border-radius:7px}
+.v8 .footer-button{border-radius:7px}
+@media(max-width:760px){body{padding:22px 12px 40px}.gallery{grid-template-columns:minmax(0,390px);justify-content:center}.preview{min-height:640px;padding:16px 8px}.dialog{height:600px}.card-head small{display:none}}
+@media(max-width:360px){.card-head{padding-inline:12px}.preview{padding-inline:6px}.dialog{height:590px}.tab{font-size:10px}.footer{gap:7px;padding-inline:11px}}
+</style>
+<header>
+  <p class="kicker">DESIGNVORSCHAU · ARTIKELLISTE</p>
+  <h1>Acht Entwürfe für die Plus-Taste</h1>
+  <p class="intro">Ein Tipp auf Plus öffnet die Artikelauswahl. Oben wird zwischen „Häufigste“, „Kürzlich“ und „Regelmäßig“ gewechselt; die Artikelliste bleibt scrollbar und „Abbrechen“ sowie „Auf die Liste“ bleiben unten fest erreichbar. Die Entwürfe variieren die Darstellung der Auswahl und zeigen Beispiele in den App-Farbschemata.</p>
+</header>
+<main class="gallery" id="gallery"></main>
+<script>
+const themes=["Mono","Botanical","Midnight Plum","Market Journal","Fresh Signal","Tomato","Lime Focus","Indigo Pocket"];
+const designs=[
+  ["01 · Kompakt segmentiert","Drei gleich breite Flächen, der aktive Filter erhält eine sanfte Tönung."],
+  ["02 · Unterstrich · ausgewählt","Gewählte Variante ohne Überschrift: Die drei Filter stehen direkt über der Artikelliste."],
+  ["03 · Filter-Kacheln","Die Auswahl zeigt auf einen Blick die jeweilige Zahl der Vorschläge."],
+  ["04 · Eingebettet","Segmentsteuerung als ruhige Leiste innerhalb einer gemeinsamen Fläche."],
+  ["05 · Runde Chips","Kompakte, pillenförmige Filter mit dezentem aktivem Rahmen."],
+  ["06 · Vertikale Auswahl","Liste statt Tabs – großzügig und auf schmalen Displays gut lesbar."],
+  ["07 · Konturwahl","Deutliche Rahmen kennzeichnen die Auswahl im vertrauten App-Stil."],
+  ["08 · Akzentleiste","Leicht abgesetzter Filterbereich und klar hervorgehobener aktiver Filter."]
+];
+const products=[["Hafermilch","3×"],["Bananen","2×"],["Vollkornbrot","1×"],["Kaffee","1×"],["Äpfel","1×"],["Tomaten","1×"],["Joghurt","1×"],["Olivenöl","1×"]];
+const gallery=document.querySelector("#gallery");
+designs.forEach(([name,description],index)=>{
+  const card=document.createElement("article");
+  card.className=`card v${index+1}`;
+  card.dataset.theme=themes[index];
+  const head=document.createElement("div");
+  head.className="card-head";
+  const number=document.createElement("span");
+  number.className="number";
+  number.textContent=String(index+1).padStart(2,"0");
+  const title=document.createElement("h2");
+  title.textContent=name;
+  const theme=document.createElement("small");
+  theme.textContent=themes[index].toUpperCase();
+  head.append(number,title,theme);
+  const preview=document.createElement("div");
+  preview.className="preview";
+  const dialog=document.createElement("section");
+  dialog.className="dialog";
+  dialog.setAttribute("aria-label","Artikelauswahl");
+  const dialogHead=document.createElement("div");
+  dialogHead.className="dialog-head";
+  const titleBlock=document.createElement("div");
+  titleBlock.className="title-block";
+  const dialogTitle=document.createElement("h3");
+  dialogTitle.textContent="Artikel hinzufügen";
+  const hint=document.createElement("p");
+  hint.className="hint";
+  hint.textContent="Wähle die gewünschten Artikel aus.";
+  titleBlock.append(dialogTitle,hint);
+  const close=document.createElement("span");
+  close.className="close";
+  close.setAttribute("aria-hidden","true");
+  close.textContent="×";
+  dialogHead.append(titleBlock,close);
+  const picker=document.createElement("div");
+  picker.className="picker";
+  const label=document.createElement("p");
+  label.className="picker-label";
+  label.textContent="Art der Liste";
+  const tabs=document.createElement("div");
+  tabs.className="tabs";
+  tabs.setAttribute("role","tablist");
+  [["Häufigste","12"],["Kürzlich","8"],["Regelmäßig","6"]].forEach(([tabText,count],tabIndex)=>{
+    const tab=document.createElement("div");
+    tab.className=`tab${tabIndex===0?" active":""}`;
+    tab.setAttribute("role","tab");
+    tab.setAttribute("aria-selected",String(tabIndex===0));
+    const mark=document.createElement("span");
+    mark.className="tab-mark";
+    mark.textContent="✓";
+    const text=document.createElement("span");
+    text.textContent=tabText;
+    tab.append(mark,text);
+    if(index===2){const small=document.createElement("small");small.textContent=`${count} Artikel`;tab.append(small)}
+    tabs.append(tab);
+  });
+  picker.append(label,tabs);
+  const meta=document.createElement("div");
+  meta.className="list-meta";
+  const listLabel=document.createElement("strong");
+  listLabel.textContent="Häufigste Artikel";
+  const listCount=document.createElement("span");
+  listCount.textContent="12 Vorschläge";
+  meta.append(listLabel,listCount);
+  const items=document.createElement("div");
+  items.className="items";
+  products.forEach(([product,frequency],itemIndex)=>{
+    const row=document.createElement("label");
+    row.className=`item${itemIndex<2?" selected":""}`;
+    const checkbox=document.createElement("input");
+    checkbox.className="check";
+    checkbox.type="checkbox";
+    checkbox.checked=itemIndex<2;
+    checkbox.setAttribute("aria-label",product);
+    const text=document.createElement("span");
+    text.className="item-name";
+    text.textContent=product;
+    const detail=document.createElement("span");
+    detail.className="item-detail";
+    detail.textContent=frequency;
+    row.append(checkbox,text,detail);
+    items.append(row);
+  });
+  const footer=document.createElement("footer");
+  footer.className="footer";
+  const selection=document.createElement("span");
+  selection.className="selection-count";
+  selection.textContent="2 ausgewählt";
+  const cancel=document.createElement("span");
+  cancel.className="footer-button";
+  cancel.textContent="Abbrechen";
+  const add=document.createElement("span");
+  add.className="footer-button primary";
+  add.textContent="Auf die Liste";
+  footer.append(selection,cancel,add);
+  dialog.append(dialogHead,picker,meta,items,footer);
+  preview.append(dialog);
+  const caption=document.createElement("p");
+  caption.className="intro";
+  caption.style.cssText="margin:0;padding:12px 16px 15px;border-top:1px solid var(--line);font-size:12px";
+  caption.textContent=description;
+  card.append(head,preview,caption);
+  gallery.append(card);
+});
+</script>
+</html>

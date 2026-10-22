@@ -538,11 +538,18 @@ async function runTests() {
     doc.querySelector('[aria-label="Ohne Kategorie nach oben"]').click();
     assert(api.state().catalogDraft.category_ids.join() === "b,,z", "Could not set an intermediate uncategorized position");
     doc.querySelector("#catalog-content > .primary").click();
+    const fixedActions = doc.querySelector("#catalog-fixed-actions");
+    assert(!fixedActions.hidden && [...fixedActions.querySelectorAll("button")].map(button => button.textContent).join("|") === "Zurück|Auswahl übernehmen", "Category selection actions are not fixed in the footer");
     const choices = [...doc.querySelectorAll(".category-choice")];
     assert(choices.map(c=>c.textContent).join() === "Äpfel,Backwaren,Zwiebeln", "Selection not A-Z");
     choices[0].querySelector("input").click();
-    doc.querySelector("#catalog-content > .primary").click();
+    fixedActions.querySelector(".primary").click();
     assert(api.state().catalogDraft.category_ids.join() === "b,,z,a", "Selection reset order or moved the uncategorized position");
+    doc.querySelector("#catalog-content > .primary").click();
+    doc.querySelector(".category-choice input").click();
+    doc.querySelector("#catalog-fixed-actions button:first-child").click();
+    assert(api.state().catalogDraft.category_ids.join() === "b,,z,a", "Going back from category selection did not discard its temporary changes");
+    assert(api.state().catalogDirty, "Going back reset earlier dirty changes in the market draft");
     doc.querySelector('[aria-label="Zwiebeln aus diesem Markt entfernen"]').click();
     assert(api.state().catalogDraft.category_ids.join() === "b,,a", "Removal failed");
     assert(api.state().categories.length === 3, "Central category deleted");
@@ -579,7 +586,8 @@ async function runTests() {
   const replacementCard = "data:image/png;base64,AA==";
   api.state().catalogDraft.bonus_card = replacementCard;
   api.state().catalogDirty = true;
-  doc.querySelector("#catalog-content .page-actions .primary").click();
+  assert(!doc.querySelector("#catalog-fixed-actions").hidden, "Bonus-card actions are not pinned");
+  doc.querySelector("#catalog-fixed-actions .primary").click();
   await pause(0);
   assert(state.supermarkets[0].bonus_card === replacementCard, "Bonus-card image was not saved for its market");
   assert(messages.some(message => message.command === "save_market_bonus_card" &&
@@ -669,6 +677,26 @@ async function runTests() {
   api.reset();
   const order = state.categories.map(category => category.id);
   api.openCatalog("market-order", {...state.supermarkets[0], category_ids:order});
+  const orderFooter = doc.querySelector("#catalog-fixed-actions");
+  const orderContent = doc.querySelector("#catalog-content");
+  assert(!orderFooter.hidden && [...orderFooter.querySelectorAll("button")].map(button => button.textContent).join("|") === "Abbrechen|Speichern", "Market-order actions are not in the fixed footer");
+  assert(orderContent.scrollHeight > orderContent.clientHeight, "Long category order does not scroll independently");
+  assert(Math.abs(orderFooter.getBoundingClientRect().bottom - win.innerHeight) < 2, "Market-order footer is not anchored to the viewport bottom");
+  doc.querySelector("#catalog-content > .primary").click();
+  const selectionContent = doc.querySelector("#catalog-content");
+  const selectionFooter = doc.querySelector("#catalog-fixed-actions");
+  assert(!selectionFooter.hidden, "Category selection lost its fixed footer with a long list");
+  assert(selectionContent.scrollHeight > selectionContent.clientHeight, "Long category selection does not scroll independently");
+  assert(Math.abs(selectionFooter.getBoundingClientRect().bottom - win.innerHeight) < 2, "Category-selection footer is not anchored to the viewport bottom");
+  for (const width of [320, 390, 700]) {
+    frame.style.width = `${width}px`;
+    const footerRect = selectionFooter.getBoundingClientRect();
+    const [backRect, applyRect] = [...selectionFooter.querySelectorAll("button")].map(button => button.getBoundingClientRect());
+    assert(footerRect.left >= 0 && footerRect.right <= win.innerWidth, `Footer overflows at ${width}px`);
+    assert(backRect.right <= applyRect.left, `Footer actions overlap at ${width}px`);
+  }
+  frame.style.width = "390px";
+  doc.querySelector("#catalog-fixed-actions button:first-child").click();
   const list = doc.querySelector(".category-order");
   list.setPointerCapture = () => {};
   const outside = new win.PointerEvent("pointerdown", {pointerId:20, isPrimary:true, button:0, bubbles:true, cancelable:true});
@@ -693,13 +721,13 @@ async function runTests() {
   win.dispatchEvent(pointer("pointermove", win.innerHeight - 4));
   win.dispatchEvent(pointer("pointerup", 0, 99));
   assert(doc.querySelector(".category-drag-ghost"), "Unrelated pointer ended drag");
-  const scrollBefore = win.scrollY;
+  const scrollBefore = orderContent.scrollTop;
   for (let time = 16; time <= 512; time += 16) {
     const pending = [...frames.values()];
     frames.clear();
     pending.forEach(callback => callback(time));
   }
-  assert(win.scrollY > scrollBefore + 20, "Edge scrolling did not advance");
+  assert(orderContent.scrollTop > scrollBefore + 20, "Edge scrolling did not advance the category panel");
   assert(api.state().catalogDraft.category_ids.indexOf(order[0]) > 1, "Long list did not reorder live");
   win.dispatchEvent(new win.KeyboardEvent("keydown", {key:"Escape", cancelable:true}));
   assert(api.state().catalogDraft.category_ids.join() === [...order, ""].join(), "Escape did not restore original order");

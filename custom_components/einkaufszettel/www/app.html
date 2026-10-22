@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.13">
+    <link rel="stylesheet" href="./app.css?v=0.4.14">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -104,7 +104,7 @@
         <label class="visually-hidden" for="new-item">Neuer Artikel</label>
         <input id="new-item" name="item" autocomplete="off" maxlength="200" placeholder="Was fehlt noch?" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="product-suggestions" required>
         <div id="product-suggestions" class="product-suggestions" role="listbox" aria-label="Produktvorschläge" hidden></div>
-        <button type="submit" class="primary" aria-label="Hinzufügen" title="Artikel hinzufügen">＋</button>
+        <button id="open-common-items" type="button" class="primary" aria-label="Artikelliste öffnen" title="Artikelliste öffnen">＋</button>
       </form>
 
       <div class="list-heading">
@@ -153,6 +153,7 @@
       <p id="catalog-help" class="management-help"></p>
       <p id="catalog-message" role="status" class="message"></p>
       <div id="catalog-content"></div>
+      <footer id="catalog-fixed-actions" class="management-fixed-actions" hidden></footer>
     </section>
     <section id="list-management" class="app management-page" hidden aria-labelledby="list-management-title">
       <header class="management-header"><span class="page-brand"><img src="./icon.svg" alt="" width="24" height="24"> EINKAUFSZETTEL</span><button id="lists-back" class="management-back" type="button"><svg viewBox="0 0 30 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M26 12H4m7-7-7 7 7 7"/></svg><span>Zurück zur Liste</span></button></header>
@@ -230,6 +231,31 @@
         <div class="dialog-actions"><button class="secondary" value="close" autofocus>Schließen</button></div>
       </form>
     </dialog>
+    <dialog id="common-items-dialog" aria-labelledby="common-items-title">
+      <header class="common-items-header">
+        <div>
+          <h2 id="common-items-title">Artikel hinzufügen</h2>
+          <p>Wähle die gewünschten Artikel aus.</p>
+        </div>
+        <button id="close-common-items" class="common-items-close" type="button" aria-label="Schließen">×</button>
+      </header>
+      <div class="common-items-tabs" role="tablist" aria-label="Artikelliste">
+        <button id="common-items-frequent" class="common-items-tab" type="button" role="tab" aria-selected="true" aria-controls="common-items-list" data-common-items-type="frequent">Häufigste</button>
+        <button id="common-items-recent" class="common-items-tab" type="button" role="tab" aria-selected="false" aria-controls="common-items-list" data-common-items-type="recent">Kürzlich</button>
+        <button id="common-items-regular" class="common-items-tab" type="button" role="tab" aria-selected="false" aria-controls="common-items-list" data-common-items-type="regular">Regelmäßig</button>
+      </div>
+      <div class="common-items-list-heading">
+        <h3 id="common-items-list-title">Häufigste Artikel</h3>
+        <span id="common-items-list-count"></span>
+      </div>
+      <div id="common-items-list" class="common-items-list" role="group" aria-labelledby="common-items-list-title"></div>
+      <p id="common-items-empty" class="common-items-empty" role="status" hidden></p>
+      <footer class="common-items-footer">
+        <span id="common-items-selection" class="common-items-selection" aria-live="polite"></span>
+        <button id="cancel-common-items" class="secondary" type="button">Abbrechen</button>
+        <button id="add-common-items" class="primary" type="button" disabled>Auf die Liste</button>
+      </footer>
+    </dialog>
     <dialog id="install-help">
       <form method="dialog">
         <h2>Zum Startbildschirm hinzufügen</h2>
@@ -237,6 +263,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.13" defer></script>
+    <script src="./app.js?v=0.4.14" defer></script>
   </body>
 </html>
