@@ -169,12 +169,16 @@ async function runTests() {
   await pause(450);
   test("Holding for half a second opens article details", () => {
     assert(editDialog.open, "Long press did not open details");
+    assert(editDialog.inert && editDialog.classList.contains("touch-gated"), "Dialog was not gated while the long-press touch remained down");
     assert(doc.querySelector("#edit-summary").value === "Brot", "Wrong article opened");
-    assert(doc.activeElement === doc.querySelector("#edit-item-title"), "Opening details focused a text field");
+    assert(!doc.querySelector("#edit-summary").matches(":focus"), "Long press focused the article name field");
     assert(doc.querySelector("#edit-category").value === "b", "Item category missing");
     assert(doc.querySelector("#edit-category-options").children.length === 4, "Category menu is missing an option");
   });
   itemPointer("pointerup");
+  await pause(0);
+  assert(!editDialog.inert && !editDialog.classList.contains("touch-gated"), "Dialog did not unlock after touch release");
+  assert(doc.activeElement === doc.querySelector("#edit-item-title"), "Dialog heading was not focused after touch release");
   const categoryTrigger = doc.querySelector("#edit-category-trigger");
   categoryTrigger.click();
   test("Category search flyout opens without focusing the keyboard field", () => {
@@ -263,6 +267,12 @@ async function runTests() {
   });
   releaseTarget.dispatchEvent(prematureTouch);
   assert(prematureTouch.defaultPrevented, "A second touch was accepted before the long-press finger was released");
+  test("Dialog remains inert while the original touch moves over text and buttons", () => {
+    assert(editDialog.inert, "Dialog controls became interactive before release");
+    assert(win.getComputedStyle(editDialog).userSelect === "none", "Dialog allowed text selection during the touch gate");
+    releaseTarget.focus();
+    assert(doc.activeElement !== releaseTarget, "Category button received focus during the touch gate");
+  });
   const releasePointerMove = new win.PointerEvent("pointermove", {
     pointerId:81, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,
   });
@@ -281,6 +291,14 @@ async function runTests() {
     assert(releasePointerUp.defaultPrevented && !releasePointerUpHandled, "Release pointerup reached the dialog");
     assert(releaseClick.defaultPrevented && !releaseClickHandled, "Release click was not suppressed");
     assert(doc.querySelector("#edit-category-flyout").hidden, "Release opened the category flyout");
+    assert(!editDialog.inert, "Dialog remained inert after the original touch was released");
+  });
+  itemPointer("pointerdown", {pointerId:84});
+  await pause(550);
+  assert(editDialog.inert, "Long press did not gate the dialog before blur");
+  win.dispatchEvent(new win.Event("blur"));
+  test("Losing window focus releases the dialog touch gate", () => {
+    assert(!editDialog.inert && !editDialog.classList.contains("touch-gated"), "Window blur left the dialog inert");
   });
   const nextTouch = new win.PointerEvent("pointerdown", {
     pointerId:83, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,

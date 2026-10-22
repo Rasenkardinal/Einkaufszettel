@@ -102,6 +102,14 @@ let pendingOperations = [];
 let busy = false;
 let longPressTouchPointerId = null;
 let suppressLongPressClick = false;
+let touchGateTimer;
+
+function releaseLongPressTouchGate(restoreFocus = true) {
+  window.clearTimeout(touchGateTimer);
+  elements.editItem.inert = false;
+  elements.editItem.classList.remove("touch-gated");
+  if (restoreFocus && elements.editItem.open) elements.editItemTitle.focus({ preventScroll: true });
+}
 
 document.addEventListener("pointerdown", event => {
   if (longPressTouchPointerId !== null) {
@@ -109,6 +117,7 @@ document.addEventListener("pointerdown", event => {
     event.stopImmediatePropagation();
     return;
   }
+  if (elements.editItem.inert) releaseLongPressTouchGate();
   suppressLongPressClick = false;
 }, true);
 
@@ -125,6 +134,7 @@ document.addEventListener("pointerup", event => {
   if (event.pointerId !== longPressTouchPointerId) return;
   longPressTouchPointerId = null;
   suppressLongPressClick = true;
+  touchGateTimer = window.setTimeout(releaseLongPressTouchGate, 0);
 }, true);
 
 document.addEventListener("pointercancel", event => {
@@ -133,6 +143,7 @@ document.addEventListener("pointercancel", event => {
   event.stopImmediatePropagation();
   longPressTouchPointerId = null;
   suppressLongPressClick = false;
+  releaseLongPressTouchGate();
 }, true);
 
 document.addEventListener("click", event => {
@@ -140,11 +151,13 @@ document.addEventListener("click", event => {
   suppressLongPressClick = false;
   event.preventDefault();
   event.stopImmediatePropagation();
+  releaseLongPressTouchGate();
 }, true);
 
 window.addEventListener("blur", () => {
   longPressTouchPointerId = null;
   suppressLongPressClick = false;
+  releaseLongPressTouchGate(false);
 });
 let syncPromise;
 let syncRequested = false;
@@ -1229,8 +1242,11 @@ function render() {
       elements.editCategoryEmpty.hidden = true;
       editingCategory = categoryId;
       editingTrigger = label;
+      const touchGated = longPressTouchPointerId !== null;
+      elements.editItem.inert = touchGated;
+      elements.editItem.classList.toggle("touch-gated", touchGated);
       elements.editItem.showModal();
-      elements.editItemTitle.focus({ preventScroll: true });
+      if (!touchGated) elements.editItemTitle.focus({ preventScroll: true });
     });
     label.addEventListener("keydown", event => {
       if (event.key !== "Delete" || !confirm(`„${item.summary}“ wirklich löschen?`)) return;
