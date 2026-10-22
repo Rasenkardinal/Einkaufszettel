@@ -6,11 +6,34 @@
 <script>
 async function runTests() {
   const source = await (await fetch("../../custom_components/einkaufszettel/www/app.js")).text();
-  const persistence = source.slice(source.indexOf("function storeRequest("), source.indexOf("function render()"));
+  const persistence = source.slice(source.indexOf("let localUpdates ="), source.indexOf("function render()"));
   const selection = source.slice(source.indexOf("async function loadSelectedList()"), source.indexOf("async function selectList("));
-  const protocol = source.slice(source.indexOf("async function synchronize()"), source.indexOf("async function loadRemoteLists()"));
+  const protocol = source.slice(source.indexOf("function scheduleSynchronization()"), source.indexOf("async function loadRemoteLists()"));
   const results = [];
   const assert = (value, message) => { if (!value) throw Error(message); };
+  const deferred = () => {
+    let resolve, reject;
+    const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+    return { promise, resolve, reject };
+  };
+  function server(env, snapshots) {
+    const calls = [];
+    env.send = async (type, payload) => {
+      calls.push({ type, ...payload });
+      const snapshot = snapshots[payload.entry_id];
+      if (type.endsWith("/apply_operation")) {
+        const { action, uid, changes } = payload;
+        if (action === "delete_item") snapshot.items = snapshot.items.filter(item => item.uid !== uid);
+        else if (action === "add_item") snapshot.items.push({uid, status:"needs_action", ...changes});
+        else snapshot.items = snapshot.items.map(item => item.uid === uid ? {...item, ...changes,
+          ...(changes.metadata ? {metadata:{...item.metadata, ...changes.metadata}} : {})} : item);
+        snapshot.revision++;
+        return structuredClone({...snapshot, ack_operation_id:payload.operation_id, operation_result:"applied"});
+      }
+      return structuredClone(snapshot);
+    };
+    return calls;
+  }
   async function fixture(test) {
     const name = `einkaufszettel-sync-test-${crypto.randomUUID()}`;
     const database = await new Promise((resolve, reject) => {
@@ -22,7 +45,7 @@ async function runTests() {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    const env = { database, states: [], send: async () => { throw Error("Unexpected network"); } };
+    const env = { database, states: [], renders: [], busyStates: [], send: async () => { throw Error("Unexpected network"); } };
     const fixtureRoot = document.createElement("div");
     fixtureRoot.innerHTML = '<button id="test-conflict-trigger"></button><dialog id="test-conflict-dialog"><p id="test-conflict-message"></p><div id="test-conflict-content"></div></dialog>';
     document.body.append(fixtureRoot);
@@ -40,9 +63,11 @@ async function runTests() {
       const confirm = text => env.confirm(text);
       let entryId = "a", currentItems = [], deletedUids = new Set(), pendingOperations = [],
         lastOperationTime = 0, busy = false, authenticated = false;
+      let syncPromise, syncRequested = false, fullSyncRequested = false, syncTimer, listRefreshPromise;
       let availableLists = [{ entry_id: "a", name: "Test" }];
-      const setBusy = value => { busy = value; };
-      const render = () => {}, renderListSelection = () => {}, loadMarketSelection = () => {};
+      const setBusy = value => { busy = value; env.busyStates.push(value); };
+      const render = () => { env.renders.push(structuredClone(currentItems)); };
+      const renderListSelection = () => {}, loadMarketSelection = () => {};
       const updateConnection = (state, message) => env.states.push({ state, message });
       const showError = error => { elements.message.textContent = error.message; };
       const sendCommand = (type, payload) => env.send(type, payload);
@@ -56,15 +81,19 @@ async function runTests() {
       ${persistence}
       ${selection}
       ${protocol}
-      return { enqueue, readQueue, saveList, loadSelectedList, synchronize, acknowledgeOperation,
+      return { enqueue, readQueue, saveList, loadSelectedList, synchronize, acknowledgeOperation, scheduleSynchronization,
         refreshSyncConflicts, openSyncConflicts, resolveSyncConflict,
         online: () => { authenticated = true; },
+        offline: () => { authenticated = false; },
+        flush: () => syncPromise,
+        lists: value => { availableLists = value; },
         select: async id => { entryId = id; await loadSelectedList(); },
-        state: () => ({ currentItems, pendingOperations, message: elements.message.textContent }) };
+        state: () => ({ currentItems, pendingOperations, message: elements.message.textContent, busy, syncing: !!syncPromise }) };
     `);
     const api = create(env);
     try { await test(api, env); }
     finally {
+      api.offline();
       fixtureRoot.remove();
       database.close();
       await new Promise((resolve, reject) => {
@@ -251,6 +280,234 @@ async function runTests() {
     const retry = [...env.conflictElements.syncConflictsContent.querySelectorAll("button")]
       .find(button => button.textContent === "Bewusst erneut anlegen");
     assert(retry.disabled, "Deleted article can be recreated");
+  });
+
+  await test("Delayed acknowledgements never block rapid changes or overwrite newer local patches", async (api, env) => {
+    const snapshots = {a:{entry_id:"a", name:"A", revision:1, items:[
+      {uid:"one", summary:"Milch", status:"needs_action", metadata:{category_id:"dairy"}},
+      {uid:"two", summary:"Brot", status:"needs_action"},
+    ]}};
+    const calls = server(env, snapshots);
+    const normal = env.send, entered = deferred(), release = deferred();
+    let held = false, requests = 0, peak = 0;
+    env.send = async (type, payload) => {
+      requests++; peak = Math.max(peak, requests);
+      try {
+        const reply = await normal(type, payload);
+        if (!held && type.endsWith("/apply_operation")) {
+          held = true; entered.resolve(); await release.promise;
+        }
+        return reply;
+      } finally { requests--; }
+    };
+    await api.saveList(snapshots.a); await api.loadSelectedList();
+    await api.enqueue({type:"update_item", uid:"one", status:"completed"});
+    api.online();
+    const syncing = api.synchronize();
+    await entered.promise;
+    const start = performance.now();
+    await Promise.all([
+      api.enqueue({type:"update_item", uid:"one", status:"needs_action"}),
+      api.enqueue({type:"update_item", uid:"one", metadata:{quantity:"2"}}),
+      api.enqueue({type:"delete_item", uid:"two"}),
+      api.enqueue({type:"add_item", uid:"three", summary:"Obst"}),
+    ]);
+    assert(performance.now() - start < 250, "Local actions waited for network");
+    assert(!api.state().busy && api.state().syncing, "Network set global UI lock");
+    assert(api.state().currentItems.find(i=>i.uid==="one").status === "needs_action", "Newer toggle not shown");
+    assert(!api.state().currentItems.some(i=>i.uid==="two"), "Delete not shown immediately");
+    const again = api.synchronize();
+    release.resolve();
+    await Promise.all([syncing, again]);
+    if (api.flush()) await api.flush();
+    assert(peak === 1, "Overlapping network syncs");
+    assert(!(await api.readQueue()).length, "Newly enqueued changes stranded");
+    assert(calls.filter(c=>c.type.endsWith("/apply_operation")).length === 5, "Action lost or sent twice");
+    assert(!env.busyStates.includes(true), "Background sync blocked UI");
+    for (const state of env.renders.slice(-3)) {
+      assert(!state.some(i=>i.uid==="two"), "Deleted item flashed back from old response");
+      assert(state.find(i=>i.uid==="one")?.status === "needs_action", "Old acknowledgement reverted newer status");
+    }
+    const item = api.state().currentItems.find(i=>i.uid==="one");
+    assert(item.metadata.category_id === "dairy" && item.metadata.quantity === "2", "Metadata overlay lost");
+  });
+
+  await test("A slow source read permits list switching and sends each action to its captured list", async (api, env) => {
+    const snapshots = {
+      a:{entry_id:"a", name:"A", revision:1, items:[{uid:"a1",summary:"Milch",status:"needs_action"}]},
+      b:{entry_id:"b", name:"B", revision:1, items:[{uid:"b1",summary:"Brot",status:"needs_action"}]},
+    };
+    api.lists([{entry_id:"a",name:"A"},{entry_id:"b",name:"B"}]);
+    await api.saveList(snapshots.a); await api.saveList(snapshots.b); await api.loadSelectedList();
+    const calls = server(env, snapshots), normal = env.send, entered = deferred(), release = deferred();
+    let held = false;
+    env.send = async (type, payload) => {
+      const reply = await normal(type, payload);
+      if (!held && type.endsWith("/sync_source")) { held = true; entered.resolve(); await release.promise; }
+      return reply;
+    };
+    api.online();
+    const syncing = api.synchronize();
+    await entered.promise;
+    await api.enqueue({type:"update_item",uid:"a1",status:"completed"});
+    await api.select("b");
+    await api.enqueue({type:"delete_item",uid:"b1"});
+    assert(!api.state().currentItems.length, "List B delete waited for source A");
+    release.resolve(); await syncing;
+    if (api.flush()) await api.flush();
+    assert(!api.state().currentItems.length, "Source A rendered into list B");
+    assert(!(await api.readQueue("a")).length && !(await api.readQueue("b")).length, "Queue stranded after switching");
+    assert(calls.filter(c=>c.type.endsWith("/apply_operation")).every(c=>
+      c.uid === "a1" ? c.entry_id === "a" : c.entry_id === "b"), "Action assigned to wrong list");
+  });
+
+  await test("Burst edits are batched and do not poll unaffected source lists", async (api, env) => {
+    const snapshots = {a:{entry_id:"a", name:"A", revision:1, items:[]}, b:{entry_id:"b", name:"B", revision:1, items:[]}};
+    api.lists([{entry_id:"a",name:"A"},{entry_id:"b",name:"B"}]);
+    await api.saveList(snapshots.a); await api.loadSelectedList();
+    const calls = server(env, snapshots);
+    api.online();
+    await Promise.all(Array.from({length:8}, (_, index)=>api.enqueue({type:"add_item",uid:`item-${index}`,summary:`Artikel ${index}`})));
+    assert(calls.length === 0, "No debounce for burst");
+    await new Promise(resolve=>setTimeout(resolve,200));
+    if (api.flush()) await api.flush();
+    assert(calls.filter(c=>c.type.endsWith("/apply_operation")).length === 8, "Burst action missing");
+    assert(calls.filter(c=>c.type.endsWith("/sync_source")).length === 1, "Source called for every action or unaffected list");
+    assert(calls.every(c=>c.entry_id === "a"), "Unaffected list polled");
+    assert(!(await api.readQueue()).length && api.state().currentItems.length === 8, "Burst not persisted");
+  });
+
+  await test("A network failure keeps concurrent changes durable and editing remains possible", async (api, env) => {
+    await api.saveList({entry_id:"a",name:"A",revision:1,items:[{uid:"one",summary:"Milch",status:"needs_action"}]});
+    await api.loadSelectedList();
+    const entered = deferred(), release = deferred();
+    env.send = async () => {entered.resolve(); await release.promise; throw Error("Network lost");};
+    api.online();
+    const outcome = api.synchronize().then(()=>false, ()=>true);
+    await entered.promise;
+    await api.enqueue({type:"update_item",uid:"one",status:"completed"});
+    api.offline(); release.resolve();
+    assert(await outcome, "Failure hidden");
+    await api.enqueue({type:"add_item",uid:"two",summary:"Brot"});
+    await api.loadSelectedList();
+    assert(!api.state().busy && !api.state().syncing, "UI stuck after error");
+    assert((await api.readQueue()).length === 2, "Unconfirmed actions lost");
+    assert(api.state().currentItems.find(i=>i.uid==="one").status === "completed", "Durable overlay lost after error/reload");
+    assert(api.state().currentItems.some(i=>i.uid==="two"), "Editing stopped after error");
+  });
+
+  await test("Real UI stays interactive during a delayed response, including check, delete and add", async (api, env) => {
+    const snapshots = {a:{entry_id:"a",name:"A",revision:1,items:[
+      {uid:"one",summary:"Milch",status:"needs_action"},
+      {uid:"two",summary:"Brot",status:"needs_action"},
+      {uid:"three",summary:"Obst",status:"needs_action"},
+    ]}};
+    await api.saveList(snapshots.a);
+    server(env, snapshots);
+    const normal = env.send, entered = deferred(), release = deferred();
+    let held = false, ui;
+    env.send = async (type, payload) => {
+      const reply = await normal(type, payload);
+      if (!held && type.endsWith("/apply_operation")) {
+        held = true; entered.resolve(); await release.promise;
+      }
+      return reply;
+    };
+    const base = "../../custom_components/einkaufszettel/www/";
+    const markup = await (await fetch(base + "app.html")).text();
+    const frame = document.createElement("iframe");
+    frame.title = "Background synchronization UI regression";
+    frame.style.cssText = "width:390px;height:844px;border:0";
+    frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+      .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+    document.body.append(frame);
+    await new Promise(resolve=>frame.onload=resolve);
+    const win=frame.contentWindow, doc=win.document;
+    const storage=new Map();
+    win.confirm=()=>true;
+    const waitFor = async predicate => {
+      const deadline=performance.now()+1500;
+      while (!predicate()) {
+        if (performance.now()>deadline) throw Error("UI operation did not complete locally");
+        await new Promise(resolve=>setTimeout(resolve,5));
+      }
+    };
+    try {
+      ui=win.Function("test","localStorage", source.replace(/initializeDesign\(\);\s*start\(\);\s*$/,"")+`
+        database=test.database; entryId="a"; availableLists=[{entry_id:"a",name:"A"}];
+        socket={readyState:WebSocket.OPEN}; authenticated=true;
+        sendCommand=(type,payload)=>test.send(type,payload);
+        return {loadSelectedList,enqueue,loadRemoteLists,
+          flush:()=>syncPromise,
+          state:()=>({busy,items:currentItems,pending:pendingOperations,syncing:!!syncPromise}),
+          stop:()=>{authenticated=false;window.clearTimeout(syncTimer);}
+        };
+      `)({database:env.database,send:(...args)=>env.send(...args)},
+        {getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)});
+      await ui.loadSelectedList();
+      doc.querySelector('[aria-label="Erledigt: Milch"]').click();
+      await entered.promise;
+      assert(ui.state().syncing && !ui.state().busy, "Real app globally busy during network wait");
+      assert(!doc.querySelector("#items").inert && !doc.querySelector("#add-form").inert, "List/form inert during sync");
+      assert(!doc.querySelector("#list-select").disabled && !doc.querySelector("#market-select").disabled, "Pickers blocked");
+      const start=performance.now();
+      doc.querySelector('[aria-label="Erledigt: Obst"]').click();
+      doc.querySelector('[aria-label="Bearbeiten: Brot"]').dispatchEvent(new win.KeyboardEvent("keydown",{key:"Delete",bubbles:true}));
+      doc.querySelector("#new-item").value="Kaffee";
+      doc.querySelector("#add-form").requestSubmit();
+      await waitFor(()=>ui.state().pending.length===4);
+      assert(performance.now()-start<250, "Real UI actions waited for delayed response");
+      assert(!ui.state().items.some(item=>item.uid==="two"), "Delete not visible while network blocked");
+      assert(ui.state().items.find(item=>item.uid==="three").status==="completed", "Checkbox not updated locally");
+      assert(doc.querySelector("#new-item").value==="", "Add form waited for network");
+      assert(doc.querySelector("#items").textContent.includes("Kaffee"), "New article missing");
+      for (const summary of ["Milch","Kaffee"]) {
+        const row=doc.querySelector(`[aria-label="Bearbeiten: ${summary}"]`).closest(".item");
+        row.dispatchEvent(new win.PointerEvent("pointerdown",{pointerId:17,button:0,clientX:200,clientY:20,bubbles:true}));
+        row.dispatchEvent(new win.PointerEvent("pointermove",{pointerId:17,clientX:90,clientY:20,bubbles:true}));
+        row.dispatchEvent(new win.PointerEvent("pointerup",{pointerId:17,clientX:90,clientY:20,bubbles:true}));
+      }
+      assert(!doc.querySelector("#items").inert && !doc.querySelector("#add-form").inert, "Swipe animations locked other controls");
+      doc.querySelector("#new-item").value="Tee";
+      doc.querySelector("#add-form").requestSubmit();
+      await waitFor(()=>ui.state().pending.length===7);
+      assert(!ui.state().items.some(item=>["Milch","Kaffee"].includes(item.summary)), "Parallel swipe deletes not applied");
+      assert(ui.state().items.some(item=>item.summary==="Tee"), "Add blocked during swipes");
+      // Hold the reply longer than an ordinary shopping action, not just one microtask.
+      await new Promise(resolve=>setTimeout(resolve,1500));
+      assert(ui.state().syncing && !doc.querySelector("#items").inert, "Long latency eventually locked UI");
+      release.resolve();
+      if(ui.flush()) await ui.flush();
+      await waitFor(()=>!ui.state().syncing);
+      assert(ui.state().pending.length===0, "UI queue not acknowledged");
+      assert(!doc.querySelector("#items").textContent.includes("Brot"), "Deleted article reappeared");
+      const listRequest=deferred(), listReply=deferred();
+      env.send=async (type,payload)=>{
+        if(type.endsWith("/get_catalog")) return {categories:[],supermarkets:[]};
+        if(type.endsWith("/get_lists")) {
+          listRequest.resolve(); await listReply.promise;
+          return [{entry_id:"a",name:"A"}];
+        }
+        return normal(type,payload);
+      };
+      const refreshing=ui.loadRemoteLists();
+      await listRequest.promise;
+      assert(!ui.state().busy && !doc.querySelector("#add-form").inert, "Manual refresh locked UI");
+      doc.querySelector("#new-item").value="Honig";
+      doc.querySelector("#add-form").requestSubmit();
+      await waitFor(()=>ui.state().items.some(item=>item.summary==="Honig"));
+      listReply.resolve();
+      await refreshing;
+      if(ui.flush()) await ui.flush();
+      assert(ui.state().items.some(item=>item.summary==="Honig"), "Manual refresh lost concurrent add");
+    } finally {
+      release.resolve();
+      if(ui) {
+        ui.stop();
+        if(ui.flush()) await ui.flush();
+      }
+      frame.remove();
+    }
   });
 
   document.querySelector("#results").textContent = results.join("\n");

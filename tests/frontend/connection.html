@@ -9,7 +9,7 @@ async function runTests() {
   const source = await (await fetch("../../custom_components/einkaufszettel/www/app.js")).text();
   const auth = source.slice(source.indexOf("function readTokens()"), source.indexOf("function base64UrlEncode"));
   const connection = source.slice(source.indexOf("function scheduleReconnect()"), source.indexOf("const waiters = new Map();"));
-  const commands = source.slice(source.indexOf("function sendCommand("), source.indexOf("async function synchronize()"));
+  const commands = source.slice(source.indexOf("function sendCommand("), source.indexOf("function scheduleSynchronization()"));
   const lifecycle = source.slice(source.indexOf("function resumeConnection()"), source.indexOf('window.addEventListener("beforeinstallprompt"'));
   function fixture() {
     const timers = new Map();

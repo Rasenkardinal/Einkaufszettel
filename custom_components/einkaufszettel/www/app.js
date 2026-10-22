@@ -86,7 +86,11 @@ let currentItems = [];
 let deletedUids = new Set();
 let pendingOperations = [];
 let busy = false;
-let swipeDeletePending = false;
+let syncPromise;
+let syncRequested = false;
+let fullSyncRequested = false;
+let syncTimer;
+let listRefreshPromise;
 let lastOperationTime = 0;
 let availableLists = [];
 let editingUid;
@@ -696,6 +700,14 @@ function openDatabase() {
   });
 }
 
+let localUpdates = Promise.resolve();
+
+function withLocalState(update) {
+  const result = localUpdates.then(update, update);
+  localUpdates = result;
+  return result;
+}
+
 function storeRequest(storeName, method, value) {
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(storeName, "readwrite");
@@ -710,14 +722,7 @@ function storeRequest(storeName, method, value) {
 }
 
 async function saveList(snapshot) {
-  const cached = snapshot ? null : await storeRequest("lists", "get");
-  await storeRequest("lists", "put", snapshot || {
-    ...cached,
-    entry_id: entryId,
-    name: elements.listName.textContent,
-    items: currentItems,
-    saved_at: Date.now(),
-  });
+  await withLocalState(() => storeRequest("lists", "put", snapshot));
 }
 
 async function readQueue(listId = entryId) {
@@ -734,26 +739,24 @@ async function readQueue(listId = entryId) {
   });
 }
 
-async function enqueue(operation) {
-  if (busy) throw new Error("Bitte warte, bis die aktuelle Aktion abgeschlossen ist.");
-  setBusy(true);
-  try {
-    const queued = {
-      ...operation,
-      id: crypto.randomUUID(),
-      entry_id: entryId,
-      created_at: (lastOperationTime = Math.max(Date.now(), lastOperationTime + 1)),
-    };
+async function enqueue(operation, listId = entryId) {
+  if (!listId) throw new Error("Bitte wähle zuerst eine Einkaufsliste aus.");
+  const queued = {
+    ...operation,
+    id: crypto.randomUUID(),
+    entry_id: listId,
+    created_at: (lastOperationTime = Math.max(Date.now(), lastOperationTime + 1)),
+  };
+  await withLocalState(async () => {
     await storeRequest("operations", "put", queued);
-    pendingOperations.push(queued);
-    applyLocalOperation(queued);
-    await saveList();
-    render();
-    updateConnection("offline");
-  } finally {
-    setBusy(false);
-  }
-  if (authenticated) await synchronize();
+    if (entryId === listId) {
+      pendingOperations.push(queued);
+      applyLocalOperation(queued);
+      render();
+      updateConnection("pending");
+    }
+  });
+  if (authenticated) scheduleSynchronization();
 }
 
 function applyLocalOperation(operation) {
@@ -782,7 +785,7 @@ function applyLocalOperation(operation) {
   }
 }
 
-function enableItemSwipeDelete(row, uid) {
+function enableItemSwipeDelete(row, uid, listId = entryId) {
   let pointer = null;
   let suppressClick = false;
   row.addEventListener("click", event => {
@@ -792,7 +795,7 @@ function enableItemSwipeDelete(row, uid) {
     event.stopPropagation();
   }, true);
   row.addEventListener("pointerdown", event => {
-    if (busy || swipeDeletePending || event.button !== 0 || row.classList.contains("swipe-removing")) return;
+    if (busy || event.button !== 0 || row.classList.contains("swipe-removing")) return;
     pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, horizontal: false };
   });
   row.addEventListener("pointermove", event => {
@@ -821,16 +824,11 @@ function enableItemSwipeDelete(row, uid) {
     suppressClick = true;
     window.setTimeout(() => { suppressClick = false; }, 0);
     row.classList.add("swipe-removing");
-    swipeDeletePending = true;
-    setBusy(busy);
     window.setTimeout(() => {
-      enqueue({ type: "delete_item", uid }).catch(error => {
+      enqueue({ type: "delete_item", uid }, listId).catch(error => {
         showError(error);
         row.classList.remove("swipe-removing");
         row.style.transform = "";
-      }).finally(() => {
-        swipeDeletePending = false;
-        setBusy(busy);
       });
     }, 180);
   });
@@ -843,9 +841,7 @@ function enableItemSwipeDelete(row, uid) {
 
 function render() {
   const pendingIds = new Set(
-    pendingOperations
-      .filter((operation) => operation.type === "add_item")
-      .map((operation) => operation.uid),
+    pendingOperations.map((operation) => operation.uid),
   );
   elements.items.replaceChildren();
   const order = supermarkets.find(market => market.id === selectedMarket)?.category_ids || [];
@@ -930,7 +926,7 @@ function render() {
       event.preventDefault();
       enqueue({ type: "delete_item", uid: item.uid }).catch(showError);
     });
-    if (pendingIds.has(item.uid)) label.title = "Wird beim nächsten Verbinden übertragen";
+    if (pendingIds.has(item.uid)) label.title = "Lokal gespeichert – Übertragung an Home Assistant ausstehend";
     main.append(checkbox, label);
     row.append(main);
     enableItemSwipeDelete(row, item.uid);
@@ -940,21 +936,21 @@ function render() {
   elements.empty.hidden = currentItems.length > 0;
   elements.syncDetail.textContent = pendingOperations.length
     ? `${pendingOperations.length} Änderung${pendingOperations.length === 1 ? "" : "en"} ausstehend`
-    : "Liste ist auf diesem Gerät gespeichert.";
+    : syncPromise ? "Listen werden im Hintergrund abgeglichen. Du kannst weiter einkaufen."
+      : "Liste ist auf diesem Gerät gespeichert.";
   setBusy(busy);
 }
 
 function setBusy(value) {
   busy = value;
-  const blocked = value || swipeDeletePending;
-  elements.setup.inert = swipeDeletePending;
+  const blocked = value;
   elements.listSelect.disabled = blocked || !availableLists.length;
   if (elements.listSelect.disabled) closeFlyout(elements.listSelect, elements.listFlyout);
   elements.marketSelect.disabled = blocked || !entryId;
   if (elements.marketSelect.disabled) closeFlyout(elements.marketSelect, elements.marketFlyout);
   elements.addForm.inert = blocked || !entryId;
-  elements.sync.disabled = blocked;
-  elements.copySource.disabled = blocked || !entryId;
+  elements.sync.disabled = blocked || !!syncPromise || !!listRefreshPromise;
+  elements.copySource.disabled = blocked || !!syncPromise || !entryId;
   elements.items.inert = blocked;
   elements.manageLists.disabled = blocked;
 }
@@ -1063,19 +1059,25 @@ async function readCachedLists() {
 }
 
 async function loadSelectedList() {
-  const cached = await storeRequest("lists", "get");
-  deletedUids = new Set(cached?.deleted_uids || []);
-  elements.listName.textContent = cached?.name ||
-    availableLists.find((list) => list.entry_id === entryId)?.name || "Liste laden";
-  currentItems = cached?.items || [];
-  pendingOperations = await readQueue();
-  for (const operation of pendingOperations) applyLocalOperation(operation);
-  lastOperationTime = pendingOperations.reduce(
-    (latest, operation) => Math.max(latest, operation.created_at), 0,
-  );
-  render();
-  renderListSelection();
-  loadMarketSelection();
+  const listId = entryId;
+  await withLocalState(async () => {
+    if (entryId !== listId) return;
+    const cached = await storeRequest("lists", "get", listId);
+    const operations = await readQueue(listId);
+    if (entryId !== listId) return;
+    deletedUids = new Set(cached?.deleted_uids || []);
+    elements.listName.textContent = cached?.name ||
+      availableLists.find((list) => list.entry_id === listId)?.name || "Liste laden";
+    currentItems = cached?.items || [];
+    pendingOperations = operations;
+    for (const operation of pendingOperations) applyLocalOperation(operation);
+    lastOperationTime = pendingOperations.reduce(
+      (latest, operation) => Math.max(latest, operation.created_at), lastOperationTime,
+    );
+    render();
+    renderListSelection();
+    loadMarketSelection();
+  });
 }
 
 async function selectList(listId) {
@@ -1516,51 +1518,93 @@ function sendCommand(type, payload = {}) {
   });
 }
 
-async function synchronize() {
+function scheduleSynchronization() {
+  syncRequested = true;
+  if (syncPromise || syncTimer !== undefined || !authenticated) return;
+  syncTimer = window.setTimeout(() => {
+    syncTimer = undefined;
+    if (busy) {
+      scheduleSynchronization();
+      return;
+    }
+    synchronize({ full: false }).catch(showError);
+  }, 150);
+}
+
+async function synchronize({ full = true } = {}) {
+  syncRequested = true;
+  fullSyncRequested = fullSyncRequested || full;
+  if (syncPromise) return syncPromise;
   if (busy || !authenticated || socket?.readyState !== WebSocket.OPEN || !entryId) return;
-  setBusy(true);
-  const warnings = [];
+  window.clearTimeout(syncTimer);
+  syncTimer = undefined;
+  syncPromise = runSynchronization();
+  setBusy(busy);
+  let completed = false;
   try {
-    const ids = new Set([entryId, ...availableLists.map((list) => list.entry_id)]);
-    for (const listId of ids) {
-      let snapshot = await sendCommand(`${DOMAIN}/get_list`, { entry_id: listId });
-      await saveList(snapshot);
-      const operations = await readQueue(listId);
-      for (const operation of operations) {
-        const changes = {};
-        for (const field of ["summary", "status", "description", "due", "metadata"]) {
-          if (operation[field] !== undefined) changes[field] = operation[field];
-        }
-        snapshot = await sendCommand(`${DOMAIN}/apply_operation`, {
-          entry_id: listId, operation_id: operation.id,
-          action: operation.type, uid: operation.uid, changes,
-        });
-        if (snapshot.ack_operation_id !== operation.id || snapshot.entry_id !== listId ||
-            !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
-            !Array.isArray(snapshot.items) ||
-            !["applied", "already_exists", "deleted"].includes(snapshot.operation_result)) {
-          throw new Error("Die Synchronisationsbestätigung passt nicht zur gesendeten Änderung.");
-        }
-        await acknowledgeOperation(snapshot, operation.id);
-        if (snapshot.operation_result === "deleted") {
-          warnings.push("Eine Änderung an einem bereits gelöschten Artikel wurde verworfen.");
-        }
-      }
-      snapshot = await sendCommand(`${DOMAIN}/sync_source`, { entry_id: listId });
-      await saveList(snapshot);
-      if (snapshot.source_error) warnings.push(`${snapshot.name}: ${snapshot.source_error}`);
-    }
+    await syncPromise;
+    completed = true;
   } finally {
-    try {
-      await loadSelectedList();
-    } finally {
-      setBusy(false);
-    }
+    syncPromise = undefined;
+    setBusy(busy);
+    if (completed && syncRequested) scheduleSynchronization();
+  }
+}
+
+async function runSynchronization() {
+  const warnings = [];
+  const sourceWarnings = new Map();
+  updateConnection(pendingOperations.length ? "pending" : "online",
+    "Listen werden im Hintergrund abgeglichen. Du kannst weiter einkaufen.");
+  try {
+    do {
+      const full = fullSyncRequested;
+      syncRequested = false;
+      fullSyncRequested = false;
+      const ids = new Set([entryId, ...availableLists.map((list) => list.entry_id)]);
+      for (const listId of ids) {
+        if (!listId) continue;
+        const operations = await readQueue(listId);
+        if (!full && !operations.length) continue;
+        if (full) {
+          await saveList(await sendCommand(`${DOMAIN}/get_list`, { entry_id: listId }));
+        }
+        for (const operation of operations) {
+          const changes = {};
+          for (const field of ["summary", "status", "description", "due", "metadata"]) {
+            if (operation[field] !== undefined) changes[field] = operation[field];
+          }
+          const snapshot = await sendCommand(`${DOMAIN}/apply_operation`, {
+            entry_id: listId, operation_id: operation.id,
+            action: operation.type, uid: operation.uid, changes,
+          });
+          if (snapshot.ack_operation_id !== operation.id || snapshot.entry_id !== listId ||
+              !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
+              !Array.isArray(snapshot.items) ||
+              !["applied", "already_exists", "deleted"].includes(snapshot.operation_result)) {
+            throw new Error("Die Synchronisationsbestätigung passt nicht zur gesendeten Änderung.");
+          }
+          await acknowledgeOperation(snapshot, operation.id);
+          if (snapshot.operation_result === "deleted") {
+            warnings.push("Eine Änderung an einem bereits gelöschten Artikel wurde verworfen.");
+          }
+        }
+        const snapshot = await sendCommand(`${DOMAIN}/sync_source`, { entry_id: listId });
+        await saveList(snapshot);
+        if (snapshot.source_error) sourceWarnings.set(listId, `${snapshot.name}: ${snapshot.source_error}`);
+        else sourceWarnings.delete(listId);
+      }
+    } while (syncRequested && !busy && authenticated && socket?.readyState === WebSocket.OPEN);
+  } finally {
+    await loadSelectedList();
     await refreshSyncConflicts();
   }
+  warnings.push(...sourceWarnings.values());
   const decisions = syncConflicts.filter(conflict => !conflict.local_only).length;
   const localItems = syncConflicts.filter(conflict => conflict.local_only).length;
-  updateConnection("online", decisions
+  updateConnection(pendingOperations.length ? "pending" : "online", pendingOperations.length
+    ? `${pendingOperations.length} Änderungen lokal gespeichert – Übertragung ausstehend.`
+    : decisions
     ? `In Home Assistant gespeichert. Für ${decisions} Artikel ist noch eine Entscheidung nötig.`
     : warnings.length
       ? "In Home Assistant gespeichert. Der Abgleich mit einer verbundenen Liste ist noch nicht vollständig."
@@ -1690,6 +1734,7 @@ async function resolveSyncConflict(conflict, action, sourceUid) {
   elements.syncConflictsContent.inert = true;
   elements.syncConflictsMessage.textContent = "Entscheidung wird in HA gespeichert …";
   try {
+    if (syncPromise) await syncPromise;
     const snapshot = await sendCommand(`${DOMAIN}/resolve_source_conflict`, {
       entry_id: conflict.entry_id, uid: conflict.uid, token: conflict.token, action,
       ...(action === "link" ? { source_uid: sourceUid } : {}),
@@ -1713,7 +1758,7 @@ async function resolveSyncConflict(conflict, action, sourceUid) {
 elements.resolveSyncConflicts.addEventListener("click", openSyncConflicts);
 
 async function acknowledgeOperation(snapshot, operationId) {
-  return new Promise((resolve, reject) => {
+  return withLocalState(() => new Promise((resolve, reject) => {
     const transaction = database.transaction(["lists", "operations"], "readwrite");
     transaction.objectStore("lists").put(snapshot);
     transaction.objectStore("operations").delete(operationId);
@@ -1721,12 +1766,24 @@ async function acknowledgeOperation(snapshot, operationId) {
     transaction.onabort = transaction.onerror = () => reject(
       transaction.error || new Error("Die Synchronisationsbestätigung konnte nicht gespeichert werden."),
     );
-  });
+  }));
 }
 
 async function loadRemoteLists() {
   if (busy) throw new Error("Bitte warte, bis die aktuelle Aktion abgeschlossen ist, und synchronisiere erneut.");
-  setBusy(true);
+  if (listRefreshPromise) return listRefreshPromise;
+  listRefreshPromise = refreshRemoteLists();
+  setBusy(busy);
+  try {
+    await listRefreshPromise;
+  } finally {
+    listRefreshPromise = undefined;
+    setBusy(busy);
+  }
+}
+
+async function refreshRemoteLists() {
+  if (syncPromise) await syncPromise;
   let marketError;
   try {
     try {
@@ -1735,10 +1792,12 @@ async function loadRemoteLists() {
       marketError = error;
     }
     const lists = await sendCommand(`${DOMAIN}/get_lists`);
-    for (const cached of await readCachedLists()) {
-      const listed = lists.find((list) => list.entry_id === cached.entry_id);
-      await saveList({ ...cached, enabled: !!listed, name: listed?.name || cached.name });
-    }
+    await withLocalState(async () => {
+      for (const cached of await readCachedLists()) {
+        const listed = lists.find((list) => list.entry_id === cached.entry_id);
+        await storeRequest("lists", "put", { ...cached, enabled: !!listed, name: listed?.name || cached.name });
+      }
+    });
     availableLists = lists;
     if (!lists.some((list) => list.entry_id === entryId)) {
       entryId = lists[0]?.entry_id || null;
@@ -1749,6 +1808,10 @@ async function loadRemoteLists() {
       else url.searchParams.delete("entry_id");
       history.replaceState(null, "", url);
       elements.openAppBrowser.href = url.href;
+      currentItems = [];
+      pendingOperations = [];
+      render();
+      if (entryId) await loadSelectedList();
     }
     renderListSelection();
     loadMarketSelection();
@@ -1761,10 +1824,6 @@ async function loadRemoteLists() {
         ? marketError.message : "Wähle unter Setup → Listen verwalten eine HA-Liste aus.";
       return;
     }
-  } finally {
-    setBusy(false);
-  }
-  try {
     await synchronize();
   } finally {
     if (marketError) showError(marketError);
