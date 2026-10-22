@@ -669,7 +669,13 @@ async function runTests() {
     const expectedStart = rect(label).left + (rect(label).width - gap) * 0.52 + gap;
     assert(Math.abs(rect(note).left - expectedStart) < 1, "Note column differs from the preview 52/48 split");
     assert(parseFloat(win.getComputedStyle(modeToggle).marginRight) === 8, "Mode button not shifted left");
-    assert(doc.querySelector(".setup-actions h2").textContent === "Einstellungen", "Settings title unchanged");
+    const settingsTitle = doc.querySelector(".setup-actions h2");
+    assert(settingsTitle.textContent === "Einstellungen", "Settings title unchanged");
+    assert(syncStyles.includes(".setup-actions h2 { padding: 10px 12px; background: color-mix(in srgb,var(--accent) 14%,var(--surface));"), "Settings header accent tint is missing");
+    const monoHeaderBackground = win.getComputedStyle(settingsTitle).backgroundColor;
+    doc.body.dataset.theme = "botanical";
+    assert(win.getComputedStyle(settingsTitle).backgroundColor !== monoHeaderBackground, "Settings header does not follow the selected theme accent");
+    doc.body.dataset.theme = "mono";
   });
   // Step the animation clock explicitly, including in headless virtual-time runs.
   const requestFrame = win.requestAnimationFrame, cancelFrame = win.cancelAnimationFrame;
