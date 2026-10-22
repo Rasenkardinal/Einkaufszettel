@@ -75,7 +75,16 @@ def test_order_and_unassignment_preserve_central_store():
     assert result["supermarkets"][0]["category_ids"] == []
 
 
-@pytest.mark.parametrize("ids", [["missing"], ["fruit", "fruit"], [None]])
+def test_market_order_accepts_uncategorized_position():
+    result = catalog.change_catalog(
+        sample(),
+        "save_market_categories",
+        {"market_id": "shop", "category_ids": ["fruit", "", "bread"]},
+    )
+    assert result["supermarkets"][0]["category_ids"] == ["fruit", "", "bread"]
+
+
+@pytest.mark.parametrize("ids", [["missing"], ["fruit", "fruit"], ["", ""], [None]])
 def test_invalid_orders_do_not_modify_input(ids):
     old = sample()
     before = deepcopy(old)

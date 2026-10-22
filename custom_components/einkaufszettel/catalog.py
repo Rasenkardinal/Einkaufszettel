@@ -58,7 +58,10 @@ def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
         order = market.get("category_ids", [])
         if (
             not isinstance(order, list)
-            or any(not isinstance(uid, str) or uid not in category_ids for uid in order)
+            or any(
+                not isinstance(uid, str) or (uid and uid not in category_ids)
+                for uid in order
+            )
             or len(set(order)) != len(order)
         ):
             raise ValueError("Ungültige Produktkategorien für einen Markt.")

@@ -107,6 +107,19 @@ async function runTests() {
     assert(doc.querySelector(".item-name .item-note"), "Item details should stay in the item-name column");
     assert(doc.querySelector(".item-name").getAttribute("aria-keyshortcuts") === "Delete", "Keyboard delete shortcut missing");
   });
+  state.supermarkets[0].category_ids = ["z", "", "b"];
+  api.render();
+  test("Shopping mode places uncategorized items at the saved market position", () => {
+    assert(headingNames().join("|") === "Zwiebeln|Ohne Kategorie|Backwaren", "Uncategorized group ignored the market position");
+  });
+  modeToggle.click();
+  test("Planning mode keeps uncategorized items at the top regardless of market order", () => {
+    assert(headingNames()[0] === "Ohne Kategorie", "Market order moved uncategorized items in planning mode");
+  });
+  modeToggle.click();
+  assert(headingNames().join("|") === "Zwiebeln|Ohne Kategorie|Backwaren", "Shopping order did not return after planning mode");
+  state.supermarkets[0].category_ids = ["z", "b"];
+  api.render();
   const itemLabel = doc.querySelector('[aria-label="Bearbeiten: Brot"]');
   const editDialog = doc.querySelector("#edit-item");
   test("Article dialog has expanded dimensions for category browsing", () => {
@@ -357,16 +370,22 @@ async function runTests() {
     api.openCatalog("market-edit", state.supermarkets[0]);
     doc.querySelector(".category-navigation").click();
     assert(doc.querySelector("#catalog-title").textContent === "Produktkategorien bearbeiten", "Wrong destination");
-    assert(doc.querySelectorAll(".move-grip").length === 2, "Drag grips missing");
+    assert(doc.querySelectorAll(".move-grip").length === 3, "Uncategorized sorting row missing");
+    assert(doc.querySelector(".category-order-row[data-category-id=''] .order-name").textContent === "3. Ohne Kategorie", "Uncategorized row was not appended by default");
+    assert(!doc.querySelector(".category-order-row[data-category-id=''] [aria-label='Ohne Kategorie aus diesem Markt entfernen']"), "Uncategorized row was removable");
     assert(doc.querySelector('[aria-label="Zwiebeln nach oben"]').disabled, "First up not disabled");
-    assert(doc.querySelector('[aria-label="Backwaren nach unten"]').disabled, "Last down not disabled");
+    assert(doc.querySelector('[aria-label="Ohne Kategorie nach unten"]').disabled, "Last down not disabled");
+    doc.querySelector('[aria-label="Ohne Kategorie nach oben"]').click();
+    assert(api.state().catalogDraft.category_ids.join() === "z,,b", "Uncategorized group could not be moved up");
+    doc.querySelector('[aria-label="Ohne Kategorie nach unten"]').click();
+    assert(api.state().catalogDraft.category_ids.join() === "z,b,", "Uncategorized group could not be moved back down");
     doc.querySelector('[aria-label="Backwaren nach oben"]').click();
-    assert(api.state().catalogDraft.category_ids.join() === "b,z", "Move failed");
+    assert(api.state().catalogDraft.category_ids.join() === "b,z,", "Move failed");
     assert(state.supermarkets[0].category_ids.join() === "z,b", "Draft leaked before save");
   });
   test("Keyboard and live pointer sorting update the same draft before release", () => {
     doc.querySelector(".move-grip").dispatchEvent(new win.KeyboardEvent("keydown", {key:"ArrowDown", bubbles:true}));
-    assert(api.state().catalogDraft.category_ids.join() === "z,b", "Keyboard move failed");
+    assert(api.state().catalogDraft.category_ids.join() === "z,b,", "Keyboard move failed");
     const list = doc.querySelector(".category-order");
     // Synthetic PointerEvents do not create a browser-owned active pointer.
     list.setPointerCapture = () => {};
@@ -376,13 +395,13 @@ async function runTests() {
     const target = list.children[1].getBoundingClientRect();
     grip.dispatchEvent(new win.PointerEvent("pointerdown", {pointerId:12, isPrimary:true, button:0, clientX:start.left + 20, clientY:start.top + 20, bubbles:true}));
     win.dispatchEvent(new win.PointerEvent("pointermove", {pointerId:12, clientX:start.left + 20, clientY:target.bottom - 5, cancelable:true}));
-    assert(api.state().catalogDraft.category_ids.join() === "b,z", "No live sorting");
+    assert(api.state().catalogDraft.category_ids.join() === "b,z,", "No live sorting");
     assert(doc.querySelector(".category-drag-ghost"), "Floating row missing");
     assert(state.supermarkets[0].category_ids.join() === "z,b", "Drag leaked before save");
     assert(list.children[0].querySelector(".secondary").disabled, "First up control stale");
     win.dispatchEvent(new win.PointerEvent("pointerup", {pointerId:12}));
     assert(!doc.querySelector(".category-drag-ghost"), "Floating row leaked");
-    assert(api.state().catalogDraft.category_ids.join() === "b,z", "Drop lost order");
+    assert(api.state().catalogDraft.category_ids.join() === "b,z,", "Drop lost order");
   });
   test("Pointer cancellation restores order; large grips and compact SVG back navigation", () => {
     const list = doc.querySelector(".category-order");
@@ -392,9 +411,9 @@ async function runTests() {
     assert(start.width >= 48 && start.height >= 48, "Grip too small");
     grip.dispatchEvent(new win.PointerEvent("pointerdown", {pointerId:13, isPrimary:true, button:0, clientX:start.left + 20, clientY:start.top + 20, bubbles:true}));
     win.dispatchEvent(new win.PointerEvent("pointermove", {pointerId:13, clientX:start.left + 20, clientY:target.bottom - 5, cancelable:true}));
-    assert(api.state().catalogDraft.category_ids.join() === "z,b", "Cancel test did not move");
+    assert(api.state().catalogDraft.category_ids.join() === "z,b,", "Cancel test did not move");
     win.dispatchEvent(new win.PointerEvent("pointercancel", {pointerId:13}));
-    assert(api.state().catalogDraft.category_ids.join() === "b,z", "Cancel did not restore");
+    assert(api.state().catalogDraft.category_ids.join() === "b,z,", "Cancel did not restore");
     assert(!doc.querySelector(".category-drag-ghost"), "Cancel leaked ghost");
     for (const back of doc.querySelectorAll(".management-back")) {
       assert(back.querySelector("svg"), "Back arrow not SVG");
@@ -402,14 +421,16 @@ async function runTests() {
     }
   });
   test("Selection comes from A-Z store, does not reset existing order", () => {
+    doc.querySelector('[aria-label="Ohne Kategorie nach oben"]').click();
+    assert(api.state().catalogDraft.category_ids.join() === "b,,z", "Could not set an intermediate uncategorized position");
     doc.querySelector("#catalog-content > .primary").click();
     const choices = [...doc.querySelectorAll(".category-choice")];
     assert(choices.map(c=>c.textContent).join() === "Äpfel,Backwaren,Zwiebeln", "Selection not A-Z");
     choices[0].querySelector("input").click();
     doc.querySelector("#catalog-content > .primary").click();
-    assert(api.state().catalogDraft.category_ids.join() === "b,z,a", "Selection reset order");
+    assert(api.state().catalogDraft.category_ids.join() === "b,,z,a", "Selection reset order or moved the uncategorized position");
     doc.querySelector('[aria-label="Zwiebeln aus diesem Markt entfernen"]').click();
-    assert(api.state().catalogDraft.category_ids.join() === "b,a", "Removal failed");
+    assert(api.state().catalogDraft.category_ids.join() === "b,,a", "Removal failed");
     assert(api.state().categories.length === 3, "Central category deleted");
   });
   test("Cancelling a discard prompt keeps unsaved order", () => {
@@ -418,7 +439,7 @@ async function runTests() {
     assert(doc.activeElement.textContent === "Weiter bearbeiten", "Safe action not focused");
     doc.querySelector('#discard-changes [value="cancel"]').click();
     assert(doc.querySelector("#catalog-title").textContent === "Produktkategorien bearbeiten", "Left dirty page");
-    assert(api.state().catalogDraft.category_ids.join() === "b,a", "Dirty order lost");
+    assert(api.state().catalogDraft.category_ids.join() === "b,,a", "Dirty order lost");
   });
   await pause(50);
   doc.querySelector("#catalog-back").click();
@@ -426,14 +447,14 @@ async function runTests() {
   discardDialog.dispatchEvent(new win.Event("cancel", { cancelable: true }));
   discardDialog.close();
   await pause(50);
-  assert(api.state().catalogDirty && api.state().catalogDraft.category_ids.join() === "b,a", "Dismissed dialog discarded the draft");
+  assert(api.state().catalogDirty && api.state().catalogDraft.category_ids.join() === "b,,a", "Dismissed dialog discarded the draft");
   results.push("PASS Dismissing the discard dialog preserves unsaved changes");
   await api.saveCatalog("save_market_categories", { market_id:"m", category_ids:api.state().catalogDraft.category_ids }, "markets");
-  assert(state.supermarkets[0].category_ids.join() === "b,a", "Order not saved");
+  assert(state.supermarkets[0].category_ids.join() === "b,,a", "Order not saved");
   assert(storage.has("einkaufszettel.catalog"), "Atomic offline catalog cache missing");
   results.push("PASS Saving persists order and offline cache");
   api.loadCachedSupermarkets();
-  assert(api.state().supermarkets[0].category_ids.join() === "b,a", "Cached order lost");
+  assert(api.state().supermarkets[0].category_ids.join() === "b,,a", "Cached order lost");
   assert(api.state().categories.length === 3, "Cached categories lost");
   results.push("PASS Atomic offline catalog reload preserves categories and order");
   fail = true;
@@ -490,7 +511,7 @@ async function runTests() {
   listName.textContent = originalName;
   frame.style.width = "390px";
   results.push("PASS Both modes keep long names and right-aligned controls separate at 320/390/700px");
-  test("Shopping row centers text, doubles note size and moves its column left", () => {
+  test("Shopping row centers text and matches preview 4 with 13px notes and a 52/48 column split", () => {
     const row = doc.querySelector('[aria-label="Bearbeiten: Brot"]').closest(".item");
     const rect = node => node.getBoundingClientRect();
     const label = row.querySelector(".item-name");
@@ -498,8 +519,10 @@ async function runTests() {
     const checkbox = row.querySelector("input");
     const note = row.querySelector(".item-note");
     assert(Math.abs((rect(title).top + rect(title).height / 2) - (rect(checkbox).top + rect(checkbox).height / 2)) < 1, "Name and checkbox not centered");
-    assert(win.getComputedStyle(note).fontSize === "22px", "Note font not doubled");
-    assert(rect(note).left < rect(label).left + rect(label).width * 0.6, "Note column too far right");
+    assert(win.getComputedStyle(note).fontSize === "13px", "Note font differs from preview 4");
+    const gap = parseFloat(win.getComputedStyle(label).columnGap);
+    const expectedStart = rect(label).left + (rect(label).width - gap) * 0.52 + gap;
+    assert(Math.abs(rect(note).left - expectedStart) < 1, "Note column differs from the preview 52/48 split");
     assert(parseFloat(win.getComputedStyle(modeToggle).marginRight) === 8, "Mode button not shifted left");
     assert(doc.querySelector(".setup-actions h2").textContent === "Einstellungen", "Settings title unchanged");
   });
@@ -546,7 +569,7 @@ async function runTests() {
   assert(win.scrollY > scrollBefore + 20, "Edge scrolling did not advance");
   assert(api.state().catalogDraft.category_ids.indexOf(order[0]) > 1, "Long list did not reorder live");
   win.dispatchEvent(new win.KeyboardEvent("keydown", {key:"Escape", cancelable:true}));
-  assert(api.state().catalogDraft.category_ids.join() === order.join(), "Escape did not restore original order");
+  assert(api.state().catalogDraft.category_ids.join() === [...order, ""].join(), "Escape did not restore original order");
   assert(!api.state().catalogDirty, "Escape did not restore clean draft");
   assert(!doc.querySelector(".category-drag-ghost"), "Escape leaked floating row");
   assert(frames.size === 0, "Escape leaked animation loop");

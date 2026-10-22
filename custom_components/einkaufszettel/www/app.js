@@ -186,7 +186,7 @@ function validateSupermarkets(value) {
     !market || typeof market.id !== "string" || !market.id ||
     typeof market.name !== "string" || !market.name.trim() || market.name.length > 100 ||
     (market.category_ids !== undefined && (!Array.isArray(market.category_ids) ||
-      market.category_ids.some(id => typeof id !== "string" || !id) ||
+      market.category_ids.some(id => typeof id !== "string") ||
       new Set(market.category_ids).size !== market.category_ids.length))
   ) || new Set(value.map(market => market.id)).size !== value.length) {
     throw new Error("Die Supermarktdaten sind ungültig. Bitte erneut mit Home Assistant verbinden.");
@@ -197,7 +197,7 @@ function validateSupermarkets(value) {
 function applyCatalog(value) {
   const nextMarkets = validateSupermarkets(value.supermarkets);
   const nextCategories = validateSupermarkets(value.categories);
-  if (nextMarkets.some(market => (market.category_ids || []).some(id => !nextCategories.some(c => c.id === id)))) {
+  if (nextMarkets.some(market => (market.category_ids || []).some(id => id && !nextCategories.some(c => c.id === id)))) {
     throw new Error("Der Katalog enthält unbekannte Markt-Kategorien. Bitte erneut laden.");
   }
   const nextProducts = value.products === undefined ? [] : value.products;
@@ -611,9 +611,15 @@ function renderMarketCategories() {
       checkbox.type = "checkbox";
       checkbox.checked = selected.has(category.id);
       checkbox.addEventListener("change", () => {
-        catalogDraft.category_ids = checkbox.checked
-          ? [...catalogDraft.category_ids, category.id]
-          : catalogDraft.category_ids.filter(id => id !== category.id);
+        if (checkbox.checked) {
+          const uncategorizedIndex = catalogDraft.category_ids.indexOf("");
+          const insertAt = uncategorizedIndex === catalogDraft.category_ids.length - 1
+            ? uncategorizedIndex
+            : catalogDraft.category_ids.length;
+          catalogDraft.category_ids.splice(insertAt, 0, category.id);
+        } else {
+          catalogDraft.category_ids = catalogDraft.category_ids.filter(id => id !== category.id);
+        }
         catalogDirty = true;
       });
       label.append(checkbox, document.createTextNode(category.name));
@@ -627,7 +633,8 @@ function renderMarketCategories() {
     catalogView = "market-select";
     renderCatalogPage();
   }, "primary full-width"));
-  content.append(paragraph("Am Griff ziehen oder mit ↑ / ↓ verschieben. × entfernt nur die Marktzuordnung."));
+  content.append(paragraph("Am Griff ziehen oder mit ↑ / ↓ verschieben. „Ohne Kategorie“ lässt sich sortieren, aber nicht entfernen."));
+  if (!catalogDraft.category_ids.includes("")) catalogDraft.category_ids.push("");
   const list = document.createElement("ol");
   list.className = "category-order";
   const move = (from, to) => {
@@ -641,13 +648,14 @@ function renderMarketCategories() {
   };
   catalogDraft.category_ids.forEach((id, index) => {
     const category = categories.find(c => c.id === id);
-    if (!category) return;
+    if (id && !category) return;
+    const categoryName = id ? category.name : "Ohne Kategorie";
     const row = document.createElement("li");
     row.className = "category-order-row";
     row.dataset.categoryId = id;
     const position = () => catalogDraft.category_ids.indexOf(id);
     const grip = button("⠿", () => {}, "text-button move-grip");
-    grip.setAttribute("aria-label", `${category.name} verschieben; Pfeiltasten hoch und runter`);
+    grip.setAttribute("aria-label", `${categoryName} verschieben; Pfeiltasten hoch und runter`);
     grip.addEventListener("keydown", event => {
       const from = position();
       const target = event.key === "ArrowUp" ? from - 1 : event.key === "ArrowDown" ? from + 1 : from;
@@ -658,25 +666,33 @@ function renderMarketCategories() {
     });
     const name = document.createElement("span");
     name.className = "order-name";
-    name.textContent = `${index + 1}. ${category.name}`;
+    name.textContent = `${index + 1}. ${categoryName}`;
     const up = button("↑", () => move(position(), position() - 1), "secondary move-button");
     up.disabled = index === 0;
-    up.setAttribute("aria-label", `${category.name} nach oben`);
+    up.setAttribute("aria-label", `${categoryName} nach oben`);
     const down = button("↓", () => move(position(), position() + 1), "secondary move-button");
     down.disabled = index === catalogDraft.category_ids.length - 1;
-    down.setAttribute("aria-label", `${category.name} nach unten`);
-    const remove = button("×", () => {
-      catalogDraft.category_ids = catalogDraft.category_ids.filter(key => key !== id);
-      catalogDirty = true;
-      renderCatalogPage();
-    }, "text-button move-button");
-    remove.setAttribute("aria-label", `${category.name} aus diesem Markt entfernen`);
-    row.append(grip, name, up, down, remove);
+    down.setAttribute("aria-label", `${categoryName} nach unten`);
+    row.append(grip, name, up, down);
+    if (id) {
+      const remove = button("×", () => {
+        catalogDraft.category_ids = catalogDraft.category_ids.filter(key => key !== id);
+        catalogDirty = true;
+        renderCatalogPage();
+      }, "text-button move-button");
+      remove.setAttribute("aria-label", `${categoryName} aus diesem Markt entfernen`);
+      row.append(remove);
+    } else {
+      const spacer = document.createElement("span");
+      spacer.className = "move-button";
+      spacer.setAttribute("aria-hidden", "true");
+      row.append(spacer);
+    }
     list.append(row);
   });
   content.append(list);
   initializeCategorySorting(list);
-  if (!catalogDraft.category_ids.length) content.append(paragraph("Noch keine Kategorien für diesen Markt ausgewählt."));
+  if (!catalogDraft.category_ids.some(Boolean)) content.append(paragraph("Noch keine Kategorien für diesen Markt ausgewählt."));
   const actions = document.createElement("div");
   actions.className = "page-actions";
   actions.append(button("Abbrechen", () => openCatalog("market-edit", supermarkets.find(m => m.id === catalogDraft.id))),
@@ -698,8 +714,9 @@ function initializeCategorySorting(list) {
     const rows = [...list.children];
     catalogDraft.category_ids = rows.map(row => row.dataset.categoryId);
     rows.forEach((row, index) => {
-      const category = categories.find(value => value.id === row.dataset.categoryId);
-      row.querySelector(".order-name").textContent = `${index + 1}. ${category.name}`;
+      const id = row.dataset.categoryId;
+      const category = categories.find(value => value.id === id);
+      row.querySelector(".order-name").textContent = `${index + 1}. ${id ? category.name : "Ohne Kategorie"}`;
       const controls = row.querySelectorAll(".secondary");
       controls[0].disabled = index === 0;
       controls[1].disabled = index === rows.length - 1;
@@ -823,7 +840,8 @@ function initializeCategorySorting(list) {
     while (scroller && !(scroller.scrollHeight > scroller.clientHeight &&
       /(auto|scroll)/.test(getComputedStyle(scroller).overflowY))) scroller = scroller.parentElement;
     drag = {
-      grip, row, id: row.dataset.categoryId, name: categories.find(value => value.id === row.dataset.categoryId).name,
+      grip, row, id: row.dataset.categoryId,
+      name: row.dataset.categoryId ? categories.find(value => value.id === row.dataset.categoryId).name : "Ohne Kategorie",
       pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
       x: event.clientX, y: event.clientY, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top,
       order: [...catalogDraft.category_ids], dirty: catalogDirty,
@@ -1125,9 +1143,19 @@ function render() {
   });
   const groupLists = new Map();
   const uncategorized = { id: "", name: "Ohne Kategorie" };
-  const displayCategories = planningMode
-    ? [uncategorized, ...sortedCategories]
-    : [...sortedCategories, uncategorized];
+  const displayCategories = planningMode ? [uncategorized, ...sortedCategories] : [...sortedCategories];
+  if (!planningMode) {
+    const uncategorizedOrder = order.indexOf("");
+    if (uncategorizedOrder < 0) {
+      displayCategories.push(uncategorized);
+    } else {
+      const insertAt = sortedCategories.findIndex(category => {
+        const categoryOrder = order.indexOf(category.id);
+        return categoryOrder < 0 || categoryOrder > uncategorizedOrder;
+      });
+      displayCategories.splice(insertAt < 0 ? displayCategories.length : insertAt, 0, uncategorized);
+    }
+  }
   for (const category of displayCategories) {
     const matches = currentItems.filter(item => {
       const id = item.metadata?.category_id;
