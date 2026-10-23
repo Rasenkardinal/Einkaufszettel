@@ -20,13 +20,27 @@ async function runTests() {
   const target = { key: "bier", name: "Bier", usage: {test: {added: 18, weeks: {}}} };
   const calls = [], results = [];
   const api = win.Function("calls", script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+    const originalOpenCatalog = openCatalog;
+    const originalRenderCatalogPage = renderCatalogPage;
     openCatalog = (view, product) => {
       catalogDraft = {...product};
       calls.push({view, key: product.key});
     };
     renderCatalogPage = () => {};
     saveCatalog = (...args) => calls.push({save: args});
-    return { productManagementRow, draft: () => catalogDraft };
+    return {
+      productManagementRow, draft: () => catalogDraft,
+      setupCatalog() {
+        openCatalog = originalOpenCatalog;
+        renderCatalogPage = originalRenderCatalogPage;
+        products = Array.from({length: 60}, (_, index) => ({
+          key: "artikel-" + index, name: "Artikel " + String(index).padStart(2, "0"), usage: {}
+        }));
+        busy = false;
+        openCatalog("products");
+      },
+      view: () => catalogView
+    };
   `)(calls);
   const assert = (condition, message) => { if (!condition) throw Error(message); };
   function test(name, action) { action(); results.push("PASS " + name); }
@@ -89,6 +103,44 @@ async function runTests() {
     row.replaceWith(long);
     assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, "Horizontal overflow");
     long.replaceWith(api.productManagementRow(source, null));
+  });
+  api.setupCatalog();
+  const page = doc.querySelector("#catalog-page");
+  const content = doc.querySelector("#catalog-content");
+  const footer = doc.querySelector("#catalog-fixed-actions");
+  const footerPosition = footer.getBoundingClientRect();
+  test("Article add action uses the existing fixed footer on a long list", () => {
+    assert(page.classList.contains("has-fixed-actions"), "Fixed-footer layout missing");
+    assert(!footer.hidden && footer.children.length === 1, "Single footer action required");
+    assert(footer.textContent.includes("Artikel hinzufügen"), "Add action missing");
+    assert(footerPosition.bottom <= win.innerHeight + 1, "Footer below viewport");
+    assert(Math.abs(footerPosition.bottom - win.innerHeight) <= 1, "Footer must sit at bottom");
+    assert(content.scrollHeight > content.clientHeight, "List must scroll internally");
+    content.scrollTop = 1200;
+    assert(Math.abs(footer.getBoundingClientRect().top - footerPosition.top) < 1, "Footer moved with list");
+    content.scrollTop = content.scrollHeight;
+    const lastRow = content.querySelector(".product-management-row:last-child").getBoundingClientRect();
+    assert(lastRow.bottom <= footerPosition.top + 1, "Footer covers the last article");
+  });
+  content.scrollTop = 1200;
+  const savedPosition = content.scrollTop;
+  content.querySelector(".product-management-row:nth-of-type(8) .product-outline-action").click();
+  test("Editing leaves fixed list layout and keeps normal form actions", () => {
+    assert(api.view() === "product-edit", "Edit view not opened");
+    assert(!page.classList.contains("has-fixed-actions") && footer.hidden, "List footer leaked into edit form");
+  });
+  doc.querySelector("#catalog-back").click();
+  await new Promise(resolve => win.requestAnimationFrame(() => win.requestAnimationFrame(resolve)));
+  test("Returning from editing restores internal list scroll and fixed footer", () => {
+    assert(api.view() === "products", "List not restored");
+    assert(Math.abs(content.scrollTop - savedPosition) < 1, "Article list scroll position lost");
+    assert(!footer.hidden && Math.abs(footer.getBoundingClientRect().top - footerPosition.top) < 1, "Footer not restored");
+  });
+  footer.querySelector("button").click();
+  test("Fixed add button opens an empty new-article form", () => {
+    assert(api.view() === "product-edit", "Add button did not open edit view");
+    assert(doc.querySelector("#product-name").value === "", "New article must start empty");
+    assert(doc.querySelector("#catalog-title").textContent === "Artikel hinzufügen", "Wrong add form");
   });
   document.querySelector("#results").textContent = results.join("\n");
 }

@@ -925,7 +925,7 @@ function renderCatalogPage() {
   content.replaceChildren();
   elements.catalogFixedActions.replaceChildren();
   elements.catalogFixedActions.hidden = true;
-  const hasFixedActions = ["market-select", "market-order", "market-bonus-card"].includes(catalogView);
+  const hasFixedActions = ["products", "market-select", "market-order", "market-bonus-card"].includes(catalogView);
   elements.catalogPage.classList.toggle("has-fixed-actions", hasFixedActions);
   elements.catalogMessage.textContent = "";
   const isMarket = catalogView?.startsWith("market");
