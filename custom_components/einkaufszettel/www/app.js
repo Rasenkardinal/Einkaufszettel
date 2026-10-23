@@ -665,7 +665,8 @@ function productManagementRow(product, suggestion) {
   const count = productUsageCount(product);
   usage.textContent = `${count} ${count === 1 ? "Verwendung" : "Verwendungen"}`;
   name.append(usage);
-  const renameButton = button("Umbenennen", () => openCatalog("product-edit", product), "primary product-rename");
+  const renameButton = button("Umbenennen", () => openCatalog("product-edit", product),
+    suggestion ? "primary product-rename" : "secondary product-outline-action");
   renameButton.setAttribute("aria-label", `${product.name} umbenennen`);
   const renameIcon = document.createElement("span");
   renameIcon.className = "product-rename-icon";
@@ -677,7 +678,8 @@ function productManagementRow(product, suggestion) {
   renameArrow.setAttribute("aria-hidden", "true");
   renameButton.prepend(renameIcon);
   renameButton.append(renameArrow);
-  heading.append(name, renameButton);
+  heading.append(name);
+  if (suggestion) heading.append(renameButton);
   row.append(heading);
   if (suggestion) {
     const suggestionBox = document.createElement("section");
@@ -715,7 +717,16 @@ function productManagementRow(product, suggestion) {
   const actions = document.createElement("div");
   actions.className = "product-management-actions";
   if (!suggestion) {
-    actions.append(button("Zusammenführen", () => openCatalog("product-merge", product)));
+    const primaryActions = document.createElement("div");
+    primaryActions.className = "product-management-buttons";
+    const mergeButton = button("Zusammenführen", () => openCatalog("product-merge", product), "secondary product-outline-action");
+    const mergeArrow = document.createElement("span");
+    mergeArrow.className = "product-rename-arrow";
+    mergeArrow.textContent = "›";
+    mergeArrow.setAttribute("aria-hidden", "true");
+    mergeButton.append(mergeArrow);
+    primaryActions.append(renameButton, mergeButton);
+    row.append(primaryActions);
   }
   const deleteButton = button("Löschen", () => {
     if (!confirm(`„${product.name}“ endgültig löschen? Der Artikel kann nur ohne Verwendungen und ohne aktive Listeneinträge gelöscht werden.`)) return;

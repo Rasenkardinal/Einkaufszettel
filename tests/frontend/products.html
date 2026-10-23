@@ -61,17 +61,34 @@ async function runTests() {
   });
   test("Manual merging and deletion remain available without a suggestion", () => {
     const plain = api.productManagementRow(source, null);
+    doc.querySelector(".app").append(plain);
     const actions = plain.querySelector(".product-management-actions");
-    assert(actions.firstElementChild.textContent === "Zusammenführen", "Manual merge missing");
+    const buttons = plain.querySelector(".product-management-buttons");
+    assert(!plain.querySelector(".product-management-heading button"), "Rename must be below the name");
+    assert(buttons.children.length === 2, "Two equal actions required");
+    for (const button of buttons.children) {
+      assert(button.classList.contains("product-outline-action"), "Outline style missing");
+      assert(button.querySelector(".product-rename-arrow").textContent === "›", "Chevron missing");
+      assert(win.getComputedStyle(button).minHeight === "44px", "Touch target too small");
+      assert(win.getComputedStyle(button).borderTopStyle === "solid", "Visible button border missing");
+    }
+    buttons.firstElementChild.click();
+    assert(calls.at(-1).view === "product-edit", "Plain rename action changed");
+    assert(buttons.lastElementChild.textContent === "Zusammenführen›", "Manual merge missing");
     assert(actions.lastElementChild.textContent === "Löschen", "Delete action missing");
     assert(actions.lastElementChild.disabled, "Used products must not be deletable");
-    actions.firstElementChild.click();
+    buttons.lastElementChild.click();
     assert(calls.at(-1).view === "product-merge", "Manual merge action changed");
+    const unused = api.productManagementRow({...source, usage: {}}, null);
+    assert(!unused.querySelector(".danger-button").disabled, "Unused product deletion must remain enabled");
+    assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, "Plain row overflows on mobile");
+    plain.remove();
   });
   test("Long article names wrap without horizontal overflow on mobile", () => {
     const long = api.productManagementRow({...source, name: "SehrlangerArtikelnameOhneLeerzeichen".repeat(3)}, target);
     row.replaceWith(long);
     assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, "Horizontal overflow");
+    long.replaceWith(api.productManagementRow(source, null));
   });
   document.querySelector("#results").textContent = results.join("\n");
 }
