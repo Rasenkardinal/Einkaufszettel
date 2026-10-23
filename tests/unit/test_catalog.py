@@ -363,3 +363,35 @@ def test_delete_product_requires_zero_usage():
     ]
     with pytest.raises(ValueError, match="Verwendungen"):
         catalog.change_catalog(data, "delete_product", {"product_key": "milch"})
+
+
+def test_dismissed_product_suggestion_is_persisted_and_idempotent():
+    data = sample()
+    data["products"] = [
+        {"key": "eier", "name": "Eier", "category_id": None},
+        {"key": "bier", "name": "Bier", "category_id": None},
+    ]
+    message = {"product_key": "eier", "similar_key": "bier"}
+
+    result = catalog.change_catalog(data, "dismiss_product_suggestion", message)
+    repeated = catalog.change_catalog(
+        result,
+        "dismiss_product_suggestion",
+        {"product_key": "bier", "similar_key": "eier"},
+    )
+
+    assert result["dismissed_product_suggestions"] == [["eier", "bier"]]
+    assert repeated["dismissed_product_suggestions"] == [["eier", "bier"]]
+    assert "dismissed_product_suggestions" not in data
+
+
+def test_dismissed_product_suggestion_rejects_unknown_articles():
+    data = sample()
+    data["products"] = [
+        {"key": "eier", "name": "Eier", "category_id": None},
+        {"key": "bier", "name": "Bier", "category_id": None},
+    ]
+    data["dismissed_product_suggestions"] = [["eier", "milch"]]
+
+    with pytest.raises(ValueError, match="Artikelsuchvorschläge"):
+        catalog.validate_catalog(data)

@@ -108,8 +108,22 @@ def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Ungültige gespeicherte Produktzuordnungen.")
     if len({product["key"] for product in products}) != len(products):
         raise ValueError("Doppelte Produkte im Katalog.")
-    aliases = data.get("product_aliases", {})
     product_keys = {product["key"] for product in products}
+    dismissed_suggestions = data.get("dismissed_product_suggestions", [])
+    if not isinstance(dismissed_suggestions, list):
+        raise ValueError("Ungültige bestätigte Artikelsuchvorschläge.")
+    dismissed_pairs = set()
+    for pair in dismissed_suggestions:
+        if (
+            not isinstance(pair, list)
+            or len(pair) != 2
+            or any(not isinstance(key, str) or key not in product_keys for key in pair)
+            or pair[0] == pair[1]
+            or frozenset(pair) in dismissed_pairs
+        ):
+            raise ValueError("Ungültige bestätigte Artikelsuchvorschläge.")
+        dismissed_pairs.add(frozenset(pair))
+    aliases = data.get("product_aliases", {})
     if not isinstance(aliases, dict) or any(
         not isinstance(key, str)
         or not key
@@ -160,7 +174,21 @@ def change_catalog(
     result = deepcopy(validate_catalog(data))
     categories = result.setdefault("categories", [])
     markets = result.setdefault("supermarkets", [])
-    if action in (
+    if action == "dismiss_product_suggestion":
+        product_keys = {product["key"] for product in result.get("products", [])}
+        source_key = msg["product_key"]
+        similar_key = msg["similar_key"]
+        if (
+            source_key == similar_key
+            or source_key not in product_keys
+            or similar_key not in product_keys
+        ):
+            raise ValueError("Die Artikelähnlichkeit wurde nicht gefunden.")
+        pair = {source_key, similar_key}
+        dismissed = result.setdefault("dismissed_product_suggestions", [])
+        if not any(set(existing) == pair for existing in dismissed):
+            dismissed.append([source_key, similar_key])
+    elif action in (
         "create_product",
         "rename_product",
         "delete_product",
@@ -267,6 +295,12 @@ def change_catalog(
                 for receipt, destination in result.get("product_events", {}).items():
                     if destination == source_key:
                         result["product_events"][receipt] = target_key
+        product_keys = {item["key"] for item in products}
+        result["dismissed_product_suggestions"] = [
+            pair
+            for pair in result.get("dismissed_product_suggestions", [])
+            if all(key in product_keys for key in pair)
+        ]
     elif action == "remove_category_product":
         product = next(
             (p for p in result.get("products", []) if p["key"] == msg["product_key"]),

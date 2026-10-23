@@ -141,6 +141,7 @@ async def _catalog_command(
         "rename_product",
         "delete_product",
         "merge_product",
+        "dismiss_product_suggestion",
     }
     entries = sorted(
         (
@@ -217,6 +218,9 @@ async def _catalog_command(
                         "categories": data.get("categories", []),
                         "products": data.get("products", []),
                         "product_aliases": data.get("product_aliases", {}),
+                        "dismissed_product_suggestions": data.get(
+                            "dismissed_product_suggestions", []
+                        ),
                     },
                 )
             except (
@@ -343,6 +347,21 @@ async def websocket_merge_product(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
     """Merge product usage and shopping-list references into another product."""
+    await _catalog_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/dismiss_product_suggestion",
+        vol.Required("product_key"): str,
+        vol.Required("similar_key"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_dismiss_product_suggestion(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Dismiss a false-positive product similarity suggestion."""
     await _catalog_command(hass, connection, msg)
 
 

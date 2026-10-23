@@ -47,6 +47,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_delete_item,
         websocket_delete_product,
         websocket_delete_supermarket,
+        websocket_dismiss_product_suggestion,
         websocket_get_catalog,
         websocket_get_list,
         websocket_get_lists,
@@ -89,6 +90,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_rename_product,
         websocket_delete_product,
         websocket_merge_product,
+        websocket_dismiss_product_suggestion,
     ):
         websocket_api.async_register_command(hass, command)
     return True

@@ -871,7 +871,7 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 24
+    assert env.websocket_api.async_register_command.call_count == 25
 
 
 async def test_product_catalog_crud_preserves_and_merges_usage(integration):
@@ -909,7 +909,10 @@ async def test_product_catalog_crud_preserves_and_merges_usage(integration):
         ],
         "product_events": {"event-a": "milhc"},
     }
-    store = env.stores["einkaufszettel.supermarkets"]
+    store = env.stores.setdefault(
+        "einkaufszettel.supermarkets",
+        SimpleNamespace(async_load=AsyncMock(), async_save=AsyncMock()),
+    )
     store.async_load.side_effect = lambda: persisted
 
     async def save(data):
@@ -960,6 +963,7 @@ async def test_product_catalog_crud_preserves_and_merges_usage(integration):
             "categories": [],
             "products": persisted["products"],
             "product_aliases": persisted["product_aliases"],
+            "dismissed_product_suggestions": [],
         },
     )
 
@@ -987,6 +991,43 @@ async def test_product_catalog_crud_preserves_and_merges_usage(integration):
         },
     )
     assert any(product["key"] == "tomaten" for product in persisted["products"])
+
+
+async def test_dismiss_product_suggestion_is_shared_in_catalog(integration):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    persisted = {
+        "products": [
+            {"key": "eier", "name": "Eier", "category_id": None},
+            {"key": "bier", "name": "Bier", "category_id": None},
+        ]
+    }
+    store = env.stores.setdefault(
+        "einkaufszettel.supermarkets",
+        SimpleNamespace(async_load=AsyncMock(), async_save=AsyncMock()),
+    )
+    store.async_load.side_effect = lambda: persisted
+
+    async def save(data):
+        nonlocal persisted
+        persisted = data
+
+    store.async_save.side_effect = save
+    await env.websocket.websocket_dismiss_product_suggestion(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/dismiss_product_suggestion",
+            "product_key": "eier",
+            "similar_key": "bier",
+        },
+    )
+
+    assert persisted["dismissed_product_suggestions"] == [["eier", "bier"]]
+    assert connection.send_result.call_args.args[1][
+        "dismissed_product_suggestions"
+    ] == [["eier", "bier"]]
 
 
 async def test_product_rename_updates_active_list_snapshots(integration):
@@ -1156,13 +1197,25 @@ async def test_catalog_shared_persistence_and_market_rename_preserves_categories
         env.hass, connection, {"id": 7, "type": "einkaufszettel/get_catalog"}
     )
     connection.send_result.assert_called_with(
-        7, {**persisted, "products": [], "product_aliases": {}}
+        7,
+        {
+            **persisted,
+            "products": [],
+            "product_aliases": {},
+            "dismissed_product_suggestions": [],
+        },
     )
     connection.send_error.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "action", ["save_category", "delete_category", "save_market_categories"]
+    "action",
+    [
+        "save_category",
+        "delete_category",
+        "save_market_categories",
+        "dismiss_product_suggestion",
+    ],
 )
 @pytest.mark.parametrize("user", [None, SimpleNamespace(is_admin=False)])
 async def test_catalog_writes_require_admin(integration, action, user):

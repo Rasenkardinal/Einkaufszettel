@@ -80,8 +80,28 @@ def test_web_app_assets_are_versioned_and_precached():
         "version"
     ]
     assert {asset.split("?v=")[1] for asset in assets} == {version}
+    assert (
+        re.search(r'<meta name="app-version" content="([^"]+)"', html).group(1)
+        == version
+    )
+    assert 'id="app-version"' in html
     for asset in assets:
         assert f'"{asset}"' in worker
+    assert "einkaufszettel-shell-v41" in worker
+    assert ".then(() => self.skipWaiting())" in worker
+    script = (webapp / "app.js").read_text(encoding="utf-8")
+    assert "serviceWorkerRegistration.update()" in script
+    assert 'addEventListener("controllerchange"' in script
+    assert "location.reload()" in script
+
+
+def test_product_management_can_dismiss_similarity_and_restore_scroll():
+    webapp = ROOT / "custom_components" / "einkaufszettel" / "www"
+    script = (webapp / "app.js").read_text(encoding="utf-8")
+    assert 'button("Kein Fehler"' in script
+    assert '"dismiss_product_suggestion"' in script
+    assert "window.scrollTo(position.x, position.y)" in script
+    assert "elements.catalogContent.scrollTop = position.content" in script
 
 
 def test_list_selection_uses_custom_flyout_not_native_popup():

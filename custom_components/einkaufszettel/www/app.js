@@ -10,6 +10,7 @@ const CATALOG_KEY = "einkaufszettel.catalog";
 const MODE_KEY = "einkaufszettel.mode";
 
 const elements = {
+  appVersion: document.querySelector("#app-version"),
   setup: document.querySelector("#setup"),
   marketSelect: document.querySelector("#market-select"),
   marketBonusCard: document.querySelector("#market-bonus-card"),
@@ -213,12 +214,15 @@ let managingSupermarkets = false;
 let categories = [];
 let products = [];
 let productAliases = {};
+let dismissedProductSuggestions = [];
 let catalogView;
 let catalogDraft;
 let catalogDirty = false;
 let catalogRequest = 0;
 let pendingProductMerge;
 let catalogProductQuery = "";
+let productManagementScroll;
+let serviceWorkerRegistration;
 const nameOrder = new Intl.Collator("de", { sensitivity: "base", numeric: true });
 
 function validateSupermarkets(value) {
@@ -263,10 +267,22 @@ function applyCatalog(value) {
         typeof target !== "string" || productNameKey(target) !== target || !productKeys.has(target))) {
     throw new Error("Die Artikelzuordnungen sind ungültig. Bitte erneut laden.");
   }
+  const dismissedSuggestions = value.dismissed_product_suggestions === undefined
+    ? [] : value.dismissed_product_suggestions;
+  if (!Array.isArray(dismissedSuggestions) || dismissedSuggestions.some(pair =>
+    !Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1] ||
+    pair.some(key => typeof key !== "string" || !productKeys.has(key)))) {
+    throw new Error("Die bestätigten Ähnlichkeitshinweise sind ungültig. Bitte erneut laden.");
+  }
+  const dismissedPairKeys = dismissedSuggestions.map(pair => JSON.stringify([...pair].sort()));
+  if (new Set(dismissedPairKeys).size !== dismissedPairKeys.length) {
+    throw new Error("Die bestätigten Ähnlichkeitshinweise sind ungültig. Bitte erneut laden.");
+  }
   supermarkets = nextMarkets;
   categories = nextCategories;
   products = nextProducts;
   productAliases = aliases;
+  dismissedProductSuggestions = dismissedSuggestions;
 }
 
 function productNameKey(name) {
@@ -317,7 +333,13 @@ function applyProductCategories() {
 }
 
 function cacheCatalog() {
-  localStorage.setItem(CATALOG_KEY, JSON.stringify({ supermarkets, categories, products, product_aliases: productAliases }));
+  localStorage.setItem(CATALOG_KEY, JSON.stringify({
+    supermarkets,
+    categories,
+    products,
+    product_aliases: productAliases,
+    dismissed_product_suggestions: dismissedProductSuggestions,
+  }));
 }
 
 function renderMarketSelection() {
@@ -454,6 +476,7 @@ function leaveManagement() {
   catalogRequest++;
   catalogDirty = false;
   catalogView = undefined;
+  productManagementScroll = undefined;
   elements.catalogPage.hidden = true;
   elements.listManagement.hidden = true;
   document.querySelector("main.app").hidden = false;
@@ -467,12 +490,30 @@ function openCatalog(view, record) {
     requestDiscardChanges(() => openCatalog(view, record));
     return;
   }
+  if (catalogView === "products" && view !== "products") {
+    productManagementScroll = {
+      x: window.scrollX,
+      y: window.scrollY,
+      content: elements.catalogContent.scrollTop,
+    };
+  }
+  const restoreProductScroll = view === "products" && catalogView !== "products"
+    ? productManagementScroll : null;
   cancelCategoryDrag?.();
   catalogDirty = false;
   catalogView = view;
   catalogDraft = record ? { ...record, category_ids: [...(record.category_ids || [])] } : { id: "", name: "", category_ids: [] };
   showManagementPage(elements.catalogPage);
   renderCatalogPage();
+  if (restoreProductScroll) restoreProductManagementScroll(restoreProductScroll);
+}
+
+function restoreProductManagementScroll(position) {
+  productManagementScroll = undefined;
+  window.requestAnimationFrame(() => {
+    window.scrollTo(position.x, position.y);
+    elements.catalogContent.scrollTop = position.content;
+  });
 }
 
 async function loadCatalogPage(view) {
@@ -523,6 +564,9 @@ async function openCategoryProducts(category) {
 
 async function saveCatalog(command, payload, nextView) {
   if (managingSupermarkets) return;
+  const productScroll = catalogView === "products" && nextView === "products"
+    ? { x: window.scrollX, y: window.scrollY, content: elements.catalogContent.scrollTop }
+    : nextView === "products" ? productManagementScroll : null;
   managingSupermarkets = true;
   elements.catalogContent.inert = true;
   elements.catalogFixedActions.inert = true;
@@ -532,7 +576,13 @@ async function saveCatalog(command, payload, nextView) {
   try {
     const result = await sendCommand(`${DOMAIN}/${command}`, payload);
     if (command.endsWith("supermarket")) {
-      applyCatalog({ supermarkets: result, categories, products });
+      applyCatalog({
+        supermarkets: result,
+        categories,
+        products,
+        product_aliases: productAliases,
+        dismissed_product_suggestions: dismissedProductSuggestions,
+      });
     } else {
       applyCatalog(result);
     }
@@ -557,6 +607,7 @@ async function saveCatalog(command, payload, nextView) {
       render();
       renderCatalogPage();
       elements.catalogMessage.textContent = message;
+      if (productScroll) restoreProductManagementScroll(productScroll);
     }
   }
 }
@@ -633,6 +684,12 @@ function productManagementRow(product, suggestion) {
       catalogDraft.target_key = suggestion.key;
       renderCatalogPage();
     }, "primary"));
+    suggestionBox.append(button("Kein Fehler", () => {
+      saveCatalog("dismiss_product_suggestion", {
+        product_key: product.key,
+        similar_key: suggestion.key,
+      }, "products");
+    }));
     suggestionBox.append(paragraph("Listen und Statistiken bleiben erhalten.", "product-merge-help"));
     row.append(suggestionBox);
   }
@@ -676,7 +733,9 @@ function renderProductManagement() {
   const possibleTypos = records
     .map(product => ({ product, similar: similarProduct(product) }))
     .filter(value => value.similar &&
-      productUsageCount(value.product) < productUsageCount(value.similar));
+      productUsageCount(value.product) < productUsageCount(value.similar) &&
+      !dismissedProductSuggestions.some(pair =>
+        pair.includes(value.product.key) && pair.includes(value.similar.key)));
   const suggestions = document.createElement("section");
   if (possibleTypos.length) {
     suggestions.append(paragraph("Mögliche Schreibfehler", "section-label"));
@@ -3351,6 +3410,9 @@ elements.copySource.addEventListener("click", async () => {
 function resumeConnection() {
   if (authenticated) checkConnection();
   else connect();
+  serviceWorkerRegistration?.update().catch(error => {
+    console.warn("Die Web-App-Version konnte nicht geprüft werden.", error);
+  });
 }
 
 window.addEventListener("online", resumeConnection);
@@ -3392,6 +3454,7 @@ elements.install.addEventListener("click", async () => {
 
 async function start() {
   initializeMode();
+  elements.appVersion.textContent = `v${document.querySelector('meta[name="app-version"]').content}`;
   window.setInterval(() => {
     if (authenticated && !busy && document.visibilityState === "visible") {
       synchronize().catch(showError);
@@ -3420,7 +3483,18 @@ async function start() {
     else renderListSelection();
     updateConnection(pendingOperations.length ? "pending" : "offline");
     if ("serviceWorker" in navigator) {
-      await navigator.serviceWorker.register("./service-worker.js", { scope: "./" });
+      if (navigator.serviceWorker.controller) {
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (refreshing) return;
+          refreshing = true;
+          location.reload();
+        });
+      }
+      serviceWorkerRegistration = await navigator.serviceWorker.register("./service-worker.js", { scope: "./" });
+      serviceWorkerRegistration.update().catch(error => {
+        console.warn("Die Web-App-Version konnte nicht geprüft werden.", error);
+      });
     }
     try {
       await completeAuthorization();

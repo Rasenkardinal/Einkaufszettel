@@ -1,8 +1,8 @@
-const CACHE_NAME = "einkaufszettel-shell-v39";
+const CACHE_NAME = "einkaufszettel-shell-v41";
 const APP_FILES = [
   "./app.html",
-  "./app.css?v=0.4.18",
-  "./app.js?v=0.4.18",
+  "./app.css?v=0.4.20",
+  "./app.js?v=0.4.20",
   "./manifest.json",
   "./icon.svg",
   "./icon-192.png",
@@ -10,8 +10,11 @@ const APP_FILES = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_FILES)));
-  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(APP_FILES))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener("activate", (event) => {
