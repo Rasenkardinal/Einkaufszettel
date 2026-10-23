@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.16">
+    <link rel="stylesheet" href="./app.css?v=0.4.18">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -40,7 +40,7 @@
           </div>
         </div>
         <details id="setup" class="setup">
-          <summary aria-label="Setup und weitere Aktionen" title="Setup und weitere Aktionen">
+          <summary aria-label="Menü öffnen" title="Menü öffnen">
             <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="12" cy="5" r="2" fill="currentColor"/>
               <circle cx="12" cy="12" r="2" fill="currentColor"/>
@@ -48,7 +48,25 @@
             </svg>
           </summary>
           <div class="setup-actions">
-            <h2>Einstellungen</h2>
+            <header class="setup-menu-header">
+              <h2>Menü</h2>
+              <p>Einkaufszettel · Verwaltung und Einstellungen</p>
+            </header>
+            <section class="setup-group" aria-labelledby="menu-manage-title">
+              <h3 id="menu-manage-title" class="setup-group-title">Verwalten</h3>
+              <button id="manage-supermarkets">Supermärkte verwalten</button>
+              <button id="manage-categories">Produktkategorien verwalten</button>
+              <button id="manage-products">Artikel verwalten</button>
+            </section>
+            <section class="setup-group" aria-labelledby="menu-settings-title">
+              <h3 id="menu-settings-title" class="setup-group-title">Einstellungen</h3>
+            <details id="menu-sync" class="setup-section">
+              <summary>Synchronisation</summary>
+              <div class="setup-submenu">
+                <button id="manage-lists">Listen verwalten</button>
+                <button id="copy-source">Quellen abgleichen</button>
+              </div>
+            </details>
             <details id="menu-installation" class="setup-section">
               <summary>Installation</summary>
               <div class="setup-submenu">
@@ -75,27 +93,8 @@
                 <p id="design-message" role="status"></p>
               </div>
             </details>
-            <details id="menu-lists" class="setup-section">
-              <summary>Listenverwaltung</summary>
-              <div class="setup-submenu">
-                <button id="manage-lists">Listen verwalten</button>
-                <button id="copy-source">Quelllisten abgleichen</button>
-                <p>HA-Listen auswählen, App-Namen vergeben und den automatischen Abgleich anstoßen.</p>
-              </div>
-            </details>
-            <details id="menu-supermarkets" class="setup-section">
-              <summary>Supermärkte verwalten</summary>
-              <div class="setup-submenu">
-                <button id="manage-supermarkets">Supermarktverwaltung öffnen</button>
-              </div>
-            </details>
-            <details id="menu-categories" class="setup-section">
-              <summary>Produktkategorien verwalten</summary>
-              <div class="setup-submenu">
-                <button id="manage-categories">Kategorieverwaltung öffnen</button>
-              </div>
-            </details>
-            <p>Offline gespeichert auf diesem Gerät</p>
+            </section>
+            <p class="setup-offline-note">App und Liste sind offline verfügbar</p>
           </div>
         </details>
       </header>
@@ -162,6 +161,16 @@
       <p id="management-message" role="status"></p>
       <div id="source-lists"></div>
     </section>
+    <dialog id="product-merge-confirm" aria-labelledby="product-merge-title" aria-describedby="product-merge-description">
+      <form method="dialog">
+        <h2 id="product-merge-title">Artikel zusammenführen?</h2>
+        <p id="product-merge-description"></p>
+        <div class="dialog-actions">
+          <button id="cancel-product-merge" class="secondary" value="cancel" autofocus>Abbrechen</button>
+          <button id="confirm-product-merge" class="primary" type="button">Zusammenführen</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="edit-item" aria-labelledby="edit-item-title">
       <form id="edit-item-form">
         <h2 id="edit-item-title" tabindex="-1" autofocus>Artikel bearbeiten</h2>
@@ -263,6 +272,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.16" defer></script>
+    <script src="./app.js?v=0.4.18" defer></script>
   </body>
 </html>

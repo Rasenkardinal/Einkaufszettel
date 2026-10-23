@@ -18,6 +18,7 @@ const elements = {
   marketFlyout: document.querySelector("#market-flyout"),
   marketName: document.querySelector("#market-name"),
   manageSupermarkets: document.querySelector("#manage-supermarkets"),
+  manageProducts: document.querySelector("#manage-products"),
   catalogPage: document.querySelector("#catalog-page"),
   catalogTitle: document.querySelector("#catalog-title"),
   catalogHelp: document.querySelector("#catalog-help"),
@@ -26,6 +27,9 @@ const elements = {
   catalogFixedActions: document.querySelector("#catalog-fixed-actions"),
   catalogBack: document.querySelector("#catalog-back"),
   manageCategories: document.querySelector("#manage-categories"),
+  productMergeConfirm: document.querySelector("#product-merge-confirm"),
+  productMergeDescription: document.querySelector("#product-merge-description"),
+  confirmProductMerge: document.querySelector("#confirm-product-merge"),
   designOptions: document.querySelector("#design-options"),
   designName: document.querySelector("#design-name"),
   designMessage: document.querySelector("#design-message"),
@@ -208,10 +212,13 @@ let planningMode = true;
 let managingSupermarkets = false;
 let categories = [];
 let products = [];
+let productAliases = {};
 let catalogView;
 let catalogDraft;
 let catalogDirty = false;
 let catalogRequest = 0;
+let pendingProductMerge;
+let catalogProductQuery = "";
 const nameOrder = new Intl.Collator("de", { sensitivity: "base", numeric: true });
 
 function validateSupermarkets(value) {
@@ -248,13 +255,27 @@ function applyCatalog(value) {
   ) || new Set(nextProducts.map(product => product.key)).size !== nextProducts.length) {
     throw new Error("Die Produktzuordnungen sind ungültig. Bitte erneut laden.");
   }
+  const aliases = value.product_aliases === undefined ? {} : value.product_aliases;
+  const productKeys = new Set(nextProducts.map(product => product.key));
+  if (!aliases || typeof aliases !== "object" || Array.isArray(aliases) ||
+      Object.entries(aliases).some(([key, target]) =>
+        !key || productNameKey(key) !== key || productKeys.has(key) ||
+        typeof target !== "string" || productNameKey(target) !== target || !productKeys.has(target))) {
+    throw new Error("Die Artikelzuordnungen sind ungültig. Bitte erneut laden.");
+  }
   supermarkets = nextMarkets;
   categories = nextCategories;
   products = nextProducts;
+  productAliases = aliases;
 }
 
 function productNameKey(name) {
   return name.trim().replace(/\s+/gu, " ").toLowerCase().replace(/ß/gu, "ss").replace(/ς/gu, "σ");
+}
+
+function canonicalProductKey(name) {
+  const key = productNameKey(name);
+  return productAliases[key] || key;
 }
 
 function validProductUsage(usage) {
@@ -268,21 +289,35 @@ function validProductUsage(usage) {
 }
 
 function rememberProduct(name, categoryId, categoryKnown = true) {
-  const key = productNameKey(name);
-  const product = { ...products.find(item => item.key === key), key, name, category_id: categoryId, category_known: categoryKnown };
+  const key = canonicalProductKey(name);
+  const known = products.find(item => item.key === key);
+  const product = {
+    ...known,
+    key,
+    name: known?.name || name,
+    category_id: categoryId,
+    category_known: categoryKnown,
+  };
   products = [...products.filter(item => item.key !== key), product];
 }
 
 function applyProductCategories() {
   currentItems = currentItems.map(item => {
-    const product = products.find(record => record.key === productNameKey(item.summary));
-    return product && product.category_known !== false
-      ? { ...item, metadata: { ...item.metadata, category_id: product.category_id } } : item;
+    const key = canonicalProductKey(item.summary);
+    const product = products.find(record => record.key === key);
+    if (!product) return item;
+    return {
+      ...item,
+      summary: product.name,
+      ...(product.category_known !== false
+        ? { metadata: { ...item.metadata, category_id: product.category_id } }
+        : {}),
+    };
   });
 }
 
 function cacheCatalog() {
-  localStorage.setItem(CATALOG_KEY, JSON.stringify({ supermarkets, categories, products }));
+  localStorage.setItem(CATALOG_KEY, JSON.stringify({ supermarkets, categories, products, product_aliases: productAliases }));
 }
 
 function renderMarketSelection() {
@@ -359,7 +394,7 @@ async function refreshSupermarkets() {
 function replayProductAssignments(operations) {
   for (const operation of operations) {
     if (operation.type === "add_item" && operation.summary) {
-      const known = products.find(product => product.key === productNameKey(operation.summary));
+      const known = products.find(product => product.key === canonicalProductKey(operation.summary));
       rememberProduct(operation.summary, known?.category_id ?? null, known ? known.category_known !== false : false);
     }
     if (operation.product_name && Object.hasOwn(operation.metadata || {}, "category_id")) {
@@ -526,6 +561,273 @@ async function saveCatalog(command, payload, nextView) {
   }
 }
 
+function productUsageCount(product) {
+  return Object.values(product.usage || {}).reduce(
+    (total, stats) => total + Math.max(stats.added, Object.values(stats.weeks).reduce((sum, count) => sum + count, 0)),
+    0,
+  );
+}
+
+function productEditDistance(first, second) {
+  const previous = Array.from({ length: second.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= first.length; row++) {
+    let diagonal = previous[0];
+    previous[0] = row;
+    for (let column = 1; column <= second.length; column++) {
+      const above = previous[column];
+      previous[column] = Math.min(
+        previous[column] + 1,
+        previous[column - 1] + 1,
+        diagonal + (first[row - 1] === second[column - 1] ? 0 : 1),
+      );
+      diagonal = above;
+    }
+  }
+  return previous[second.length];
+}
+
+function similarProduct(product) {
+  const matches = products.filter(candidate => candidate.key !== product.key)
+    .map(candidate => ({
+      product: candidate,
+      distance: productEditDistance(product.key, candidate.key),
+    }))
+    .sort((a, b) => a.distance - b.distance || nameOrder.compare(a.product.name, b.product.name));
+  if (!matches.length) return null;
+  const [best, next] = matches;
+  const threshold = Math.max(1, Math.floor(Math.max(product.key.length, best.product.key.length) * 0.22));
+  if (best.distance > threshold || next?.distance === best.distance) return null;
+  return best.product;
+}
+
+function productManagementRow(product, suggestion) {
+  const row = document.createElement("article");
+  row.className = "product-management-row";
+  row.dataset.productName = product.name.toLocaleLowerCase("de");
+  const heading = document.createElement("div");
+  heading.className = "product-management-heading";
+  const name = document.createElement("span");
+  name.className = "product-management-name";
+  name.append(document.createTextNode(product.name));
+  const usage = document.createElement("span");
+  usage.className = "product-management-usage";
+  const count = productUsageCount(product);
+  usage.textContent = `${count} ${count === 1 ? "Verwendung" : "Verwendungen"}`;
+  name.append(usage);
+  heading.append(name);
+  row.append(heading);
+  if (suggestion) {
+    const suggestionBox = document.createElement("section");
+    suggestionBox.className = "product-similar";
+    suggestionBox.append(paragraph("Ähnlicher Artikel gefunden", "product-similar-label"));
+    const target = document.createElement("div");
+    target.className = "product-similar-target";
+    const targetName = document.createElement("strong");
+    targetName.textContent = suggestion.name;
+    const targetUsage = document.createElement("span");
+    const targetCount = productUsageCount(suggestion);
+    targetUsage.textContent = `${targetCount} ${targetCount === 1 ? "Verwendung" : "Verwendungen"}`;
+    target.append(targetName, targetUsage);
+    suggestionBox.append(target, button("Zusammenführen …", () => {
+      openCatalog("product-merge", product);
+      catalogDraft.target_key = suggestion.key;
+      renderCatalogPage();
+    }, "primary"));
+    suggestionBox.append(paragraph("Listen und Statistiken bleiben erhalten.", "product-merge-help"));
+    row.append(suggestionBox);
+  }
+  const actions = document.createElement("div");
+  actions.className = "product-management-actions";
+  actions.append(
+    button("Umbenennen", () => openCatalog("product-edit", product)),
+    button("Zusammenführen", () => openCatalog("product-merge", product)),
+  );
+  const deleteButton = button("Löschen", () => {
+    if (!confirm(`„${product.name}“ endgültig löschen? Der Artikel kann nur ohne Verwendungen und ohne aktive Listeneinträge gelöscht werden.`)) return;
+    saveCatalog("delete_product", { product_key: product.key }, "products");
+  }, "secondary danger-button");
+  deleteButton.disabled = count > 0;
+  deleteButton.title = count
+    ? "Artikel mit Verwendungen müssen zusammengeführt werden, damit die Statistik erhalten bleibt."
+    : "Nur Artikel ohne Verwendungen können gelöscht werden.";
+  actions.append(deleteButton);
+  row.append(actions);
+  return row;
+}
+
+function renderProductManagement() {
+  elements.catalogTitle.textContent = "Artikel verwalten";
+  elements.catalogHelp.textContent = "Artikel und Suchvorschläge für alle Listen. Umbenennen und Zusammenführen übernehmen auch die bisherige Statistik. Verwendete Artikel können nicht gelöscht werden.";
+  const search = document.createElement("input");
+  search.className = "product-search";
+  search.type = "search";
+  search.placeholder = "Artikel suchen …";
+  search.setAttribute("aria-label", "Artikel suchen");
+  search.autocomplete = "off";
+  search.value = catalogProductQuery;
+  const count = document.createElement("p");
+  count.className = "product-list-summary";
+  const updateCount = () => {
+    const query = productNameKey(catalogProductQuery);
+    const visible = records.filter(product => productNameKey(product.name).includes(query)).length;
+    count.textContent = `${visible} Artikel`;
+  };
+  const records = [...products].sort((a, b) => nameOrder.compare(a.name, b.name));
+  const possibleTypos = records
+    .map(product => ({ product, similar: similarProduct(product) }))
+    .filter(value => value.similar &&
+      productUsageCount(value.product) < productUsageCount(value.similar));
+  const suggestions = document.createElement("section");
+  if (possibleTypos.length) {
+    suggestions.append(paragraph("Mögliche Schreibfehler", "section-label"));
+    for (const { product, similar } of possibleTypos) {
+      suggestions.append(productManagementRow(product, similar));
+    }
+  }
+  const list = document.createElement("section");
+  list.append(paragraph("Alle Artikel", "section-label"));
+  for (const product of records) list.append(productManagementRow(product));
+  const empty = paragraph("Noch keine Artikel im Katalog angelegt.");
+  empty.hidden = records.length > 0;
+  elements.catalogContent.append(search, count, suggestions, list, empty);
+  search.addEventListener("input", () => {
+    catalogProductQuery = search.value;
+    const query = productNameKey(catalogProductQuery);
+    elements.catalogContent.querySelectorAll(".product-management-row").forEach(row => {
+      row.hidden = !productNameKey(row.dataset.productName).includes(query);
+    });
+    updateCount();
+  });
+  updateCount();
+  elements.catalogFixedActions.append(
+    button("＋ Artikel hinzufügen", () => openCatalog("product-edit", { key: "", name: "" }), "primary"),
+  );
+  elements.catalogFixedActions.hidden = false;
+}
+
+function renderProductEdit() {
+  const product = products.find(item => item.key === catalogDraft.key);
+  const creating = !catalogDraft.key;
+  if (!creating && !product) {
+    elements.catalogMessage.textContent = "Der Artikel wurde inzwischen geändert. Bitte die Übersicht neu öffnen.";
+    return;
+  }
+  elements.catalogTitle.textContent = creating ? "Artikel hinzufügen" : "Artikel umbenennen";
+  elements.catalogHelp.textContent = creating
+    ? "Lege einen Artikel für Suchvorschläge an. Er wird noch keiner Einkaufsliste hinzugefügt."
+    : `${catalogDraft.name} · ${productUsageCount(product)} Verwendungen. Der neue Name wird auch in bestehenden Listen und Statistiken übernommen.`;
+  const form = document.createElement("form");
+  form.className = "management-form";
+  const label = document.createElement("label");
+  label.htmlFor = "product-name";
+  label.textContent = "Artikelname";
+  const input = document.createElement("input");
+  input.id = "product-name";
+  input.required = true;
+  input.maxLength = 200;
+  input.autocomplete = "off";
+  input.value = creating ? "" : catalogDraft.name;
+  input.addEventListener("input", () => {
+    catalogDraft.name = input.value;
+    catalogDirty = true;
+  });
+  const actions = document.createElement("div");
+  actions.className = "page-actions";
+  const save = button("Speichern", () => {}, "primary");
+  save.type = "submit";
+  actions.append(button("Abbrechen", () => openCatalog("products")), save);
+  form.append(label, input, actions);
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const name = input.value.trim();
+    if (!name) {
+      input.setCustomValidity("Bitte gib einen Namen ein.");
+      input.reportValidity();
+      return;
+    }
+    saveCatalog(
+      creating ? "create_product" : "rename_product",
+      creating ? { name } : { product_key: product.key, name },
+      "products",
+    );
+  });
+  elements.catalogContent.append(form);
+}
+
+function renderProductMerge() {
+  const source = products.find(item => item.key === catalogDraft.key);
+  if (!source) {
+    elements.catalogMessage.textContent = "Der Artikel wurde inzwischen geändert. Bitte die Übersicht neu öffnen.";
+    return;
+  }
+  elements.catalogTitle.textContent = "Artikel zusammenführen";
+  elements.catalogHelp.textContent = "Wähle den Artikelnamen, der künftig in Listen, Statistik und Suchvorschlägen verwendet wird.";
+  const form = document.createElement("form");
+  form.className = "management-form";
+  const label = document.createElement("label");
+  label.htmlFor = "product-merge-target";
+  label.textContent = "Behalten als";
+  const select = document.createElement("select");
+  select.id = "product-merge-target";
+  select.required = true;
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Zielartikel auswählen …";
+  select.append(placeholder);
+  for (const product of [...products].filter(item => item.key !== source.key)
+    .sort((a, b) => nameOrder.compare(a.name, b.name))) {
+    const option = document.createElement("option");
+    option.value = product.key;
+    option.textContent = product.name;
+    option.selected = product.key === catalogDraft.target_key;
+    select.append(option);
+  }
+  const preview = paragraph("Wähle einen Zielartikel, um die Statistikübernahme anzusehen.", "product-merge-preview");
+  const updatePreview = () => {
+    const target = products.find(item => item.key === select.value);
+    preview.replaceChildren();
+    if (!target) {
+      preview.textContent = "Wähle einen Zielartikel, um die Statistikübernahme anzusehen.";
+      return;
+    }
+    const sourceCount = productUsageCount(source);
+    const targetCount = productUsageCount(target);
+    const text = document.createElement("span");
+    text.append(
+      document.createTextNode(`${sourceCount} ${sourceCount === 1 ? "Verwendung" : "Verwendungen"} von `),
+    );
+    const sourceName = document.createElement("strong");
+    sourceName.textContent = source.name;
+    const targetName = document.createElement("strong");
+    targetName.textContent = target.name;
+    text.append(sourceName, document.createTextNode(" gehen zu "), targetName,
+      document.createTextNode(`. Danach hat der Zielartikel ${sourceCount + targetCount} Verwendungen. Listen und Statistik bleiben erhalten.`));
+    preview.append(text);
+  };
+  select.addEventListener("change", updatePreview);
+  updatePreview();
+  const actions = document.createElement("div");
+  actions.className = "page-actions";
+  const submit = button("Zusammenführen …", () => {}, "primary");
+  submit.type = "submit";
+  actions.append(button("Abbrechen", () => openCatalog("products")), submit);
+  form.append(label, select, preview, actions);
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const target = products.find(item => item.key === select.value);
+    if (!target) {
+      select.setCustomValidity("Bitte wähle einen Zielartikel.");
+      select.reportValidity();
+      return;
+    }
+    pendingProductMerge = { product_key: source.key, target_key: target.key };
+    elements.productMergeDescription.textContent =
+      `„${source.name}“ wird in „${target.name}“ zusammengeführt. ${productUsageCount(source)} Verwendungen werden übernommen; bestehende Listen und Statistiken bleiben erhalten.`;
+    elements.productMergeConfirm.showModal();
+  });
+  elements.catalogContent.append(form);
+}
+
 let cancelCategoryDrag;
 let marketSelectionSnapshot;
 
@@ -539,24 +841,33 @@ function renderCatalogPage() {
   elements.catalogPage.classList.toggle("has-fixed-actions", hasFixedActions);
   elements.catalogMessage.textContent = "";
   const isMarket = catalogView?.startsWith("market");
-  const isList = catalogView === "markets" || catalogView === "categories";
+  const isList = catalogView === "markets" || catalogView === "categories" || catalogView === "products";
   const noun = isMarket ? "Supermarkt" : "Kategorie";
-  elements.catalogBack.querySelector("span").textContent = isList ? "Zurück zur Liste"
+  elements.catalogBack.querySelector("span").textContent = catalogView === "products" ? "Zurück zur Liste"
+    : isList ? "Zurück zur Liste"
     : catalogView === "market-order" ? "Supermarkt bearbeiten"
     : catalogView === "market-select" ? "Marktkategorien"
     : catalogView === "market-bonus-card" ? "Bonuskarten oder APP-Codes"
     : catalogView === "category-products" ? "Kategorie bearbeiten"
+    : catalogView === "product-edit" || catalogView === "product-merge" ? "Artikel verwalten"
     : isMarket ? "Supermärkte" : "Produktkategorien";
   elements.catalogBack.onclick = () => {
     if (isList) leaveManagement();
     else if (catalogView === "category-products") openCatalog("category-edit", catalogDraft);
     else if (catalogView === "market-order" || catalogView === "market-bonus-card") openCatalog("market-edit", catalogDraft);
+    else if (catalogView === "product-edit" || catalogView === "product-merge") openCatalog("products");
     else if (catalogView === "market-select") {
       leaveMarketCategorySelection(false);
     } else openCatalog(isMarket ? "markets" : "categories");
   };
   elements.catalogHelp.textContent = "Gemeinsamer Katalog für alle Nutzer. Speichern benötigt eine Verbindung und HA-Administratorrechte.";
-  if (isList) {
+  if (catalogView === "products") {
+    renderProductManagement();
+  } else if (catalogView === "product-edit") {
+    renderProductEdit();
+  } else if (catalogView === "product-merge") {
+    renderProductMerge();
+  } else if (isList) {
     elements.catalogTitle.textContent = isMarket ? "Supermärkte" : "Produktkategorien";
     content.append(button(`＋ ${noun} hinzufügen`, () => openCatalog(isMarket ? "market-edit" : "category-edit"), "primary full-width"));
     const records = [...(isMarket ? supermarkets : categories)].sort((a, b) => nameOrder.compare(a.name, b.name));
@@ -1089,6 +1400,17 @@ function initializeCategorySorting(list) {
 
 elements.manageSupermarkets.addEventListener("click", () => loadCatalogPage("markets"));
 elements.manageCategories.addEventListener("click", () => loadCatalogPage("categories"));
+elements.manageProducts.addEventListener("click", () => loadCatalogPage("products"));
+elements.confirmProductMerge.addEventListener("click", () => {
+  if (!pendingProductMerge) return;
+  const payload = pendingProductMerge;
+  pendingProductMerge = undefined;
+  elements.productMergeConfirm.close();
+  saveCatalog("merge_product", payload, "products");
+});
+elements.productMergeConfirm.addEventListener("close", () => {
+  if (elements.productMergeConfirm.returnValue !== "confirm") pendingProductMerge = undefined;
+});
 document.querySelector("#lists-back").addEventListener("click", leaveManagement);
 window.addEventListener("beforeunload", event => {
   if (catalogDirty || managingSupermarkets) { event.preventDefault(); event.returnValue = ""; }
@@ -1242,7 +1564,7 @@ async function enqueue(operation, listId = entryId) {
 function applyLocalOperation(operation) {
   if (deletedUids.has(operation.uid)) return;
   if (operation.type === "add_item") {
-    const known = products.find(product => product.key === productNameKey(operation.summary));
+    const known = products.find(product => product.key === canonicalProductKey(operation.summary));
     rememberProduct(operation.summary, known?.category_id ?? null, known ? known.category_known !== false : false);
     if (!currentItems.some((item) => item.uid === operation.uid)) {
       currentItems.push({
@@ -2638,7 +2960,7 @@ async function refreshRemoteLists() {
       elements.listName.textContent = "Liste auswählen";
       render();
       elements.message.textContent = marketError
-        ? marketError.message : "Wähle unter Setup → Listen verwalten eine HA-Liste aus.";
+        ? marketError.message : "Wähle unter Einstellungen → Synchronisation → Listen verwalten eine HA-Liste aus.";
       return;
     }
     await synchronize();
@@ -2758,11 +3080,11 @@ function renderProductSuggestions() {
     closeProductSuggestions();
     return;
   }
-  const open = new Set(currentItems.filter(item => item.status === "needs_action").map(item => productNameKey(item.summary)));
+  const open = new Set(currentItems.filter(item => item.status === "needs_action").map(item => canonicalProductKey(item.summary)));
   const pending = new Map();
   for (const operation of pendingOperations) {
     if (operation.type !== "add_item") continue;
-    const key = productNameKey(operation.summary);
+    const key = canonicalProductKey(operation.summary);
     const previous = pending.get(key) || { added: 0, last_added: 0 };
     pending.set(key, { added: previous.added + 1, last_added: Math.max(previous.last_added, operation.created_at) });
   }
@@ -2796,9 +3118,9 @@ function renderProductSuggestions() {
 async function addSuggestedProduct(name) {
   const summary = name.trim();
   const listId = entryId;
-  const identity = `${listId}:${productNameKey(summary)}`;
+  const identity = `${listId}:${canonicalProductKey(summary)}`;
   if (!summary || busy || addingProducts.has(identity)) return false;
-  if (currentItems.some(item => item.status === "needs_action" && productNameKey(item.summary) === productNameKey(summary))) {
+  if (currentItems.some(item => item.status === "needs_action" && canonicalProductKey(item.summary) === canonicalProductKey(summary))) {
     closeProductSuggestions();
     showError(new Error(`„${summary}“ steht bereits offen auf der Liste.`));
     return false;
@@ -2827,7 +3149,7 @@ function productUsageForList(product, listId) {
   let lastAdded = stored?.last_added || 0;
   for (const operation of pendingOperations) {
     if (operation.type !== "add_item" || operation.entry_id !== listId ||
-      productNameKey(operation.summary) !== product.key) continue;
+      canonicalProductKey(operation.summary) !== product.key) continue;
     added += 1;
     lastAdded = Math.max(lastAdded, operation.created_at);
     const date = new Date(operation.created_at);
@@ -2844,7 +3166,7 @@ function productUsageForList(product, listId) {
 function commonItemsForCurrentList() {
   const open = new Set(currentItems
     .filter(item => item.status === "needs_action")
-    .map(item => productNameKey(item.summary)));
+    .map(item => canonicalProductKey(item.summary)));
   const ranked = products
     .filter(product => !open.has(product.key))
     .map(product => ({ product, usage: productUsageForList(product, commonItemsListId) }))

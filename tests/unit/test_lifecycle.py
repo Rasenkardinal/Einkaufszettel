@@ -871,7 +871,206 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 20
+    assert env.websocket_api.async_register_command.call_count == 24
+
+
+async def test_product_catalog_crud_preserves_and_merges_usage(integration):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_get_catalog(
+        env.hass, connection, {"id": 0, "type": "einkaufszettel/get_catalog"}
+    )
+    persisted = {
+        "products": [
+            {
+                "key": "milhc",
+                "name": "Milhc",
+                "category_id": None,
+                "usage": {
+                    "list-a": {
+                        "added": 2,
+                        "last_added": 2000,
+                        "weeks": {"2026-W42": 2},
+                    }
+                },
+            },
+            {
+                "key": "milch",
+                "name": "Milch",
+                "category_id": None,
+                "usage": {
+                    "list-a": {
+                        "added": 3,
+                        "last_added": 3000,
+                        "weeks": {"2026-W42": 1, "2026-W43": 2},
+                    }
+                },
+            },
+        ],
+        "product_events": {"event-a": "milhc"},
+    }
+    store = env.stores["einkaufszettel.supermarkets"]
+    store.async_load.side_effect = lambda: persisted
+
+    async def save(data):
+        nonlocal persisted
+        persisted = data
+
+    store.async_save.side_effect = save
+    await env.websocket.websocket_rename_product(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/rename_product",
+            "product_key": "milhc",
+            "name": "Milch",
+        },
+    )
+    connection.send_error.assert_called_with(
+        1,
+        "cannot_manage_catalog",
+        "Ein Artikel mit diesem Namen existiert bereits. Bitte führe die Artikel zusammen.",
+    )
+    assert len(persisted["products"]) == 2
+
+    await env.websocket.websocket_merge_product(
+        env.hass,
+        connection,
+        {
+            "id": 2,
+            "type": "einkaufszettel/merge_product",
+            "product_key": "milhc",
+            "target_key": "milch",
+        },
+    )
+    target = persisted["products"][0]
+    assert target["key"] == "milch"
+    assert target["usage"]["list-a"] == {
+        "added": 5,
+        "last_added": 3000,
+        "weeks": {"2026-W42": 3, "2026-W43": 2},
+    }
+    assert persisted["product_aliases"] == {"milhc": "milch"}
+    assert persisted["product_events"] == {"event-a": "milch"}
+    connection.send_result.assert_called_with(
+        2,
+        {
+            "supermarkets": [],
+            "categories": [],
+            "products": persisted["products"],
+            "product_aliases": persisted["product_aliases"],
+        },
+    )
+
+    await env.websocket.websocket_delete_product(
+        env.hass,
+        connection,
+        {
+            "id": 3,
+            "type": "einkaufszettel/delete_product",
+            "product_key": "milch",
+        },
+    )
+    connection.send_error.assert_called_with(
+        3,
+        "cannot_manage_catalog",
+        "Der Artikel hat Verwendungen. Führe ihn mit einem anderen Artikel zusammen, damit die Statistik erhalten bleibt.",
+    )
+    await env.websocket.websocket_create_product(
+        env.hass,
+        connection,
+        {
+            "id": 4,
+            "type": "einkaufszettel/create_product",
+            "name": "Tomaten",
+        },
+    )
+    assert any(product["key"] == "tomaten" for product in persisted["products"])
+
+
+async def test_product_rename_updates_active_list_snapshots(integration):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_get_catalog(
+        env.hass, connection, {"id": 0, "type": "einkaufszettel/get_catalog"}
+    )
+    persisted = {"products": [{"key": "milhc", "name": "Milhc", "category_id": None}]}
+    catalog_store = env.stores["einkaufszettel.supermarkets"]
+    catalog_store.async_load.side_effect = lambda: persisted
+
+    async def save_catalog(data):
+        nonlocal persisted
+        persisted = data
+
+    catalog_store.async_save.side_effect = save_catalog
+    item = env.model.ShoppingItem(uid="item-1", summary="Milhc")
+    list_store = SimpleNamespace(async_save=AsyncMock())
+    env.entry.runtime_data = SimpleNamespace(
+        lock=asyncio.Lock(),
+        items=[item],
+        sync={
+            "revision": 0,
+            "receipts": {},
+            "deleted": {},
+            "source": {},
+            "creates": {},
+        },
+        store=list_store,
+    )
+    env.hass.config_entries.async_entries.return_value = [env.entry]
+    await env.websocket.websocket_rename_product(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/rename_product",
+            "product_key": "milhc",
+            "name": "Milch",
+        },
+    )
+    assert env.entry.runtime_data.items[0].summary == "Milch"
+    list_store.async_save.assert_awaited_once()
+    saved_snapshot = list_store.async_save.await_args.args[0]
+    assert saved_snapshot["items"][0]["summary"] == "Milch"
+    assert saved_snapshot["sync"]["revision"] == 1
+
+
+async def test_renamed_product_alias_canonicalizes_stale_items_and_events(integration):
+    env = integration
+    product_rules = importlib.import_module(f"{env.package.__name__}.products")
+    persisted = {
+        "products": [
+            {
+                "key": "mandelmilch",
+                "name": "Mandelmilch",
+                "category_id": None,
+                "usage": {},
+            }
+        ],
+        "product_aliases": {"mandelmilhc": "mandelmilch"},
+    }
+    store = env.stores.setdefault(
+        "einkaufszettel.supermarkets",
+        SimpleNamespace(async_load=AsyncMock(), async_save=AsyncMock()),
+    )
+    store.async_load.side_effect = lambda: persisted
+
+    async def save(data):
+        nonlocal persisted
+        persisted = data
+
+    store.async_save.side_effect = save
+    result = await product_rules.apply_product_rules(
+        env.hass,
+        [env.model.ShoppingItem(uid="item-1", summary="Mandelmilhc")],
+        events=[("event-1", "Mandelmilhc")],
+        list_id="list-a",
+    )
+    assert result[0].summary == "Mandelmilch"
+    assert [product["key"] for product in persisted["products"]] == ["mandelmilch"]
+    assert persisted["products"][0]["usage"]["list-a"]["added"] == 1
+    assert persisted["product_events"]["event-1"] == "mandelmilch"
 
 
 async def test_catalog_shared_persistence_and_market_rename_preserves_categories(
@@ -956,7 +1155,9 @@ async def test_catalog_shared_persistence_and_market_rename_preserves_categories
     await env.websocket.websocket_get_catalog(
         env.hass, connection, {"id": 7, "type": "einkaufszettel/get_catalog"}
     )
-    connection.send_result.assert_called_with(7, {**persisted, "products": []})
+    connection.send_result.assert_called_with(
+        7, {**persisted, "products": [], "product_aliases": {}}
+    )
     connection.send_error.assert_not_called()
 
 

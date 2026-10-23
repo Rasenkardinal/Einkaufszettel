@@ -108,6 +108,21 @@ def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Ungültige gespeicherte Produktzuordnungen.")
     if len({product["key"] for product in products}) != len(products):
         raise ValueError("Doppelte Produkte im Katalog.")
+    aliases = data.get("product_aliases", {})
+    product_keys = {product["key"] for product in products}
+    if not isinstance(aliases, dict) or any(
+        not isinstance(key, str)
+        or not key
+        or product_key(key) != key
+        or key in product_keys
+        or not isinstance(value, str)
+        or not value
+        or product_key(value) != value
+        or key == value
+        or value not in product_keys
+        for key, value in aliases.items()
+    ):
+        raise ValueError("Ungültige Produktnamen-Zuordnungen.")
     receipts = data.get("product_operations", {})
     if not isinstance(receipts, dict) or any(
         not isinstance(key, str) or not isinstance(value, str)
@@ -145,7 +160,114 @@ def change_catalog(
     result = deepcopy(validate_catalog(data))
     categories = result.setdefault("categories", [])
     markets = result.setdefault("supermarkets", [])
-    if action == "remove_category_product":
+    if action in (
+        "create_product",
+        "rename_product",
+        "delete_product",
+        "merge_product",
+    ):
+        products = result.setdefault("products", [])
+        aliases = result.setdefault("product_aliases", {})
+        if action == "create_product":
+            name = msg["name"].strip()
+            if not name or len(name) > 200:
+                raise ValueError("Der Name muss 1–200 Zeichen enthalten.")
+            key = product_key(name)
+            if any(item["key"] == key for item in products):
+                raise ValueError("Ein Artikel mit diesem Namen existiert bereits.")
+            aliases.pop(key, None)
+            products.append(
+                {
+                    "key": key,
+                    "name": name,
+                    "category_id": None,
+                    "category_known": False,
+                }
+            )
+        else:
+            source_key = msg["product_key"]
+            product = next(
+                (item for item in products if item["key"] == source_key), None
+            )
+            if product is None:
+                raise ValueError("Der Artikel wurde nicht gefunden. Bitte neu laden.")
+            usage_count = sum(
+                max(stats["added"], sum(stats["weeks"].values()))
+                for stats in product.get("usage", {}).values()
+            )
+            if action == "rename_product":
+                name = msg["name"].strip()
+                if not name or len(name) > 200:
+                    raise ValueError("Der Name muss 1–200 Zeichen enthalten.")
+                new_key = product_key(name)
+                if new_key != source_key and any(
+                    item["key"] == new_key for item in products
+                ):
+                    raise ValueError(
+                        "Ein Artikel mit diesem Namen existiert bereits. Bitte führe die Artikel zusammen."
+                    )
+                if new_key == source_key:
+                    product["name"] = name
+                else:
+                    aliases.pop(new_key, None)
+                    for alias, target in list(aliases.items()):
+                        if target == source_key:
+                            aliases[alias] = new_key
+                    aliases[source_key] = new_key
+                    product["key"] = new_key
+                    product["name"] = name
+                    for receipt, target in result.get("product_events", {}).items():
+                        if target == source_key:
+                            result["product_events"][receipt] = new_key
+            elif action == "delete_product":
+                if usage_count:
+                    raise ValueError(
+                        "Der Artikel hat Verwendungen. Führe ihn mit einem anderen Artikel zusammen, damit die Statistik erhalten bleibt."
+                    )
+                products.remove(product)
+                result["product_aliases"] = {
+                    alias: target
+                    for alias, target in aliases.items()
+                    if alias != source_key and target != source_key
+                }
+                result["product_events"] = {
+                    receipt: target
+                    for receipt, target in result.get("product_events", {}).items()
+                    if target != source_key
+                }
+            else:
+                target_key = msg["target_key"]
+                target = next(
+                    (item for item in products if item["key"] == target_key), None
+                )
+                if target is None or target is product:
+                    raise ValueError("Bitte wähle einen anderen vorhandenen Artikel.")
+                target_usage = target.setdefault("usage", {})
+                for list_id, stats in product.get("usage", {}).items():
+                    combined = target_usage.setdefault(
+                        list_id, {"added": 0, "last_added": 0, "weeks": {}}
+                    )
+                    combined["added"] += stats["added"]
+                    combined["last_added"] = max(
+                        combined["last_added"], stats["last_added"]
+                    )
+                    for week, count in stats["weeks"].items():
+                        combined["weeks"][week] = combined["weeks"].get(week, 0) + count
+                if (
+                    target.get("category_id") is None
+                    and product.get("category_id") is not None
+                ):
+                    target["category_id"] = product["category_id"]
+                    target["category_known"] = product.get("category_known", True)
+                for alias, destination in list(aliases.items()):
+                    if destination == source_key:
+                        aliases[alias] = target_key
+                aliases[source_key] = target_key
+                products.remove(product)
+                for receipt, destination in result.get("product_events", {}).items():
+                    if destination == source_key:
+                        result["product_events"][receipt] = target_key
+    elif action == "remove_category_product":
         product = next(
             (p for p in result.get("products", []) if p["key"] == msg["product_key"]),
             None,

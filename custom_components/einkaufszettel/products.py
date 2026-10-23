@@ -23,6 +23,17 @@ async def apply_product_rules(
         catalog = deepcopy(validate_catalog(stored if stored is not None else {}))
         categories = {category["id"] for category in catalog.get("categories", [])}
         products = {product["key"]: product for product in catalog.get("products", [])}
+        aliases = catalog.get("product_aliases", {})
+
+        def canonical_item(item):
+            key = aliases.get(product_key(item.summary))
+            product = products.get(key)
+            return (
+                replace(item, summary=product["name"]) if product is not None else item
+            )
+
+        items = [canonical_item(item) for item in items]
+        seed = [canonical_item(item) for item in seed]
         # Only bootstrap names never seen before; an explicit removal stays removed.
         for item in [*seed, *items]:
             category = item.metadata.get("category_id")
@@ -43,6 +54,9 @@ async def apply_product_rules(
                 }
         if operation is not None:
             identity, name, category, payload = operation
+            name_key = aliases.get(product_key(name), product_key(name))
+            if name_key in products:
+                name = products[name_key]["name"]
             receipts = catalog.setdefault("product_operations", {})
             previous = receipts.get(identity)
             if previous is not None and previous != payload:
@@ -66,7 +80,8 @@ async def apply_product_rules(
             if not list_id:
                 raise ValueError("Die Einkaufsliste für die Produktstatistik fehlt.")
             receipts = catalog.setdefault("product_events", {})
-            key = product_key(name)
+            key = aliases.get(product_key(name), product_key(name))
+            name = products[key]["name"] if key in products else name
             previous = receipts.get(identity)
             if previous is not None:
                 continue

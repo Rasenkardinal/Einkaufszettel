@@ -123,18 +123,47 @@ def test_app_menu_groups_existing_actions():
     html = (
         ROOT / "custom_components" / "einkaufszettel" / "www" / "app.html"
     ).read_text(encoding="utf-8")
+    assert "<h2>Menü</h2>" in html
+    management = re.search(
+        r'<section class="setup-group" aria-labelledby="menu-manage-title">(.*?)</section>',
+        html,
+        re.DOTALL,
+    )
+    assert management is not None
+    assert (
+        '<h3 id="menu-manage-title" class="setup-group-title">Verwalten</h3>'
+        in management.group(1)
+    )
+    for action, label in (
+        ("manage-supermarkets", "Supermärkte verwalten"),
+        ("manage-categories", "Produktkategorien verwalten"),
+        ("manage-products", "Artikel verwalten"),
+    ):
+        assert f'id="{action}">{label}</button>' in management.group(1)
+    assert "<details" not in management.group(1)
+
+    settings = re.search(
+        r'<section class="setup-group" aria-labelledby="menu-settings-title">(.*?)</section>',
+        html,
+        re.DOTALL,
+    )
+    assert settings is not None
+    assert (
+        '<h3 id="menu-settings-title" class="setup-group-title">Einstellungen</h3>'
+        in settings.group(1)
+    )
     for section, title, actions in (
+        ("menu-sync", "Synchronisation", ("manage-lists", "copy-source")),
         (
             "menu-installation",
             "Installation",
             ("connect", "install", "open-app-browser", "open-homeassistant"),
         ),
-        ("menu-lists", "Listenverwaltung", ("manage-lists", "copy-source")),
-        ("menu-supermarkets", "Supermärkte verwalten", ("manage-supermarkets",)),
-        ("menu-categories", "Produktkategorien verwalten", ("manage-categories",)),
     ):
         match = re.search(
-            rf'<details id="{section}"[^>]*>(.*?)</details>', html, re.DOTALL
+            rf'<details id="{section}"[^>]*>(.*?)</details>',
+            settings.group(1),
+            re.DOTALL,
         )
         assert match is not None
         content = match.group(1)
@@ -142,6 +171,8 @@ def test_app_menu_groups_existing_actions():
         assert 'class="setup-submenu"' in content
         for action in actions:
             assert f'id="{action}"' in content
+    assert '<details id="menu-design" class="setup-section">' in settings.group(1)
+    assert "App und Liste sind offline verfügbar" in html
 
 
 def test_named_dark_designs_share_layout_and_storage():
@@ -210,7 +241,7 @@ def test_supermarket_picker_and_management_are_separate_from_lists():
     assert 'aria-controls="market-flyout"' in heading.group(1)
     assert 'id="market-flyout" aria-label="Supermarkt auswählen" hidden' in html
     assert '<span id="market-name">Ohne Markt</span>' in heading.group(1)
-    assert 'id="manage-supermarkets">Supermarktverwaltung öffnen</button>' in html
+    assert 'id="manage-supermarkets">Supermärkte verwalten</button>' in html
     assert 'id="catalog-page" class="app management-page" hidden' in html
     assert 'id="manage-categories"' in html
     assert '<dialog id="supermarket-management"' not in html

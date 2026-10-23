@@ -233,3 +233,133 @@ def test_invalid_product_registry_is_not_silently_reset(value):
 @pytest.mark.parametrize("name", [" MILCH ", "Milch", "milch"])
 def test_product_identity_ignores_case_and_surrounding_whitespace(name):
     assert catalog.product_key(name) == "milch"
+
+
+def test_create_product_adds_an_unassigned_catalog_entry():
+    result = catalog.change_catalog(
+        sample(), "create_product", {"name": " Hafermilch "}
+    )
+    assert result["products"] == [
+        {
+            "key": "hafermilch",
+            "name": "Hafermilch",
+            "category_id": None,
+            "category_known": False,
+        }
+    ]
+
+
+def test_rename_product_keeps_usage_and_redirects_old_names():
+    data = sample()
+    data["products"] = [
+        {
+            "key": "mandelmilhc",
+            "name": "Mandelmilhc",
+            "category_id": "fruit",
+            "usage": {
+                "list-a": {
+                    "added": 3,
+                    "last_added": 2000,
+                    "weeks": {"2026-W42": 2, "2026-W43": 1},
+                }
+            },
+        }
+    ]
+    data["product_events"] = {"event-a": "mandelmilhc"}
+    result = catalog.change_catalog(
+        data,
+        "rename_product",
+        {"product_key": "mandelmilhc", "name": "Mandelmilch"},
+    )
+    assert result["products"][0]["key"] == "mandelmilch"
+    assert result["products"][0]["name"] == "Mandelmilch"
+    assert result["products"][0]["usage"] == data["products"][0]["usage"]
+    assert result["products"][0]["category_id"] == "fruit"
+    assert result["product_aliases"] == {"mandelmilhc": "mandelmilch"}
+    assert result["product_events"] == {"event-a": "mandelmilch"}
+    assert data["products"][0]["name"] == "Mandelmilhc"
+
+
+def test_rename_product_rejects_existing_name_instead_of_losing_usage():
+    data = sample()
+    data["products"] = [
+        {"key": "milhc", "name": "Milhc", "category_id": None},
+        {"key": "milch", "name": "Milch", "category_id": None},
+    ]
+    with pytest.raises(ValueError, match="zusammen"):
+        catalog.change_catalog(
+            data, "rename_product", {"product_key": "milhc", "name": "Milch"}
+        )
+
+
+def test_merge_product_adds_list_weekly_and_total_usage():
+    data = sample()
+    data["products"] = [
+        {
+            "key": "mandelmilhc",
+            "name": "Mandelmilhc",
+            "category_id": "fruit",
+            "usage": {
+                "list-a": {
+                    "added": 3,
+                    "last_added": 2000,
+                    "weeks": {"2026-W42": 2, "2026-W43": 1},
+                },
+                "list-b": {
+                    "added": 1,
+                    "last_added": 1000,
+                    "weeks": {"2026-W43": 1},
+                },
+            },
+        },
+        {
+            "key": "mandelmilch",
+            "name": "Mandelmilch",
+            "category_id": None,
+            "usage": {
+                "list-a": {
+                    "added": 2,
+                    "last_added": 3000,
+                    "weeks": {"2026-W42": 1, "2026-W43": 1},
+                }
+            },
+        },
+    ]
+    data["product_aliases"] = {"mandelmilch-fehler": "mandelmilhc"}
+    data["product_events"] = {"event-a": "mandelmilhc"}
+    result = catalog.change_catalog(
+        data,
+        "merge_product",
+        {"product_key": "mandelmilhc", "target_key": "mandelmilch"},
+    )
+    target = result["products"][0]
+    assert target["key"] == "mandelmilch"
+    assert target["category_id"] == "fruit"
+    assert target["usage"] == {
+        "list-a": {
+            "added": 5,
+            "last_added": 3000,
+            "weeks": {"2026-W42": 3, "2026-W43": 2},
+        },
+        "list-b": {"added": 1, "last_added": 1000, "weeks": {"2026-W43": 1}},
+    }
+    assert result["product_aliases"] == {
+        "mandelmilhc": "mandelmilch",
+        "mandelmilch-fehler": "mandelmilch",
+    }
+    assert result["product_events"] == {"event-a": "mandelmilch"}
+    assert len(data["products"]) == 2
+
+
+def test_delete_product_requires_zero_usage():
+    data = sample()
+    data["products"] = [
+        {
+            "key": "milch",
+            "name": "Milch",
+            "category_id": None,
+            "usage": {"list-a": {"added": 1, "last_added": 1, "weeks": {}}},
+        }
+    ]
+    with pytest.raises(ValueError, match="Verwendungen"):
+        catalog.change_catalog(data, "delete_product", {"product_key": "milch"})

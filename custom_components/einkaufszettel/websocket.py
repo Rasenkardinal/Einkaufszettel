@@ -1,6 +1,9 @@
 """Authenticated WebSocket API for the installed shopping-list web app."""
 
 import asyncio
+from contextlib import AsyncExitStack
+from copy import deepcopy
+from dataclasses import replace
 from typing import Any
 from uuid import uuid4
 
@@ -13,7 +16,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 
-from .catalog import change_catalog, validate_catalog
+from .catalog import change_catalog, product_key, validate_catalog
 from .const import CONF_SOURCE, DOMAIN, update_signal
 from .model import ShoppingItem, append_new_items, update_item
 from .source import async_read_source
@@ -133,25 +136,103 @@ async def _catalog_command(
             msg["id"], "unauthorized", "HA-Administratorrechte erforderlich."
         )
         return
-    lock = hass.data.setdefault(f"{DOMAIN}.supermarkets_lock", asyncio.Lock())
-    async with lock:
-        store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}.supermarkets")
-        try:
-            stored = await store.async_load()
-            data = validate_catalog(stored if stored is not None else {})
-            if action != "get_catalog":
-                data = change_catalog(data, action, msg)
-                await store.async_save(data)
-            connection.send_result(
-                msg["id"],
-                {
-                    "supermarkets": data.get("supermarkets", []),
-                    "categories": data.get("categories", []),
-                    "products": data.get("products", []),
-                },
-            )
-        except (HomeAssistantError, OSError, ValueError, KeyError, TypeError) as err:
-            connection.send_error(msg["id"], "cannot_manage_catalog", str(err))
+    product_actions = {
+        "create_product",
+        "rename_product",
+        "delete_product",
+        "merge_product",
+    }
+    entries = sorted(
+        (
+            entry
+            for entry in hass.config_entries.async_entries(DOMAIN)
+            if getattr(entry, "runtime_data", None) is not None
+        ),
+        key=lambda entry: entry.entry_id,
+    )
+    catalog_saved = False
+    async with AsyncExitStack() as stack:
+        if action in product_actions:
+            for entry in entries:
+                await stack.enter_async_context(entry.runtime_data.lock)
+        lock = hass.data.setdefault(f"{DOMAIN}.supermarkets_lock", asyncio.Lock())
+        async with lock:
+            store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}.supermarkets")
+            try:
+                stored = await store.async_load()
+                data = validate_catalog(stored if stored is not None else {})
+                if action == "delete_product":
+                    source_key = msg["product_key"]
+                    if any(
+                        product_key(item.summary) == source_key
+                        for entry in entries
+                        for item in entry.runtime_data.items
+                    ):
+                        raise ValueError(
+                            "Der Artikel kommt noch in einer Einkaufsliste vor. Führe ihn mit einem anderen Artikel zusammen."
+                        )
+                if action != "get_catalog":
+                    updated = change_catalog(data, action, msg)
+                    await store.async_save(updated)
+                    catalog_saved = True
+                    if action in ("rename_product", "merge_product"):
+                        source_key = msg["product_key"]
+                        target_key = (
+                            product_key(msg["name"].strip())
+                            if action == "rename_product"
+                            else msg["target_key"]
+                        )
+                        target = next(
+                            product
+                            for product in updated["products"]
+                            if product["key"] == target_key
+                        )
+                        for entry in entries:
+                            runtime = entry.runtime_data
+                            items = [
+                                replace(item, summary=target["name"])
+                                if product_key(item.summary) == source_key
+                                else item
+                                for item in runtime.items
+                            ]
+                            if items != runtime.items:
+                                state = deepcopy(runtime.sync)
+                                state["revision"] += 1
+                                await runtime.store.async_save(
+                                    {
+                                        "items": [item.to_dict() for item in items],
+                                        "sync": state,
+                                    }
+                                )
+                                runtime.items = items
+                                runtime.sync = state
+                                async_dispatcher_send(
+                                    hass, update_signal(entry.entry_id)
+                                )
+                    data = updated
+                connection.send_result(
+                    msg["id"],
+                    {
+                        "supermarkets": data.get("supermarkets", []),
+                        "categories": data.get("categories", []),
+                        "products": data.get("products", []),
+                        "product_aliases": data.get("product_aliases", {}),
+                    },
+                )
+            except (
+                HomeAssistantError,
+                OSError,
+                ValueError,
+                KeyError,
+                TypeError,
+            ) as err:
+                detail = str(err)
+                if catalog_saved:
+                    detail = (
+                        "Der Artikelkatalog wurde gespeichert, aber nicht alle "
+                        f"Einkaufslisten konnten aktualisiert werden: {err}"
+                    )
+                connection.send_error(msg["id"], "cannot_manage_catalog", detail)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_catalog"})
@@ -204,6 +285,64 @@ async def websocket_remove_category_product(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
     """Remove a durable assignment, never an item on a shopping list."""
+    await _catalog_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/rename_product",
+        vol.Required("product_key"): str,
+        vol.Required("name"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_rename_product(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Rename a catalog product and its saved shopping-list items."""
+    await _catalog_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/create_product",
+        vol.Required("name"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_create_product(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Add a catalog product without adding it to a shopping list."""
+    await _catalog_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/delete_product",
+        vol.Required("product_key"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_delete_product(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Delete only an unused catalog product."""
+    await _catalog_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/merge_product",
+        vol.Required("product_key"): str,
+        vol.Required("target_key"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_merge_product(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Merge product usage and shopping-list references into another product."""
     await _catalog_command(hass, connection, msg)
 
 
