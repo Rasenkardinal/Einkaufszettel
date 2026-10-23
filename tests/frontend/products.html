@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Product management regression tests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Testoberfläche" style="width:390px;height:844px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all([
+    fetch(base + "app.html").then(response => response.text()),
+    fetch(base + "app.js").then(response => response.text()),
+  ]);
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document;
+  const source = { key: "eier", name: "Eier", usage: {test: {added: 32, weeks: {}}} };
+  const target = { key: "bier", name: "Bier", usage: {test: {added: 18, weeks: {}}} };
+  const calls = [], results = [];
+  const api = win.Function("calls", script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+    openCatalog = (view, product) => {
+      catalogDraft = {...product};
+      calls.push({view, key: product.key});
+    };
+    renderCatalogPage = () => {};
+    saveCatalog = (...args) => calls.push({save: args});
+    return { productManagementRow, draft: () => catalogDraft };
+  `)(calls);
+  const assert = (condition, message) => { if (!condition) throw Error(message); };
+  function test(name, action) { action(); results.push("PASS " + name); }
+  const row = api.productManagementRow(source, target);
+  doc.querySelector(".app").replaceChildren(row);
+  test("Rename is a light button beside the saved name with decorative icons", () => {
+    const rename = row.querySelector(".product-management-heading .product-rename");
+    assert(row.querySelector(".product-management-usage").textContent === "32 Verwendungen", "Usage count changed");
+    assert(rename.classList.contains("primary"), "Primary style missing");
+    assert(rename.getAttribute("aria-label") === "Eier umbenennen", "Accessible name missing");
+    assert(rename.querySelectorAll('[aria-hidden="true"]').length === 2, "Pencil or arrow missing");
+    assert(win.getComputedStyle(rename).minHeight === "44px", "Touch target too small");
+    rename.click();
+    assert(calls.at(-1).view === "product-edit", "Rename action changed");
+  });
+  test("Comparison shows both article names and only one merge action", () => {
+    const names = [...row.querySelectorAll(".product-similar-target strong")].map(el => el.textContent);
+    assert(names.join("|") === "Eier|Bier", "Comparison names incorrect");
+    assert([...row.querySelectorAll("button")].filter(el => el.textContent.includes("Zusammenführen")).length === 1, "Duplicate merge action");
+    const actions = row.querySelector(".product-similar-actions");
+    assert(actions.firstElementChild.textContent === "Kein Fehler", "Keep action must come first");
+    actions.lastElementChild.click();
+    assert(calls.at(-1).view === "product-merge", "Merge action changed");
+    assert(api.draft().target_key === "bier", "Suggested target not selected");
+  });
+  test("Kein Fehler keeps its persistent pair dismissal", () => {
+    row.querySelector(".product-similar-dismiss").click();
+    const [command, payload, view] = calls.at(-1).save;
+    assert(command === "dismiss_product_suggestion", "Wrong command");
+    assert(payload.product_key === "eier" && payload.similar_key === "bier", "Wrong pair");
+    assert(view === "products", "Wrong return view");
+  });
+  test("Manual merging and deletion remain available without a suggestion", () => {
+    const plain = api.productManagementRow(source, null);
+    const actions = plain.querySelector(".product-management-actions");
+    assert(actions.firstElementChild.textContent === "Zusammenführen", "Manual merge missing");
+    assert(actions.lastElementChild.textContent === "Löschen", "Delete action missing");
+    assert(actions.lastElementChild.disabled, "Used products must not be deletable");
+    actions.firstElementChild.click();
+    assert(calls.at(-1).view === "product-merge", "Manual merge action changed");
+  });
+  test("Long article names wrap without horizontal overflow on mobile", () => {
+    const long = api.productManagementRow({...source, name: "SehrlangerArtikelnameOhneLeerzeichen".repeat(3)}, target);
+    row.replaceWith(long);
+    assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, "Horizontal overflow");
+  });
+  document.querySelector("#results").textContent = results.join("\n");
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent = "FAIL " + error.stack;
+  throw error;
+});
+</script>
+</html>

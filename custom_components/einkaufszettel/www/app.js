@@ -665,40 +665,58 @@ function productManagementRow(product, suggestion) {
   const count = productUsageCount(product);
   usage.textContent = `${count} ${count === 1 ? "Verwendung" : "Verwendungen"}`;
   name.append(usage);
-  heading.append(name);
+  const renameButton = button("Umbenennen", () => openCatalog("product-edit", product), "primary product-rename");
+  renameButton.setAttribute("aria-label", `${product.name} umbenennen`);
+  const renameIcon = document.createElement("span");
+  renameIcon.className = "product-rename-icon";
+  renameIcon.textContent = "✎";
+  renameIcon.setAttribute("aria-hidden", "true");
+  const renameArrow = document.createElement("span");
+  renameArrow.className = "product-rename-arrow";
+  renameArrow.textContent = "›";
+  renameArrow.setAttribute("aria-hidden", "true");
+  renameButton.prepend(renameIcon);
+  renameButton.append(renameArrow);
+  heading.append(name, renameButton);
   row.append(heading);
   if (suggestion) {
     const suggestionBox = document.createElement("section");
     suggestionBox.className = "product-similar";
-    suggestionBox.append(paragraph("Ähnlicher Artikel gefunden", "product-similar-label"));
+    suggestionBox.append(paragraph("Sind diese Artikel identisch?", "product-similar-label"));
     const target = document.createElement("div");
     target.className = "product-similar-target";
+    const sourceName = document.createElement("strong");
+    sourceName.textContent = product.name;
+    const comparisonArrow = document.createElement("span");
+    comparisonArrow.className = "product-similar-arrow";
+    comparisonArrow.textContent = "↔";
+    comparisonArrow.setAttribute("aria-hidden", "true");
     const targetName = document.createElement("strong");
     targetName.textContent = suggestion.name;
-    const targetUsage = document.createElement("span");
     const targetCount = productUsageCount(suggestion);
-    targetUsage.textContent = `${targetCount} ${targetCount === 1 ? "Verwendung" : "Verwendungen"}`;
-    target.append(targetName, targetUsage);
-    suggestionBox.append(target, button("Zusammenführen …", () => {
-      openCatalog("product-merge", product);
-      catalogDraft.target_key = suggestion.key;
-      renderCatalogPage();
-    }, "primary"));
-    suggestionBox.append(button("Kein Fehler", () => {
+    targetName.title = `${targetCount} ${targetCount === 1 ? "Verwendung" : "Verwendungen"}`;
+    target.append(sourceName, comparisonArrow, targetName);
+    const suggestionActions = document.createElement("div");
+    suggestionActions.className = "product-similar-actions";
+    suggestionActions.append(button("Kein Fehler", () => {
       saveCatalog("dismiss_product_suggestion", {
         product_key: product.key,
         similar_key: suggestion.key,
       }, "products");
-    }));
-    suggestionBox.append(paragraph("Listen und Statistiken bleiben erhalten.", "product-merge-help"));
+    }, "secondary product-similar-dismiss"), button("Zusammenführen …", () => {
+      openCatalog("product-merge", product);
+      catalogDraft.target_key = suggestion.key;
+      renderCatalogPage();
+    }, "primary"));
+    suggestionBox.append(target, suggestionActions);
+    suggestionBox.append(paragraph("„Kein Fehler“ blendet diesen Vergleich dauerhaft aus.", "product-merge-help"));
     row.append(suggestionBox);
   }
   const actions = document.createElement("div");
   actions.className = "product-management-actions";
-  actions.append(
-    button("Umbenennen", () => openCatalog("product-edit", product)),
-    button("Zusammenführen", () => openCatalog("product-merge", product)),
-  );
+  if (!suggestion) {
+    actions.append(button("Zusammenführen", () => openCatalog("product-merge", product)));
+  }
   const deleteButton = button("Löschen", () => {
     if (!confirm(`„${product.name}“ endgültig löschen? Der Artikel kann nur ohne Verwendungen und ohne aktive Listeneinträge gelöscht werden.`)) return;
     saveCatalog("delete_product", { product_key: product.key }, "products");

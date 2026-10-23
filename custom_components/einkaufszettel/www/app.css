@@ -293,12 +293,18 @@ dialog h2, dialog p { margin: 0; }
 .product-management-heading { display: flex; align-items: center; gap: 10px; }
 .product-management-name { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 14px; font-weight: 650; }
 .product-management-usage { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.product-rename { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: none; padding: 0 10px; font-size: 11px; }
+.product-rename-icon { font-size: 16px; }
+.product-rename-arrow { font-size: 18px; }
 .product-management-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
 .product-management-actions button { min-height: 38px; }
 .product-similar { margin-top: 10px; padding: 10px; border: 1px solid color-mix(in srgb,var(--accent) 35%,var(--line)); border-radius: 9px; background: color-mix(in srgb,var(--accent) 7%,var(--surface)); }
 .product-similar-label { margin: 0 0 8px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.product-similar-target { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; font-weight: 650; }
-.product-similar-target span:last-child { margin-left: auto; color: var(--muted); font-size: 10px; font-weight: 400; white-space: nowrap; }
+.product-similar-target { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; font-weight: 650; }
+.product-similar-target strong { flex: 1; min-width: 0; padding: 12px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface2); text-align: center; overflow-wrap: anywhere; }
+.product-similar-arrow { flex: none; color: var(--muted); font-weight: 400; }
+.product-similar-actions { display: grid; gap: 8px; }
+.product-similar-dismiss { border: 1px solid var(--line); background: transparent; }
 .product-similar button { width: 100%; }
 .product-merge-help { margin: 6px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .product-merge-preview { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); font-size: 12px; line-height: 1.5; }
