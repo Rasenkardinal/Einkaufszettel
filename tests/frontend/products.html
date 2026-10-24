@@ -39,6 +39,21 @@ async function runTests() {
         busy = false;
         openCatalog("products");
       },
+      setupMerge(source, target) {
+        openCatalog = originalOpenCatalog;
+        renderCatalogPage = originalRenderCatalogPage;
+        products = [source, target];
+        busy = false;
+        openCatalog("product-merge", {...source, target_key: ""});
+      },
+      setupCategoryDelete() {
+        openCatalog = originalOpenCatalog;
+        renderCatalogPage = originalRenderCatalogPage;
+        categories = [{id: "backwaren", name: "Backwaren"}];
+        supermarkets = [];
+        busy = false;
+        openCatalog("category-edit", categories[0]);
+      },
       view: () => catalogView
     };
   `)(calls);
@@ -109,6 +124,43 @@ async function runTests() {
   const content = doc.querySelector("#catalog-content");
   const footer = doc.querySelector("#catalog-fixed-actions");
   const footerPosition = footer.getBoundingClientRect();
+  test("Management help stays compact until its accessible help button is opened", () => {
+    const trigger = doc.querySelector("#catalog-page .management-help-trigger");
+    const popover = doc.querySelector("#catalog-help-popover");
+    assert(!trigger.hidden && popover.hidden, "Help should start collapsed");
+    assert(doc.querySelector("#catalog-help").hidden, "Long help text still consumes space");
+    trigger.click();
+    assert(!popover.hidden && trigger.getAttribute("aria-expanded") === "true", "Help did not open accessibly");
+    assert(popover.textContent.includes("Suchvorschläge"), "Contextual help text missing");
+    doc.dispatchEvent(new win.KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
+    assert(popover.hidden && doc.activeElement === trigger, "Escape did not close help and restore focus");
+    trigger.click();
+    doc.querySelector("#catalog-title").dispatchEvent(new win.PointerEvent("pointerdown", {bubbles: true}));
+    assert(popover.hidden && trigger.getAttribute("aria-expanded") === "false", "Outside tap did not close help");
+    const listTrigger = doc.querySelector("#list-management .management-help-trigger");
+    const listPopover = doc.querySelector("#list-management-help-popover");
+    listTrigger.click();
+    assert(!listPopover.hidden && listPopover.textContent.includes("angemeldeten Nutzer"), "List management help missing");
+    listTrigger.click();
+    assert(listPopover.hidden, "List management help did not close");
+  });
+  test("Product deletion uses app confirmation and only deletes after explicit approval", () => {
+    const unused = api.productManagementRow({...source, usage: {}}, null);
+    content.append(unused);
+    const deleteButton = unused.querySelector(".danger-button");
+    deleteButton.click();
+    const dialog = doc.querySelector("#app-confirm");
+    assert(dialog.open, "App confirmation dialog did not open");
+    assert(doc.querySelector("#app-confirm-title").textContent === "Artikel löschen?", "Wrong dialog title");
+    assert(doc.querySelector("#app-confirm-description").textContent.includes("Eier"), "Article warning missing");
+    assert(!calls.some(call => call.save?.[0] === "delete_product"), "Deleted before confirmation");
+    doc.querySelector("#cancel-app-confirm").click();
+    assert(!dialog.open && !calls.some(call => call.save?.[0] === "delete_product"), "Cancel did not protect the article");
+    deleteButton.click();
+    doc.querySelector("#accept-app-confirm").click();
+    assert(calls.at(-1).save[0] === "delete_product", "Explicit confirmation did not delete");
+    unused.remove();
+  });
   test("Article add action uses the existing fixed footer on a long list", () => {
     assert(page.classList.contains("has-fixed-actions"), "Fixed-footer layout missing");
     assert(!footer.hidden && footer.children.length === 1, "Single footer action required");
@@ -141,6 +193,41 @@ async function runTests() {
     assert(api.view() === "product-edit", "Add button did not open edit view");
     assert(doc.querySelector("#product-name").value === "", "New article must start empty");
     assert(doc.querySelector("#catalog-title").textContent === "Artikel hinzufügen", "Wrong add form");
+    assert(doc.querySelector('label[for="product-name"]').classList.contains("visually-hidden"),
+      "Article field label should not consume space");
+  });
+  api.setupMerge(source, target);
+  test("Merge target uses the app picker, supports keyboard selection, and keeps the preview", () => {
+    const trigger = doc.querySelector("#product-merge-trigger");
+    const flyout = doc.querySelector("#product-merge-flyout");
+    assert(!doc.querySelector("#catalog-content select, #catalog-content input[type=radio]"), "Native selector remains");
+    assert(trigger.getAttribute("role") === "combobox", "Accessible combobox role missing");
+    trigger.focus();
+    trigger.dispatchEvent(new win.KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true}));
+    const option = doc.querySelector("#product-merge-options [role=option]");
+    assert(!flyout.hidden && doc.activeElement === option, "Keyboard did not open and focus the options");
+    option.click();
+    assert(flyout.hidden && trigger.getAttribute("aria-expanded") === "false", "Picker did not close after selection");
+    assert(doc.querySelector("#product-merge-target").value === "bier", "Target key not stored");
+    assert(doc.querySelector("#product-merge-value").textContent === "Bier", "Selected target label not shown");
+    assert(doc.querySelector(".product-merge-preview").textContent.includes("Eier") &&
+      doc.querySelector(".product-merge-preview").textContent.includes("Bier"), "Merge preview not updated");
+    doc.querySelector("#catalog-content form").requestSubmit();
+    assert(doc.querySelector("#product-merge-confirm").open, "Existing merge safety confirmation was lost");
+  });
+  api.setupCategoryDelete();
+  test("Catalog delete page keeps only a short action and opens themed safety confirmation", () => {
+    const danger = doc.querySelector(".danger-section");
+    const action = danger.querySelector("button");
+    assert(danger.textContent.trim() === "Löschen", "The form still shows a misleading delete warning");
+    assert(doc.querySelector('label[for="catalog-name"]').classList.contains("visually-hidden"),
+      "Category name label should not consume space");
+    action.click();
+    assert(doc.querySelector("#app-confirm").open, "Catalog safety confirmation missing");
+    assert(doc.querySelector("#app-confirm-title").textContent === "Kategorie löschen?", "Wrong safety title");
+    assert(doc.querySelector("#app-confirm-description").textContent.includes("Backwaren"), "Safety details missing");
+    doc.querySelector("#accept-app-confirm").click();
+    assert(calls.at(-1).save[0] === "delete_category", "Category was not deleted after approval");
   });
   document.querySelector("#results").textContent = results.join("\n");
 }

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111813">
+  <title>Einkaufszettel · Hilfetexte für alle Menüs</title>
+  <link rel="stylesheet" href="../custom_components/einkaufszettel/www/app.css">
+  <style>
+    body { background: #101010; }
+    .preview { width: min(1480px, calc(100% - 36px)); margin: auto; padding: 36px 0 56px; }
+    .intro { max-width: 900px; margin-bottom: 24px; }
+    .intro .eyebrow { margin: 0 0 10px; }
+    .intro h1 { font-size: clamp(28px, 4vw, 42px); }
+    .intro p { max-width: 780px; color: var(--muted); line-height: 1.6; }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 18px 0 28px; }
+    .controls label { color: var(--muted); font-size: 13px; }
+    .controls select, .controls button { min-height: 42px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: inherit; }
+    .controls button:hover { background: var(--surface2); }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); align-items: start; gap: 22px; }
+    .preview-card { min-width: 0; overflow: hidden; border: 1px solid #303030; border-radius: 15px; background: #181818; }
+    .preview-card > h2 { min-height: 50px; margin: 0; padding: 16px 17px 12px; border-bottom: 1px solid #303030; font-size: 14px; }
+    .screen { position: relative; height: 430px; margin: 12px; padding: 18px 16px; overflow: hidden; isolation: isolate; border: 1px solid var(--line); border-radius: 15px; background: radial-gradient(ellipse at 50% 0, var(--glow), transparent 60%), var(--bg); color: #f4f4f4; }
+    .screen-brand { color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .15em; }
+    .screen-back { margin: 16px 0 10px; color: var(--muted); font-size: 11px; }
+    .screen-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 44px; }
+    .screen-heading h3 { min-width: 0; margin: 0; font-size: clamp(20px, 2vw, 25px); line-height: 1.16; letter-spacing: -.035em; overflow-wrap: anywhere; }
+    .help-trigger { display: grid; place-items: center; width: 42px; height: 42px; flex: none; padding: 0; border: 0; border-radius: 9px; background: transparent; color: var(--muted); }
+    .help-trigger svg { width: 21px; height: 21px; }
+    .help-trigger:hover, .help-trigger[aria-expanded="true"] { background: var(--surface2); color: var(--accent); }
+    .help-bubble { position: absolute; top: 118px; right: 15px; left: 15px; z-index: 5; padding: 14px 15px; border: 1px solid var(--line); border-radius: 8px; border-top: 2px solid var(--accent); background: var(--surface); box-shadow: 0 12px 30px #0009; color: #f4f4f4; font-size: 12px; line-height: 1.55; }
+    .help-bubble::before { position: absolute; top: -7px; right: 16px; width: 10px; height: 10px; transform: rotate(45deg); border-top: 1px solid var(--accent); border-left: 1px solid var(--accent); background: var(--surface); content: ""; }
+    .help-bubble p { margin: 0; }
+    .help-bubble strong { display: block; margin-bottom: 5px; color: var(--accent); font-size: 12px; }
+    .screen-body { margin-top: 14px; }
+    .screen .primary { width: 100%; min-height: 42px; font-size: 12px; }
+    .screen .management-list { gap: 7px; margin-top: 12px; }
+    .screen .management-link { min-height: 46px; padding: 12px; font-size: 12px; }
+    .screen .management-form { gap: 9px; }
+    .demo-field { height: 42px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); font-size: 12px; }
+    .demo-row { display: flex; align-items: center; justify-content: space-between; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; }
+    .demo-row + .demo-row { margin-top: 6px; }
+    .demo-row span:last-child { color: var(--muted); }
+    .demo-row .primary { width: auto; min-height: 32px; padding: 0 10px; }
+    .demo-note { margin: 8px 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .demo-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+    .demo-actions button { min-height: 38px; }
+    .demo-search { margin: 12px 0 8px; }
+    .screen-footer { position: absolute; right: 0; bottom: 0; left: 0; display: flex; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 9px; }
+    .caption { min-height: 38px; margin: 0; padding: 0 15px 14px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .help-bubble[hidden] { display: none; }
+    .preview-note { margin-top: 24px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    @media (max-width: 600px) {
+      .preview { width: calc(100% - 24px); padding-top: 24px; }
+      .gallery { grid-template-columns: 1fr; max-width: 430px; margin: auto; }
+      .screen { height: 410px; }
+    }
+  </style>
+</head>
+<body data-theme="botanical">
+  <main class="preview">
+    <header class="intro">
+      <p class="eyebrow">EINKAUFSZETTEL · UI-VORSCHAU</p>
+      <h1>Hilfe auf Abruf – für alle Menüs</h1>
+      <p>Konzept Nr. 03 aus der Supermarkt-Vorschau: kleines Fragezeichen rechts neben dem Seitentitel. Die Erklärung erscheint erst nach Antippen in einer kompakten Sprechblase. Zum Vergleich sind die Hilfen anfangs geöffnet.</p>
+      <div class="controls">
+        <label for="theme">App-Farbschema</label>
+        <select id="theme">
+          <option value="botanical" selected>Botanical</option>
+          <option value="mono">Mono</option>
+          <option value="midnight-plum">Midnight Plum</option>
+          <option value="market-journal">Market Journal</option>
+          <option value="fresh-signal">Fresh Signal</option>
+          <option value="tomato">Tomato</option>
+          <option value="lime-focus">Lime Focus</option>
+          <option value="indigo-pocket">Indigo Pocket</option>
+        </select>
+        <button id="hide-all" type="button">Alle Hilfen schließen</button>
+        <button id="show-all" type="button">Alle Hilfen öffnen</button>
+      </div>
+    </header>
+    <section id="gallery" class="gallery" aria-label="Alle relevanten Verwaltungsmenüs und Untermenüs"></section>
+    <footer class="preview-note">Nur Designvorschau. Die dargestellten Inhalte sind Beispiele; es werden keine Einstellungen oder Einkaufsdaten geändert. Hilfe per Fragezeichen öffnen oder schließen; außerhalb der Blase klicken oder Escape drücken, um geöffnete Hilfen zu schließen. Hilfetexte basieren auf den derzeitigen App-Informationen.</footer>
+  </main>
+  <script>
+    const helpIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .3c0 1.8-2.5 1.9-2.5 3.7"/><circle cx="12" cy="16.5" r=".9" fill="currentColor" stroke="none"/></svg>';
+    const entries = [
+      {
+        title: "01 · Supermärkte",
+        heading: "Supermärkte",
+        help: "Gemeinsamer Katalog für alle Nutzer. Speichern benötigt eine Verbindung und HA-Administratorrechte.",
+        caption: "Übersicht und Anlegen gemeinsamer Märkte.",
+        body: '<button class="primary" type="button">＋ Supermarkt hinzufügen</button><div class="management-list"><div class="management-link">ALDI　›</div><div class="management-link">EDEKA　›</div><div class="management-link">REWE　›</div></div>',
+      },
+      {
+        title: "02 · Supermarkt bearbeiten",
+        heading: "Supermarkt bearbeiten",
+        help: "Gemeinsamer Katalog für alle Nutzer. Speichern benötigt eine Verbindung und HA-Administratorrechte.",
+        caption: "Name, Marktkategorien und Bonuskarte bearbeiten.",
+        body: '<div class="demo-field">Edeka am Markt</div><div class="management-list"><div class="management-link">Produktkategorien für diesen Markt bearbeiten　›</div><div class="management-link">Bonuskarten oder APP-Codes einbinden　›</div></div><div class="demo-actions"><button class="secondary">Abbrechen</button><button class="primary">Speichern</button></div>',
+      },
+      {
+        title: "03 · Produktkategorien",
+        heading: "Produktkategorien",
+        help: "Gemeinsamer Katalog für alle Nutzer. Speichern benötigt eine Verbindung und HA-Administratorrechte.",
+        caption: "Kategorien zentral für Einkaufslisten verwalten.",
+        body: '<button class="primary" type="button">＋ Kategorie hinzufügen</button><div class="management-list"><div class="management-link">Backwaren　›</div><div class="management-link">Getränke　›</div><div class="management-link">Obst &amp; Gemüse　›</div></div>',
+      },
+      {
+        title: "04 · Kategorie bearbeiten",
+        heading: "Kategorie bearbeiten",
+        help: "Gemeinsamer Katalog für alle Nutzer. Speichern benötigt eine Verbindung und HA-Administratorrechte.",
+        caption: "Kategoriename ändern und zugeordnete Produkte aufrufen.",
+        body: '<div class="demo-field">Backwaren</div><div class="management-list"><div class="management-link">Zugeordnete Produkte　›</div><div class="demo-row"><span>Löschen</span><span>›</span></div></div><div class="demo-actions"><button class="secondary">Abbrechen</button><button class="primary">Speichern</button></div>',
+      },
+      {
+        title: "05 · Zugeordnete Produkte",
+        heading: "Zugeordnete Produkte",
+        help: "Backwaren · Dauerhafte Zuordnungen für alle Einkaufslisten, auch wenn das Produkt gerade nicht auf einer Liste steht. Entfernen löst nur die Kategoriezuordnung; Einkaufsartikel bleiben erhalten.",
+        caption: "Übersicht der dauerhaften Produktzuordnungen einer Kategorie.",
+        body: '<div class="demo-row"><span>Brot</span><button class="secondary">Entfernen</button></div><div class="demo-row"><span>Brötchen</span><button class="secondary">Entfernen</button></div><div class="demo-row"><span>Vollkornbrot</span><button class="secondary">Entfernen</button></div>',
+      },
+      {
+        title: "06 · Marktkategorien sortieren",
+        heading: "Produktkategorien bearbeiten",
+        help: "Edeka am Markt · Diese Reihenfolge gilt nur für diesen Markt.",
+        caption: "Reihenfolge der Kategorien für einen Markt festlegen.",
+        body: '<button class="category-selection-button"><span class="category-selection-label">Kategorienauswahl</span><span class="category-selection-arrow"></span></button><p class="demo-note">Am Griff ziehen oder mit ↑ / ↓ verschieben.</p><div class="demo-row"><span>1. Obst &amp; Gemüse</span><span>↕</span></div><div class="demo-row"><span>2. Kühlung</span><span>↕</span></div><div class="demo-row"><span>3. Ohne Kategorie</span><span>↕</span></div>',
+      },
+      {
+        title: "07 · Kategorien auswählen",
+        heading: "Kategorien auswählen",
+        help: "Edeka am Markt · Aus dem Kategoriespeicher wählen (A–Z).",
+        caption: "Kategorien aus dem gemeinsamen Speicher für den Markt auswählen.",
+        body: '<div class="demo-row">☑　Backwaren</div><div class="demo-row">☑　Getränke</div><div class="demo-row">☐　Kühlung</div><div class="demo-row">☑　Obst &amp; Gemüse</div><div class="screen-footer"><span>Zurück</span><strong>Auswahl übernehmen</strong></div>',
+      },
+      {
+        title: "08 · Bonuskarte oder APP-Code",
+        heading: "Bonuskarten oder APP-Codes einbinden",
+        help: "Edeka am Markt · Ein Bild wird gemeinsam in Home Assistant gespeichert und ist auf allen Geräten verfügbar.",
+        caption: "Bild hochladen oder QR-Code mit der Kamera aufnehmen.",
+        body: '<button class="primary">Bild aus Dateien auswählen</button><div style="height:8px"></div><button class="secondary" style="width:100%">QR-Code fotografieren</button><div class="demo-field" style="height:110px;margin-top:14px;text-align:center;padding-top:40px">▦　▦<br>▦　▦</div><p class="demo-note">PNG, JPEG oder WebP · maximal 512 KiB nach Bildoptimierung.</p><div class="screen-footer"><span>Abbrechen</span><strong>Speichern</strong></div>',
+      },
+      {
+        title: "09 · Artikel verwalten",
+        heading: "Artikel verwalten",
+        help: "Artikel und Suchvorschläge für alle Listen. Umbenennen und Zusammenführen übernehmen auch die bisherige Statistik. Verwendete Artikel können nicht gelöscht werden.",
+        caption: "Gemeinsamen Artikelkatalog durchsuchen und pflegen.",
+        body: '<div class="demo-field">⌕　Artikel suchen …</div><p class="demo-note">32 Artikel</p><div class="demo-row"><span>Eier<br><small class="demo-note">32 Verwendungen</small></span><span>Umbenennen　›</span></div><div class="demo-row"><span>Haferflocken<br><small class="demo-note">18 Verwendungen</small></span><span>›</span></div><div class="screen-footer"><strong>＋ Artikel hinzufügen</strong><span></span></div>',
+      },
+      {
+        title: "10 · Artikel hinzufügen",
+        heading: "Artikel hinzufügen",
+        help: "Lege einen Artikel für Suchvorschläge an. Er wird noch keiner Einkaufsliste hinzugefügt.",
+        caption: "Neuen Vorschlag für künftige Einkaufslisten anlegen.",
+        body: '<div class="demo-field">&nbsp;</div><div class="demo-actions"><button class="secondary">Abbrechen</button><button class="primary">Speichern</button></div>',
+      },
+      {
+        title: "11 · Artikel umbenennen",
+        heading: "Artikel umbenennen",
+        help: "Eier · 32 Verwendungen. Der neue Name wird auch in bestehenden Listen und Statistiken übernommen.",
+        caption: "Umbenennen aktualisiert bestehende Listeneinträge und Statistik.",
+        body: '<div class="demo-field">Eier</div><div class="demo-actions"><button class="secondary">Abbrechen</button><button class="primary">Speichern</button></div>',
+      },
+      {
+        title: "12 · Artikel zusammenführen",
+        heading: "Artikel zusammenführen",
+        help: "Wähle den Artikelnamen, der künftig in Listen, Statistik und Suchvorschlägen verwendet wird.",
+        caption: "Nutzungen und Statistik werden auf den gewählten Zielartikel übertragen.",
+        body: '<div class="demo-field">Behalten als　⌄　Milch</div><div class="demo-row"><span>Milch wird übernommen</span></div><p class="demo-note">Listen und Statistik bleiben erhalten.</p><div class="demo-actions"><button class="secondary">Abbrechen</button><button class="primary">Zusammenführen …</button></div>',
+      },
+      {
+        title: "13 · Listen verwalten",
+        heading: "Listen verwalten",
+        help: "HA-Listen für die App auswählen und kurz benennen. Alexa- und HA-Namen bleiben unverändert. Alle angemeldeten Nutzer können diese Änderungen für alle Nutzer vornehmen.",
+        caption: "Quelllisten ein- oder ausblenden und App-Anzeigenamen vergeben.",
+        body: '<div class="demo-row"><span><strong>Wocheneinkauf</strong><br><small class="demo-note">Quelle: Einkaufsliste</small></span><span>●</span></div><div class="demo-row"><span><strong>Vorrat</strong><br><small class="demo-note">Quelle: Pantry</small></span><span>●</span></div><div class="demo-row"><span><strong>Garten</strong><br><small class="demo-note">Quelle: To-do</small></span><span>○</span></div>',
+      },
+    ];
+    const gallery = document.querySelector("#gallery");
+    entries.forEach((entry, index) => {
+      const card = document.createElement("article");
+      card.className = `preview-card v${index + 1}`;
+      const helpId = `help-${index + 1}`;
+      card.innerHTML = `
+        <h2>${entry.title}</h2>
+        <div class="screen">
+          <div class="screen-brand">EINKAUFSZETTEL</div>
+          <div class="screen-back">‹ Zurück zur Liste</div>
+          <div class="screen-heading">
+            <h3>${entry.heading}</h3>
+            <button class="help-trigger" type="button" aria-label="Hilfe zu ${entry.heading}" aria-expanded="true" aria-controls="${helpId}">${helpIcon}</button>
+          </div>
+          <section class="help-bubble" id="${helpId}" role="region" aria-label="Hilfe zu ${entry.heading}">
+            <strong>Gut zu wissen</strong><p></p>
+          </section>
+          <div class="screen-body">${entry.body}</div>
+        </div>
+        <p class="caption">${entry.caption}</p>`;
+      card.querySelector(".help-bubble p").textContent = entry.help;
+      gallery.append(card);
+      const trigger = card.querySelector(".help-trigger");
+      const bubble = card.querySelector(".help-bubble");
+      const setOpen = (open, returnFocus = false) => {
+        trigger.setAttribute("aria-expanded", String(open));
+        bubble.hidden = !open;
+        if (returnFocus) trigger.focus({ preventScroll: true });
+      };
+      trigger.addEventListener("click", () => setOpen(bubble.hidden));
+      card.setOpen = setOpen;
+    });
+    document.querySelector("#theme").addEventListener("change", event => {
+      document.body.dataset.theme = event.target.value;
+    });
+    document.querySelector("#hide-all").addEventListener("click", () => {
+      gallery.querySelectorAll(".preview-card").forEach(card => card.setOpen(false));
+    });
+    document.querySelector("#show-all").addEventListener("click", () => {
+      gallery.querySelectorAll(".preview-card").forEach(card => card.setOpen(true));
+    });
+    document.addEventListener("click", event => {
+      if (event.target.closest(".controls")) return;
+      gallery.querySelectorAll(".preview-card").forEach(card => {
+        if (!card.querySelector(".help-trigger").contains(event.target) &&
+            !card.querySelector(".help-bubble").contains(event.target)) card.setOpen(false);
+      });
+    });
+    document.addEventListener("keydown", event => {
+      if (event.key !== "Escape") return;
+      gallery.querySelectorAll(".preview-card").forEach(card => {
+        const restoreFocus = card.contains(document.activeElement);
+        card.setOpen(false, restoreFocus);
+      });
+    });
+  </script>
+</body>
+</html>

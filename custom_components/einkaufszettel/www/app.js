@@ -23,6 +23,8 @@ const elements = {
   catalogPage: document.querySelector("#catalog-page"),
   catalogTitle: document.querySelector("#catalog-title"),
   catalogHelp: document.querySelector("#catalog-help"),
+  catalogHelpTrigger: document.querySelector("#catalog-page .management-help-trigger"),
+  catalogHelpPopover: document.querySelector("#catalog-help-popover"),
   catalogMessage: document.querySelector("#catalog-message"),
   catalogContent: document.querySelector("#catalog-content"),
   catalogFixedActions: document.querySelector("#catalog-fixed-actions"),
@@ -36,6 +38,13 @@ const elements = {
   designMessage: document.querySelector("#design-message"),
   manageLists: document.querySelector("#manage-lists"),
   listManagement: document.querySelector("#list-management"),
+  listManagementHelp: document.querySelector("#list-management-help"),
+  listManagementHelpTrigger: document.querySelector("#list-management .management-help-trigger"),
+  listManagementHelpPopover: document.querySelector("#list-management-help-popover"),
+  appConfirm: document.querySelector("#app-confirm"),
+  appConfirmTitle: document.querySelector("#app-confirm-title"),
+  appConfirmDescription: document.querySelector("#app-confirm-description"),
+  acceptAppConfirm: document.querySelector("#accept-app-confirm"),
   managementMessage: document.querySelector("#management-message"),
   sourceLists: document.querySelector("#source-lists"),
   addForm: document.querySelector("#add-form"),
@@ -218,6 +227,7 @@ let dismissedProductSuggestions = [];
 let catalogView;
 let catalogDraft;
 let catalogDirty = false;
+let pendingAppConfirmation;
 let catalogRequest = 0;
 let pendingProductMerge;
 let catalogProductQuery = "";
@@ -434,6 +444,68 @@ function button(text, action, className = "secondary") {
   return element;
 }
 
+function requestAppConfirmation({ title, description, confirmLabel = "Löschen", onConfirm }) {
+  elements.appConfirmTitle.textContent = title;
+  elements.appConfirmDescription.textContent = description;
+  elements.acceptAppConfirm.textContent = confirmLabel;
+  elements.appConfirm.classList.toggle("danger-confirmation", confirmLabel === "Löschen");
+  pendingAppConfirmation = onConfirm;
+  elements.appConfirm.showModal();
+}
+
+elements.acceptAppConfirm.addEventListener("click", () => {
+  const confirm = pendingAppConfirmation;
+  pendingAppConfirmation = null;
+  elements.appConfirm.close("confirm");
+  confirm?.();
+});
+elements.appConfirm.addEventListener("close", () => {
+  pendingAppConfirmation = null;
+});
+
+function setHelpPopover(trigger, popover, open) {
+  trigger.setAttribute("aria-expanded", String(open));
+  popover.hidden = !open;
+}
+
+for (const [trigger, popover] of [
+  [elements.catalogHelpTrigger, elements.catalogHelpPopover],
+  [elements.listManagementHelpTrigger, elements.listManagementHelpPopover],
+]) {
+  trigger.addEventListener("click", () => {
+    const opening = trigger.getAttribute("aria-expanded") !== "true";
+    for (const [otherTrigger, otherPopover] of [
+      [elements.catalogHelpTrigger, elements.catalogHelpPopover],
+      [elements.listManagementHelpTrigger, elements.listManagementHelpPopover],
+    ]) setHelpPopover(otherTrigger, otherPopover, false);
+    setHelpPopover(trigger, popover, opening);
+  });
+}
+elements.listManagementHelpPopover.textContent = elements.listManagementHelp.textContent;
+document.addEventListener("pointerdown", event => {
+  for (const [trigger, popover] of [
+    [elements.catalogHelpTrigger, elements.catalogHelpPopover],
+    [elements.listManagementHelpTrigger, elements.listManagementHelpPopover],
+  ]) {
+    if (trigger.getAttribute("aria-expanded") === "true" &&
+      !trigger.contains(event.target) && !popover.contains(event.target)) {
+      setHelpPopover(trigger, popover, false);
+    }
+  }
+});
+document.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  for (const [trigger, popover] of [
+    [elements.catalogHelpTrigger, elements.catalogHelpPopover],
+    [elements.listManagementHelpTrigger, elements.listManagementHelpPopover],
+  ]) {
+    if (trigger.getAttribute("aria-expanded") === "true") {
+      setHelpPopover(trigger, popover, false);
+      trigger.focus();
+    }
+  }
+});
+
 function paragraph(text, className = "management-help") {
   const element = document.createElement("p");
   element.className = className;
@@ -443,6 +515,8 @@ function paragraph(text, className = "management-help") {
 
 function showManagementPage(page) {
   cancelCategoryDrag?.();
+  setHelpPopover(elements.catalogHelpTrigger, elements.catalogHelpPopover, false);
+  setHelpPopover(elements.listManagementHelpTrigger, elements.listManagementHelpPopover, false);
   document.querySelector("main.app").hidden = true;
   elements.catalogPage.hidden = page !== elements.catalogPage;
   elements.listManagement.hidden = page !== elements.listManagement;
@@ -728,10 +802,11 @@ function productManagementRow(product, suggestion) {
     primaryActions.append(renameButton, mergeButton);
     row.append(primaryActions);
   }
-  const deleteButton = button("Löschen", () => {
-    if (!confirm(`„${product.name}“ endgültig löschen? Der Artikel kann nur ohne Verwendungen und ohne aktive Listeneinträge gelöscht werden.`)) return;
-    saveCatalog("delete_product", { product_key: product.key }, "products");
-  }, "secondary danger-button");
+  const deleteButton = button("Löschen", () => requestAppConfirmation({
+    title: "Artikel löschen?",
+    description: `„${product.name}“ endgültig löschen? Der Artikel kann nur ohne Verwendungen und ohne aktive Listeneinträge gelöscht werden.`,
+    onConfirm: () => saveCatalog("delete_product", { product_key: product.key }, "products"),
+  }), "secondary danger-button");
   deleteButton.disabled = count > 0;
   deleteButton.title = count
     ? "Artikel mit Verwendungen müssen zusammengeführt werden, damit die Statistik erhalten bleibt."
@@ -807,6 +882,7 @@ function renderProductEdit() {
   const form = document.createElement("form");
   form.className = "management-form";
   const label = document.createElement("label");
+  label.className = "visually-hidden";
   label.htmlFor = "product-name";
   label.textContent = "Artikelname";
   const input = document.createElement("input");
@@ -853,26 +929,125 @@ function renderProductMerge() {
   const form = document.createElement("form");
   form.className = "management-form";
   const label = document.createElement("label");
-  label.htmlFor = "product-merge-target";
+  label.id = "product-merge-label";
+  label.htmlFor = "product-merge-trigger";
   label.textContent = "Behalten als";
-  const select = document.createElement("select");
-  select.id = "product-merge-target";
-  select.required = true;
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  placeholder.textContent = "Zielartikel auswählen …";
-  select.append(placeholder);
-  for (const product of [...products].filter(item => item.key !== source.key)
-    .sort((a, b) => nameOrder.compare(a.name, b.name))) {
-    const option = document.createElement("option");
-    option.value = product.key;
-    option.textContent = product.name;
-    option.selected = product.key === catalogDraft.target_key;
-    select.append(option);
+  const picker = document.createElement("div");
+  picker.className = "category-picker";
+  const selectedTarget = products.find(item => item.key === catalogDraft.target_key && item.key !== source.key);
+  const value = document.createElement("span");
+  value.id = "product-merge-value";
+  value.textContent = selectedTarget?.name || "Zielartikel auswählen …";
+  const trigger = document.createElement("button");
+  trigger.id = "product-merge-trigger";
+  trigger.type = "button";
+  trigger.className = "category-picker-trigger";
+  trigger.setAttribute("role", "combobox");
+  trigger.setAttribute("aria-labelledby", "product-merge-label product-merge-value");
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-controls", "product-merge-options");
+  const arrow = document.createElement("span");
+  arrow.className = "category-picker-arrow";
+  arrow.setAttribute("aria-hidden", "true");
+  trigger.append(value, arrow);
+  const flyout = document.createElement("div");
+  flyout.id = "product-merge-flyout";
+  flyout.className = "category-picker-flyout";
+  flyout.hidden = true;
+  const options = document.createElement("div");
+  options.id = "product-merge-options";
+  options.className = "category-options";
+  options.setAttribute("role", "listbox");
+  options.setAttribute("aria-labelledby", "product-merge-label");
+  const hiddenValue = document.createElement("input");
+  hiddenValue.id = "product-merge-target";
+  hiddenValue.type = "hidden";
+  hiddenValue.value = selectedTarget?.key || "";
+  const targetProducts = [...products].filter(item => item.key !== source.key)
+    .sort((a, b) => nameOrder.compare(a.name, b.name));
+  if (!targetProducts.length) {
+    elements.catalogMessage.textContent = "Zum Zusammenführen müssen mindestens zwei Artikel vorhanden sein.";
+    return;
   }
+  const optionButtons = targetProducts.map(product => {
+    const option = button("", () => {
+      hiddenValue.value = product.key;
+      catalogDraft.target_key = product.key;
+      value.textContent = product.name;
+      optionButtons.forEach(candidate => {
+        const selected = candidate.dataset.productKey === product.key;
+        candidate.setAttribute("aria-selected", String(selected));
+        candidate.tabIndex = selected ? 0 : -1;
+      });
+      trigger.setCustomValidity("");
+      closePicker(true);
+      updatePreview();
+    }, "category-option");
+    option.type = "button";
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(product.key === hiddenValue.value));
+    option.tabIndex = product.key === hiddenValue.value ? 0 : -1;
+    option.dataset.productKey = product.key;
+    const optionName = document.createElement("span");
+    optionName.className = "category-option-name";
+    optionName.textContent = product.name;
+    const check = document.createElement("span");
+    check.className = "category-option-check";
+    check.textContent = "✓";
+    check.setAttribute("aria-hidden", "true");
+    option.append(optionName, check);
+    options.append(option);
+    return option;
+  });
+  function closePicker(focusTrigger = false) {
+    flyout.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    document.removeEventListener("pointerdown", handleOutsidePointerDown);
+    if (focusTrigger) trigger.focus();
+  }
+  function handleOutsidePointerDown(event) {
+    if (!picker.contains(event.target)) closePicker();
+  }
+  function openPicker() {
+    flyout.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    document.addEventListener("pointerdown", handleOutsidePointerDown);
+    (optionButtons.find(option => option.dataset.productKey === hiddenValue.value) || optionButtons[0])?.focus();
+  }
+  trigger.addEventListener("click", () => {
+    if (flyout.hidden) openPicker();
+    else closePicker();
+  });
+  trigger.addEventListener("keydown", event => {
+    if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) {
+      event.preventDefault();
+      if (flyout.hidden) openPicker();
+    }
+  });
+  options.addEventListener("keydown", event => {
+    const currentIndex = optionButtons.indexOf(document.activeElement);
+    let nextIndex;
+    if (event.key === "ArrowDown") nextIndex = Math.min(optionButtons.length - 1, currentIndex + 1);
+    else if (event.key === "ArrowUp") nextIndex = Math.max(0, currentIndex - 1);
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = optionButtons.length - 1;
+    else if (event.key === "Escape") {
+      event.preventDefault();
+      closePicker(true);
+      return;
+    } else if (event.key === "Tab") {
+      closePicker();
+      return;
+    } else return;
+    event.preventDefault();
+    optionButtons[nextIndex]?.focus();
+  });
+  flyout.append(options);
+  picker.append(trigger, flyout, hiddenValue);
   const preview = paragraph("Wähle einen Zielartikel, um die Statistikübernahme anzusehen.", "product-merge-preview");
   const updatePreview = () => {
-    const target = products.find(item => item.key === select.value);
+    const target = products.find(item => item.key === hiddenValue.value);
     preview.replaceChildren();
     if (!target) {
       preview.textContent = "Wähle einen Zielartikel, um die Statistikübernahme anzusehen.";
@@ -892,20 +1067,18 @@ function renderProductMerge() {
       document.createTextNode(`. Danach hat der Zielartikel ${sourceCount + targetCount} Verwendungen. Listen und Statistik bleiben erhalten.`));
     preview.append(text);
   };
-  select.addEventListener("change", updatePreview);
   updatePreview();
   const actions = document.createElement("div");
   actions.className = "page-actions";
   const submit = button("Zusammenführen …", () => {}, "primary");
   submit.type = "submit";
   actions.append(button("Abbrechen", () => openCatalog("products")), submit);
-  form.append(label, select, preview, actions);
   form.addEventListener("submit", event => {
     event.preventDefault();
-    const target = products.find(item => item.key === select.value);
+    const target = products.find(item => item.key === hiddenValue.value);
     if (!target) {
-      select.setCustomValidity("Bitte wähle einen Zielartikel.");
-      select.reportValidity();
+      trigger.setCustomValidity("Bitte wähle einen Zielartikel.");
+      trigger.reportValidity();
       return;
     }
     pendingProductMerge = { product_key: source.key, target_key: target.key };
@@ -913,6 +1086,7 @@ function renderProductMerge() {
       `„${source.name}“ wird in „${target.name}“ zusammengeführt. ${productUsageCount(source)} Verwendungen werden übernommen; bestehende Listen und Statistiken bleiben erhalten.`;
     elements.productMergeConfirm.showModal();
   });
+  form.append(label, picker, preview, actions);
   elements.catalogContent.append(form);
 }
 
@@ -978,10 +1152,15 @@ function renderCatalogPage() {
       row.className = "category-product-row";
       const name = document.createElement("span");
       name.textContent = product.name;
-      const remove = button("Entfernen", () => {
-        if (!confirm(`„${product.name}“ dauerhaft aus der Kategorie „${catalogDraft.name}“ entfernen? Bestehende Einkaufsartikel bleiben erhalten und erscheinen ohne Kategorie. Auch beim erneuten Hinzufügen wird diese Kategorie nicht mehr automatisch zugeordnet.`)) return;
-        saveCatalog("remove_category_product", { category_id: catalogDraft.id, product_key: product.key }, "category-products");
-      });
+      const remove = button("Entfernen", () => requestAppConfirmation({
+        title: "Produktzuordnung entfernen?",
+        confirmLabel: "Entfernen",
+        description: `„${product.name}“ dauerhaft aus der Kategorie „${catalogDraft.name}“ entfernen? Bestehende Einkaufsartikel bleiben erhalten und erscheinen ohne Kategorie. Auch beim erneuten Hinzufügen wird diese Kategorie nicht mehr automatisch zugeordnet.`,
+        onConfirm: () => saveCatalog("remove_category_product", {
+          category_id: catalogDraft.id,
+          product_key: product.key,
+        }, "category-products"),
+      }));
       remove.setAttribute("aria-label", `Kategoriezuordnung entfernen: ${product.name}`);
       row.append(name, remove);
       list.append(row);
@@ -997,6 +1176,7 @@ function renderCatalogPage() {
     const form = document.createElement("form");
     form.className = "management-form";
     const label = document.createElement("label");
+    label.className = "visually-hidden";
     label.htmlFor = "catalog-name";
     label.textContent = isMarket ? "Supermarktname" : "Kategoriename";
     const input = document.createElement("input");
@@ -1044,16 +1224,17 @@ function renderCatalogPage() {
     if (catalogDraft.id) {
       const danger = document.createElement("section");
       danger.className = "danger-section";
-      danger.append(paragraph(`${noun} löschen`, "danger-title"));
-      danger.append(paragraph(isMarket
-        ? "Entfernt diesen Markt aus der Marktauswahl. Einkaufslisten bleiben erhalten."
-        : "Entfernt die Kategorie und ihre Marktzuordnungen. Artikel bleiben erhalten und erscheinen ohne Kategorie."));
-      danger.append(button(`${noun} löschen`, () => {
-        if (confirm(`${noun} „${catalogDraft.name}“ endgültig für alle Nutzer löschen?`)) {
-          saveCatalog(isMarket ? "delete_supermarket" : "delete_category",
-            { [isMarket ? "market_id" : "category_id"]: catalogDraft.id }, isMarket ? "markets" : "categories");
-        }
-      }, "secondary danger-button"));
+      danger.append(button("Löschen", () => requestAppConfirmation({
+        title: `${noun} löschen?`,
+        description: isMarket
+          ? `„${catalogDraft.name}“ endgültig für alle Nutzer aus der Marktauswahl entfernen? Einkaufslisten bleiben erhalten.`
+          : `„${catalogDraft.name}“ endgültig für alle Nutzer löschen? Die Kategorie und ihre Marktzuordnungen werden entfernt. Artikel bleiben erhalten und erscheinen ohne Kategorie.`,
+        onConfirm: () => saveCatalog(
+          isMarket ? "delete_supermarket" : "delete_category",
+          { [isMarket ? "market_id" : "category_id"]: catalogDraft.id },
+          isMarket ? "markets" : "categories",
+        ),
+      }), "secondary danger-button"));
       form.append(danger);
     }
     const actions = document.createElement("div");
@@ -1077,6 +1258,10 @@ function renderCatalogPage() {
     content.append(form);
   }
   content.append(paragraph("Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.", "management-footer"));
+  elements.catalogHelpPopover.textContent = elements.catalogHelp.textContent;
+  elements.catalogHelp.hidden = true;
+  elements.catalogHelpTrigger.hidden = !elements.catalogHelp.textContent;
+  setHelpPopover(elements.catalogHelpTrigger, elements.catalogHelpPopover, false);
   elements.catalogTitle.focus();
 }
 
@@ -1996,9 +2181,13 @@ function render() {
       if (!touchGated) elements.editItemTitle.focus({ preventScroll: true });
     });
     label.addEventListener("keydown", event => {
-      if (event.key !== "Delete" || !confirm(`„${item.summary}“ wirklich löschen?`)) return;
+      if (event.key !== "Delete") return;
       event.preventDefault();
-      enqueue({ type: "delete_item", uid: item.uid }).catch(showError);
+      requestAppConfirmation({
+        title: "Artikel löschen?",
+        description: `„${item.summary}“ wirklich aus der Einkaufsliste löschen?`,
+        onConfirm: () => enqueue({ type: "delete_item", uid: item.uid }).catch(showError),
+      });
     });
     if (pendingIds.has(item.uid)) label.title = "Lokal gespeichert – Übertragung an Home Assistant ausstehend";
     main.append(checkbox, label);

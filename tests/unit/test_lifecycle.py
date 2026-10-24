@@ -580,7 +580,7 @@ async def test_alias_and_visibility_update_shared_config_not_source(integration)
     )
     env.hass.config_entries.async_entries.return_value = [env.entry]
     connection = Mock(spec=["user", "send_result", "send_error"])
-    connection.user = SimpleNamespace(is_admin=True)
+    connection.user = SimpleNamespace(is_admin=False)
     await env.websocket.websocket_configure_list(
         env.hass,
         connection,
@@ -619,7 +619,7 @@ async def test_enabling_discovered_source_imports_it_without_user_config_flow(
         "type": "create_entry",
         "result": created,
     }
-    connection = Mock()
+    connection = Mock(user=SimpleNamespace(is_admin=False))
     await env.websocket.websocket_configure_list(
         env.hass,
         connection,
@@ -641,7 +641,7 @@ async def test_manage_lists_rejects_invalid_input(integration, name, source):
     env.hass.states.async_all = Mock(
         return_value=[SimpleNamespace(entity_id="todo.alexa", name="Alexa", state="1")]
     )
-    connection = Mock()
+    connection = Mock(user=SimpleNamespace(is_admin=False))
     await env.websocket.websocket_configure_list(
         env.hass,
         connection,
@@ -721,14 +721,9 @@ async def test_import_flow_reports_unreadable_source(integration):
     assert result == {"type": "abort", "reason": "cannot_read_source"}
 
 
-@pytest.mark.parametrize("user", [None, SimpleNamespace(is_admin=False)])
-async def test_list_management_requires_admin_before_discovering_or_writing(
-    integration,
-    user,
-):
+async def test_list_management_requires_authentication(integration):
     env = integration
-    connection = Mock(spec=["user", "send_result", "send_error"])
-    connection.user = user
+    connection = Mock(spec=["user", "send_result", "send_error"], user=None)
     await env.websocket.websocket_configure_list(
         env.hass,
         connection,
@@ -740,7 +735,7 @@ async def test_list_management_requires_admin_before_discovering_or_writing(
         },
     )
     connection.send_error.assert_called_once_with(
-        15, "unauthorized", "HA-Administratorrechte erforderlich."
+        15, "unauthorized", "HA-Anmeldung erforderlich."
     )
     connection.send_result.assert_not_called()
     env.hass.config_entries.async_update_entry.assert_not_called()
@@ -758,7 +753,7 @@ async def test_import_failure_is_reported_without_success(integration):
         "type": "form",
         "errors": {"base": "cannot_read_source"},
     }
-    connection = Mock()
+    connection = Mock(user=SimpleNamespace(is_admin=False))
     await env.websocket.websocket_configure_list(
         env.hass,
         connection,

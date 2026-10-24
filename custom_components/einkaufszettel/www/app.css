@@ -239,6 +239,11 @@ dialog::backdrop { background: #000a; }
 dialog form { display: grid; gap: 12px; }
 dialog h2, dialog p { margin: 0; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+#app-confirm { width: min(92vw, 440px); }
+#app-confirm-description { color: var(--muted); line-height: 1.55; overflow-wrap: anywhere; }
+#app-confirm.danger-confirmation #accept-app-confirm { border: 1px solid #754940; background: #392522; color: #ffb4a8; }
+#app-confirm .dialog-actions { flex-wrap: wrap; }
+#app-confirm .dialog-actions button { flex: 1 1 130px; }
 #discard-changes { width: min(92vw, 420px); }
 #discard-description { color: var(--muted); line-height: 1.5; }
 #discard-changes .dialog-actions { flex-wrap: wrap; }
@@ -273,6 +278,12 @@ dialog h2, dialog p { margin: 0; }
 .management-page h1 { font-size: clamp(25px, 6vw, 32px); }
 .management-help { line-height: 1.6; }
 .management-page .management-help { margin: 12px 0 22px; }
+.management-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.management-title-row h1 { min-width: 0; flex: 1; }
+.management-help-trigger { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); }
+.management-help-trigger:hover, .management-help-trigger[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.management-help-trigger svg { width: 20px; height: 20px; }
+.management-help-popover { margin: 12px 0 20px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); color: var(--muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .management-page.has-fixed-actions { height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 0; overflow: hidden; padding-bottom: 0; }
 .management-page.has-fixed-actions #catalog-content { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 16px; }
 .management-fixed-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: none; width: calc(100% + 2 * clamp(16px, 5vw, 32px)); margin: 0 calc(clamp(16px, 5vw, 32px) * -1); padding: 12px clamp(16px, 5vw, 32px) max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); box-shadow: 0 -8px 18px #0002; }

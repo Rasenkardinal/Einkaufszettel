@@ -25,7 +25,7 @@ Eine gemeinsam nutzbare Einkaufsliste für Home Assistant mit eigener Produkt- u
 3. Home Assistant neu starten.
 4. **Einstellungen → Geräte & Dienste → Integration hinzufügen → Einkaufszettel** öffnen.
 5. Einrichtung bestätigen. Die Quelllisten werden anschließend in der App verwaltet.
-6. In der Web-App **Einstellungen → Synchronisation → Listen verwalten** öffnen, gewünschte HA-Listen aktivieren und kurze Anzeigenamen vergeben. Diese Einstellungen benötigen HA-Administratorrechte und gelten für alle Haushaltsmitglieder.
+6. In der Web-App **Einstellungen → Synchronisation → Listen verwalten** öffnen, gewünschte HA-Listen aktivieren und kurze Anzeigenamen vergeben. Alle angemeldeten HA-Nutzer können diese Einstellungen ändern; sie gelten für alle Haushaltsmitglieder.
 7. Die neue Einkaufszettel-Seite erscheint in der Home-Assistant-Seitenleiste. Dort die Liste öffnen. Der Button **„Web-App öffnen / installieren“** unter den Integration-Entitäten erzeugt zusätzlich eine Benachrichtigung mit dem direkten App-Link.
 
 Die Installation benötigt HTTPS, beispielsweise über Nabu Casa. Die PWA muss mindestens einmal online geladen und synchronisiert worden sein, bevor sie offline verwendet werden kann. Im installierten Modus kann sie ohne normale Browser-Adressleiste starten. Der Installationsdialog wird abhängig vom Browser angeboten; auf iOS kann stattdessen die Browserfunktion **Teilen → Zum Home-Bildschirm** nötig sein.

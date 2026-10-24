@@ -87,7 +87,7 @@ def test_web_app_assets_are_versioned_and_precached():
     assert 'id="app-version"' in html
     for asset in assets:
         assert f'"{asset}"' in worker
-    assert "einkaufszettel-shell-v44" in worker
+    assert "einkaufszettel-shell-v45" in worker
     assert ".then(() => self.skipWaiting())" in worker
     script = (webapp / "app.js").read_text(encoding="utf-8")
     assert "serviceWorkerRegistration.update()" in script
@@ -116,6 +116,33 @@ def test_list_selection_uses_custom_flyout_not_native_popup():
     assert 'id="edit-category-trigger" class="category-picker-trigger"' in html
     assert 'id="edit-category-search" class="category-search" type="search"' in html
     assert 'id="edit-item-title" tabindex="-1" autofocus' in html
+
+
+def test_product_merge_uses_accessible_custom_picker():
+    script = (
+        ROOT / "custom_components" / "einkaufszettel" / "www" / "app.js"
+    ).read_text(encoding="utf-8")
+    merge = script.split("function renderProductMerge() {", 1)[1].split(
+        "let cancelCategoryDrag;", 1
+    )[0]
+    assert 'trigger.setAttribute("role", "combobox")' in merge
+    assert 'options.setAttribute("role", "listbox")' in merge
+    assert 'option.setAttribute("role", "option")' in merge
+    assert 'event.key === "ArrowDown"' in merge
+    assert 'event.key === "Escape"' in merge
+    assert 'select.id = "product-merge-target"' not in merge
+
+
+def test_article_deletion_uses_app_confirmation_dialog():
+    html = (
+        ROOT / "custom_components" / "einkaufszettel" / "www" / "app.html"
+    ).read_text(encoding="utf-8")
+    script = (
+        ROOT / "custom_components" / "einkaufszettel" / "www" / "app.js"
+    ).read_text(encoding="utf-8")
+    assert 'id="app-confirm" aria-labelledby="app-confirm-title"' in html
+    assert 'requestAppConfirmation({' in script
+    assert 'confirm(`„${product.name}“ endgültig löschen?' not in script
 
 
 def test_embedded_authentication_opens_standalone_app_before_oauth():
