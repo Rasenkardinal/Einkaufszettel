@@ -142,6 +142,7 @@ async def _catalog_command(
         return
     product_actions = {
         "create_product",
+        "set_product_statistics",
         "rename_product",
         "delete_product",
         "merge_product",
@@ -441,6 +442,21 @@ async def websocket_merge_product(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
     """Merge product usage and shopping-list references into another product."""
+    await _catalog_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/set_product_statistics",
+        vol.Required("product_key"): str,
+        vol.Required("count"): int,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_product_statistics(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Correct the overall usage count while preserving weekly history."""
     await _catalog_command(hass, connection, msg)
 
 

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Artikelverwaltung · Buttons in App-Akzentfarben</title>
+<link rel="stylesheet" href="../../custom_components/einkaufszettel/www/app.css">
+<style>
+  body { padding: 28px 20px; }
+  .preview-heading { max-width: 1632px; margin: 0 auto 24px; }
+  .preview-heading h1 { margin: 0 0 10px; font-size: 24px; }
+  .preview-heading p { color: var(--muted); line-height: 1.6; }
+  .comparison { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 24px; max-width: 1632px; margin: auto; }
+  .example { width: 390px; max-width: 100%; }
+  .example > h2 { margin: 0 0 12px; font-size: 15px; }
+  .screen { border: 1px solid var(--line); border-radius: 16px; background: var(--bg); padding: 20px 16px; }
+  .screen h1 { margin: 0 0 16px; font-size: 27px; }
+  .screen .product-outline-action { border: 1px solid var(--line); background: var(--accent); color: var(--accent-text); }
+  .variant-description { min-height: 38px; margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .reference { margin-top: 20px; }
+  .reference p { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .reference button { cursor: default; }
+  .screen > .primary { width: 100%; margin-top: 20px; }
+</style>
+<body data-theme="mono">
+<header class="preview-heading">
+  <h1>Artikelverwaltung · Buttons in App-Akzentfarben</h1>
+  <p>„Umbenennen“ und „Zusammenführen“ mit der vollen Akzentfarbe des jeweiligen App-Designs und passender dunkler Schrift. Alle acht Farbschemata mit ihren Originalflächen und dem dezenten App-Rand. Nur Vorschau – keine Änderung der App.</p>
+</header>
+<main class="comparison"></main>
+<template id="example">
+  <section class="example">
+    <h2></h2>
+    <p class="variant-description"></p>
+    <div class="screen">
+      <h1>Artikel verwalten</h1>
+      <input class="product-search" placeholder="Artikel suchen" aria-label="Artikel suchen">
+      <div class="product-list-summary"><span>2 Artikel</span><span>A–Z</span></div>
+      <div class="rows"></div>
+      <button type="button" class="primary">Artikel hinzufügen</button>
+      <div class="reference">
+        <p>Zum Vergleich: vorhandener Rand der Verwaltungsbuttons</p>
+        <button type="button" class="management-link">Kategorienauswahl ›</button>
+      </div>
+    </div>
+  </section>
+</template>
+<script>
+  const variants = [
+    ["01 · Mono", ["#141414", "#202020", "#2b2b2b", "#383838", "#f5f5f5", "#171717", "#aaa"], "Helle neutrale Akzentfläche auf Graphit."],
+    ["02 · Botanical", ["#111813", "#1b251e", "#26362a", "#304035", "#a3e635", "#17220d", "#aab7ac"], "Frisches Grün auf den dunkelgrünen Originalflächen."],
+    ["03 · Midnight Plum", ["#15121c", "#211b2b", "#30243e", "#3b3148", "#c4a7ff", "#20152f", "#b9adc8"], "Lavendelfarbene Aktionen im violetten Design."],
+    ["04 · Market Journal", ["#1a1411", "#271d18", "#38281d", "#49382e", "#ffb454", "#38200b", "#c7b3a5"], "Warmer Orange-Akzent auf braunen Originalflächen."],
+    ["05 · Fresh Signal", ["#0d171b", "#13242a", "#19343b", "#24444c", "#55e0d0", "#06201d", "#9db8ba"], "Türkise Aktionen im dunklen Petrol-Design."],
+    ["06 · Tomato", ["#1b1315", "#281c1f", "#382327", "#493137", "#ff8977", "#351512", "#c2a7a6"], "Korallfarbene Aktionen auf warmem Dunkelrot."],
+    ["07 · Lime Focus", ["#0c0f0c", "#171c16", "#222b1e", "#343e2d", "#d4ff00", "#161b00", "#a9b197"], "Leuchtendes Limettengrün im kontrastreichen Originaldesign."],
+    ["08 · Indigo Pocket", ["#101522", "#192033", "#222d49", "#303b56", "#83a7ff", "#111b34", "#aab5ca"], "Hellblaue Akzentflächen im dunkelblauen Design."],
+  ];
+  for (const [title, colors, description] of variants) {
+    const example = document.querySelector("#example").content.cloneNode(true);
+    example.querySelector("h2").textContent = title;
+    example.querySelector(".variant-description").textContent = description;
+    ["bg", "surface", "surface2", "line", "accent", "accent-text", "muted"].forEach((key, index) =>
+      example.querySelector(".screen").style.setProperty(`--${key}`, colors[index]));
+    for (const [name, uses] of [["Butter", 32], ["Milch", 18]]) {
+      const row = document.createElement("article");
+      row.className = "product-management-row";
+      row.innerHTML = `<div class="product-management-heading"><span class="product-management-name">${name}<span class="product-management-usage">${uses} Verwendungen</span></span></div>
+        <div class="product-management-buttons">
+          <button type="button" class="secondary product-outline-action"><span class="product-rename-icon" aria-hidden="true">✎</span>Umbenennen<span class="product-rename-arrow" aria-hidden="true">›</span></button>
+          <button type="button" class="secondary product-outline-action">Zusammenführen<span class="product-rename-arrow" aria-hidden="true">›</span></button>
+        </div>
+        <div class="product-management-actions"><button type="button" class="secondary danger-button">Löschen</button></div>`;
+      example.querySelector(".rows").append(row);
+    }
+    document.querySelector(".comparison").append(example);
+  }
+</script>
+</body>
+</html>

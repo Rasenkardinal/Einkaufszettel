@@ -20,6 +20,14 @@ def product_key(name: str) -> str:
     return " ".join(name.split()).lower().replace("ß", "ss").replace("ς", "σ")
 
 
+def product_usage_count(product: dict[str, Any]) -> int:
+    """Return the corrected total without modifying list or weekly statistics."""
+    return product.get("usage_adjustment", 0) + sum(
+        max(stats["added"], sum(stats["weeks"].values()))
+        for stats in product.get("usage", {}).values()
+    )
+
+
 def validate_product_usage(usage: Any) -> bool:
     """Accept additive per-list counters and compact weekly history."""
     if not isinstance(usage, dict):
@@ -91,6 +99,12 @@ def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
         or product.get("key") != product_key(product["name"])
         or "category_id" not in product
         or not validate_product_usage(product.get("usage", {}))
+        or type(product.get("usage_adjustment", 0)) is not int
+        or (
+            type(product.get("usage_adjustment", 0)) is int
+            and validate_product_usage(product.get("usage", {}))
+            and product_usage_count(product) < 0
+        )
         or type(product.get("category_known", True)) is not bool
         or (
             product.get("category_known") is False
@@ -198,6 +212,7 @@ def change_catalog(
         "rename_product",
         "delete_product",
         "merge_product",
+        "set_product_statistics",
     ):
         products = result.setdefault("products", [])
         aliases = result.setdefault("product_aliases", {})
@@ -224,7 +239,18 @@ def change_catalog(
             )
             if product is None:
                 raise ValueError("Der Artikel wurde nicht gefunden. Bitte neu laden.")
-            if action == "rename_product":
+            if action == "set_product_statistics":
+                count = msg["count"]
+                if type(count) is not int or not 0 <= count <= 2147483647:
+                    raise ValueError(
+                        "Bitte gib eine ganze Zahl von 0 bis 2147483647 ein."
+                    )
+                product["usage_adjustment"] = (
+                    product.get("usage_adjustment", 0)
+                    + count
+                    - product_usage_count(product)
+                )
+            elif action == "rename_product":
                 name = msg["name"].strip()
                 if not name or len(name) > 200:
                     raise ValueError("Der Name muss 1–200 Zeichen enthalten.")
@@ -267,6 +293,7 @@ def change_catalog(
                 )
                 if target is None or target is product:
                     raise ValueError("Bitte wähle einen anderen vorhandenen Artikel.")
+                total = product_usage_count(target) + product_usage_count(product)
                 target_usage = target.setdefault("usage", {})
                 for list_id, stats in product.get("usage", {}).items():
                     combined = target_usage.setdefault(
@@ -278,6 +305,12 @@ def change_catalog(
                     )
                     for week, count in stats["weeks"].items():
                         combined["weeks"][week] = combined["weeks"].get(week, 0) + count
+                if "usage_adjustment" in target or "usage_adjustment" in product:
+                    target["usage_adjustment"] = (
+                        target.get("usage_adjustment", 0)
+                        + total
+                        - product_usage_count(target)
+                    )
                 if (
                     target.get("category_id") is None
                     and product.get("category_id") is not None

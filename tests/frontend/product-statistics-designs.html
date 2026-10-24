@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Artikelaktionen · 8 Statistik-Designs</title>
+<link rel="stylesheet" href="../../custom_components/einkaufszettel/www/app.css">
+<style>
+  body { padding: 24px 16px; }
+  .intro, .designs { max-width: 1608px; margin: 0 auto 24px; }
+  .intro h1 { font-size: 26px; margin-bottom: 12px; }
+  .intro p { color: var(--muted); line-height: 1.6; }
+  .designs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 24px; }
+  .design > h2 { font-size: 17px; margin: 0 0 8px; }
+  .description { min-height: 42px; color: #aaa; font-size: 12px; line-height: 1.5; }
+  .screen { padding: 18px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+  .screen h3 { font-size: 24px; margin: 0 0 16px; }
+  .theme { display: block; margin-bottom: 18px; color: var(--muted); font-size: 11px; }
+  .actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-top: 14px; }
+  .actions button { min-width: 0; min-height: 44px; padding: 8px 4px; border: 1px solid var(--line); border-radius: 10px; font-size: 11px; font-weight: 700; background: var(--accent); color: var(--accent-text); }
+  .actions .danger-button { color: #ffb4a8; border-color: #754940; background: transparent; }
+  .actions .stats { grid-area: stats; }
+  .actions .delete { grid-area: delete; }
+  .actions .rename { grid-area: rename; }
+  .actions .merge { grid-area: merge; }
+  .v1 .actions { grid-template-areas: "rename merge" "stats delete"; }
+  .v2 .actions { grid-template-areas: "rename merge" "delete stats"; }
+  .v3 .actions { grid-template-areas: "stats stats" "rename merge" "delete delete"; }
+  .v4 .actions { grid-template-areas: "rename rename" "merge stats" "delete delete"; }
+  .v5 .actions { grid-template-columns: 1fr; grid-template-areas: "rename" "merge" "stats" "delete"; }
+  .v5 .actions button { text-align: left; padding-inline: 12px; }
+  .v6 .actions { grid-template-areas: "rename merge" "stats stats" "delete delete"; }
+  .v6 .actions .stats { display: flex; align-items: center; justify-content: space-between; padding-inline: 12px; }
+  .v7 .actions { grid-template-areas: "rename merge" "stats delete"; }
+  .v7 .actions .stats { background: var(--surface); color: var(--accent); border-color: var(--accent); }
+  .v8 .actions { grid-template-areas: "stats rename" "merge delete"; }
+  .v8 .actions button { min-height: 68px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+  .edit { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .edit summary { cursor: pointer; font-size: 12px; color: var(--muted); min-height: 44px; display: flex; align-items: center; }
+  .edit label { display: block; margin: 10px 0; font-size: 12px; }
+  .edit input { width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: #f4f4f4; }
+  .edit-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .edit-actions button { flex: 1; padding-inline: 8px; font-size: 12px; }
+  .notice { font-size: 11px; color: var(--muted); line-height: 1.6; }
+  output { display: block; min-height: 20px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  select { max-width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: var(--surface); color: #f4f4f4; }
+</style>
+<body>
+<header class="intro">
+  <h1>Vier Artikelaktionen · acht Vorschläge</h1>
+  <p>Umbenennen, Zusammenführen, Statistik und Löschen für jeden Artikel. Akzentflächen aus dem jeweiligen App-Design; Löschen bleibt immer rot. „Statistik“ öffnet eine bedienbare Vorschau zum Ändern der Verwendungszahl. Nur Beispieldaten, keine Speicherung in der App.</p>
+  <label for="theme">Farbschema für den Vergleich: </label>
+  <select id="theme"><option value="">Je Vorschlag ein App-Design</option></select>
+</header>
+<main class="designs"></main>
+<script>
+const themes = [
+  ["Mono", ["#141414","#202020","#2b2b2b","#383838","#f5f5f5","#171717","#aaa"]],
+  ["Botanical", ["#111813","#1b251e","#26362a","#304035","#a3e635","#17220d","#aab7ac"]],
+  ["Midnight Plum", ["#15121c","#211b2b","#30243e","#3b3148","#c4a7ff","#20152f","#b9adc8"]],
+  ["Market Journal", ["#1a1411","#271d18","#38281d","#49382e","#ffb454","#38200b","#c7b3a5"]],
+  ["Fresh Signal", ["#0d171b","#13242a","#19343b","#24444c","#55e0d0","#06201d","#9db8ba"]],
+  ["Tomato", ["#1b1315","#281c1f","#382327","#493137","#ff8977","#351512","#c2a7a6"]],
+  ["Lime Focus", ["#0c0f0c","#171c16","#222b1e","#343e2d","#d4ff00","#161b00","#a9b197"]],
+  ["Indigo Pocket", ["#101522","#192033","#222d49","#303b56","#83a7ff","#111b34","#aab5ca"]]
+];
+const designs = [
+  ["Klares Raster", "Zwei gleichwertige Reihen, Statistik vor Löschen. Nah am aktuellen Aufbau."],
+  ["Bestehende Reihenfolge", "Oben Umbenennen und Zusammenführen; darunter Löschen und Statistik."],
+  ["Statistik im Fokus", "Statistik als breite erste Aktion; Löschen separat am Ende."],
+  ["Umbenennen zuerst", "Umbenennen über die volle Breite, Zusammenführen und Statistik nebeneinander."],
+  ["Ruhige Aktionsliste", "Vier breite Zeilen mit klaren Texten und großen Berührungsflächen."],
+  ["Statistik mit Wert", "Eine breite Statistikaktion zeigt die aktuelle Verwendungszahl direkt an."],
+  ["Dezente Statistik", "Umbenennen und Zusammenführen mit Akzentfläche, Statistik mit Akzentkontur."],
+  ["Kompakte Kacheln", "Vier höhere Aktionskacheln; Statistik mit aktuellem Wert im Blick."]
+];
+const themeSelect = document.querySelector("#theme");
+themes.forEach(([name], i) => themeSelect.add(new Option(name, String(i))));
+function applyTheme(screen, index) {
+  const [name, colors] = themes[index];
+  ["bg","surface","surface2","line","accent","accent-text","muted"].forEach((key,i) => screen.style.setProperty(`--${key}`,colors[i]));
+  screen.querySelector(".theme").textContent = name;
+}
+designs.forEach(([name, description], index) => {
+  const section = document.createElement("section");
+  section.className = `design v${index + 1}`;
+  section.innerHTML = `<h2>${String(index+1).padStart(2,"0")} · ${name}</h2>
+    <p class="description">${description}</p>
+    <div class="screen">
+      <h3>Artikel verwalten</h3><span class="theme"></span>
+      <article class="product-management-row">
+        <div class="product-management-heading"><span class="product-management-name">Butter<span class="product-management-usage"><span class="count">32</span> Verwendungen</span></span></div>
+        <div class="actions">
+          <button type="button" class="rename">Umbenennen ›</button>
+          <button type="button" class="merge">Zusammenführen ›</button>
+          <button type="button" class="delete danger-button">Löschen</button>
+          <button type="button" class="stats">Statistik <span>${index === 5 || index === 7 ? '<span class="count">32</span> · ' : ""}›</span></button>
+        </div>
+        <details class="edit"${index === 0 ? " open" : ""}>
+          <summary>Vorschau: Statistik bearbeiten</summary>
+          <form>
+            <label for="uses-${index}">Verwendungen</label>
+            <input id="uses-${index}" type="number" min="0" step="1" required value="32">
+            <p class="notice">Beispiel für eine manuelle Korrektur der Verwendungszahl. Listenbezug und Wochenstatistik werden bei der Umsetzung gesondert festgelegt.</p>
+            <div class="edit-actions"><button type="button" class="secondary cancel">Abbrechen</button><button class="primary" type="submit">Speichern</button></div>
+          </form>
+        </details>
+        <output aria-live="polite"></output>
+      </article>
+    </div>`;
+  const screen = section.querySelector(".screen");
+  applyTheme(screen, index);
+  const details = section.querySelector("details"), input = section.querySelector("input"), output = section.querySelector("output");
+  let value = 32;
+  section.querySelector(".stats").onclick = () => {details.open = true; input.focus();};
+  section.querySelector(".cancel").onclick = () => {input.value = value; details.open = false; output.textContent = "Abgebrochen – Beispielwert unverändert.";};
+  section.querySelector("form").onsubmit = event => {
+    event.preventDefault();
+    value = input.valueAsNumber;
+    section.querySelectorAll(".count").forEach(el => el.textContent = value);
+    details.open = false;
+    output.textContent = "Nur in dieser Vorschau geändert.";
+  };
+  section.querySelectorAll(".rename,.merge,.delete").forEach(button => button.onclick = () => {output.textContent = "Designvorschau – keine echte Aktion.";});
+  document.querySelector(".designs").append(section);
+});
+themeSelect.onchange = () => document.querySelectorAll(".screen").forEach((screen, index) => applyTheme(screen, themeSelect.value === "" ? index : Number(themeSelect.value)));
+</script>
+</body>
+</html>

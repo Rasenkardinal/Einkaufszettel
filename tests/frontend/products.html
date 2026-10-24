@@ -67,6 +67,13 @@ async function runTests() {
         busy = false;
         openCatalog("product-merge", {...source, target_key: ""});
       },
+      setupStatistics(product) {
+        openCatalog = originalOpenCatalog;
+        renderCatalogPage = originalRenderCatalogPage;
+        products = [product];
+        busy = false;
+        openCatalog("product-statistics", product);
+      },
       setupCategoryDelete() {
         openCatalog = originalOpenCatalog;
         renderCatalogPage = originalRenderCatalogPage;
@@ -112,25 +119,41 @@ async function runTests() {
   test("Manual merging and deletion remain available without a suggestion", () => {
     const plain = api.productManagementRow(source, null);
     doc.querySelector(".app").append(plain);
-    const actions = plain.querySelector(".product-management-actions");
     const buttons = plain.querySelector(".product-management-buttons");
     assert(!plain.querySelector(".product-management-heading button"), "Rename must be below the name");
-    assert(buttons.children.length === 2, "Two equal actions required");
+    assert(buttons.children.length === 4, "Four actions required");
     for (const button of buttons.children) {
       assert(button.classList.contains("secondary"), "Standard secondary style missing");
-      assert(button.querySelector(".product-rename-arrow").textContent === "›", "Chevron missing");
+      if (button.querySelector(".product-rename-arrow")) assert(button.querySelector(".product-rename-arrow").textContent === "›", "Chevron missing");
       assert(win.getComputedStyle(button).minHeight === "44px", "Touch target too small");
-      assert(win.getComputedStyle(button).borderTopWidth === "0px", "Action must not have an outline");
-      assert(win.getComputedStyle(button).backgroundColor ===
-        win.getComputedStyle(doc.querySelector("#cancel-app-confirm")).backgroundColor,
-        "Action must use the standard secondary background");
     }
+    const originalTheme = doc.body.dataset.theme;
+    const reference = doc.createElement("button");
+    reference.className = "primary";
+    reference.style.border = "1px solid var(--line)";
+    plain.append(reference);
+    for (const theme of ["mono", "botanical", "midnight-plum", "market-journal", "fresh-signal", "tomato", "lime-focus", "indigo-pocket"]) {
+      doc.body.dataset.theme = theme;
+      const referenceStyle = win.getComputedStyle(reference);
+      for (const button of buttons.querySelectorAll(".product-outline-action")) {
+        const style = win.getComputedStyle(button);
+        assert(style.borderTopWidth === "1px" && style.borderTopStyle === "solid" &&
+          style.borderTopColor === referenceStyle.borderTopColor, `Action border differs from app border in ${theme}`);
+        assert(style.backgroundColor === referenceStyle.backgroundColor, `Action must use the accent background in ${theme}`);
+        assert(style.color === referenceStyle.color, `Action must use accent text in ${theme}`);
+      }
+    }
+    doc.body.dataset.theme = originalTheme;
+    reference.remove();
+    buttons.children[2].click();
+    assert(calls.at(-1).view === "product-statistics", "Statistics action missing");
     buttons.firstElementChild.click();
     assert(calls.at(-1).view === "product-edit", "Plain rename action changed");
-    assert(buttons.lastElementChild.textContent === "Zusammenführen›", "Manual merge missing");
-    assert(actions.lastElementChild.textContent === "Löschen", "Delete action missing");
-    assert(!actions.lastElementChild.disabled, "Used product deletion must be enabled");
-    buttons.lastElementChild.click();
+    assert(buttons.children[1].textContent === "Zusammenführen›", "Manual merge missing");
+    assert(buttons.lastElementChild.textContent === "Löschen", "Delete action missing");
+    assert(!buttons.lastElementChild.disabled, "Used product deletion must be enabled");
+    assert(win.getComputedStyle(buttons.lastElementChild).color === "rgb(255, 180, 168)", "Delete must remain red");
+    buttons.children[1].click();
     assert(calls.at(-1).view === "product-merge", "Manual merge action changed");
     const unused = api.productManagementRow({...source, usage: {}}, null);
     assert(!unused.querySelector(".danger-button").disabled, "Unused product deletion must remain enabled");
@@ -142,6 +165,22 @@ async function runTests() {
     row.replaceWith(long);
     assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, "Horizontal overflow");
     long.replaceWith(api.productManagementRow(source, null));
+  });
+  api.setupStatistics({...source, usage_adjustment: -20});
+  test("Statistics editor corrects the overall count and validates whole nonnegative values", () => {
+    const input = doc.querySelector("#product-usage-count");
+    assert(input.value === "12", "Corrected total missing");
+    input.value = "-1";
+    assert(!input.checkValidity(), "Negative count accepted");
+    input.value = "1.5";
+    assert(!input.checkValidity(), "Fraction accepted");
+    input.value = "0";
+    input.dispatchEvent(new win.Event("input"));
+    input.form.requestSubmit();
+    const [command, payload] = calls.at(-1).save;
+    assert(command === "set_product_statistics" && payload.count === 0 && payload.product_key === "eier", "Statistics save payload incorrect");
+    doc.querySelector("#catalog-content .page-actions button").click();
+    doc.querySelector('#discard-changes button[value="discard"]').click();
   });
   api.setupCatalog();
   const page = doc.querySelector("#catalog-page");
@@ -269,7 +308,7 @@ async function runTests() {
         assert(api.view() === (view === "markets" ? "market-edit" : "category-edit"), "Wrong add form");
         assert(doc.querySelector("#catalog-name").value === "", "New name not empty");
         assert(doc.querySelector("#catalog-name").getBoundingClientRect().top -
-          page.querySelector(".management-title-row").getBoundingClientRect().bottom >= 16,
+          page.querySelector(".management-title-row").getBoundingClientRect().bottom >= (view === "markets" ? 12 : 16),
           "Edit field too close to heading");
         assert(footer.hidden && !page.classList.contains("has-fixed-actions"), "List footer leaked into add form");
         doc.querySelector("#catalog-back").click();

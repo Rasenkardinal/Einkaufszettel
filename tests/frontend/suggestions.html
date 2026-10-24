@@ -51,6 +51,26 @@ async function runTests() {
     const commonItemsDialog = doc.querySelector("#common-items-dialog");
     doc.querySelector("#open-common-items").click();
     assert(commonItemsDialog.open, "Plus did not open the common-items dialog");
+    assert(!commonItemsDialog.querySelector(".common-items-header p"), "Selection help text is still present");
+    const choices = doc.querySelector("#common-items-list");
+    const extraChoices = Array.from({length: 30}, () => choices.firstElementChild.cloneNode(true));
+    choices.append(...extraChoices);
+    for (const [width, height] of [[320,568],[390,844],[1024,768]]) {
+      frame.style.width = width + "px"; frame.style.height = height + "px"; await pause();
+      const bounds = commonItemsDialog.getBoundingClientRect();
+      const header = doc.querySelector(".common-items-header").getBoundingClientRect();
+      const footer = doc.querySelector(".common-items-footer").getBoundingClientRect();
+      assert(bounds.x === 0 && bounds.y === 0 && bounds.width === win.innerWidth && bounds.height === win.innerHeight, "Article selection does not fill the viewport");
+      assert(win.getComputedStyle(commonItemsDialog).borderRadius === "0px", "Fullscreen selection retains rounded corners");
+      assert(choices.scrollHeight > choices.clientHeight, "Long article selection does not scroll");
+      choices.scrollTop = choices.scrollHeight;
+      assert(choices.scrollTop > 0 && header.top === doc.querySelector(".common-items-header").getBoundingClientRect().top && footer.bottom === doc.querySelector(".common-items-footer").getBoundingClientRect().bottom, "Scrolling moved the fixed header or footer");
+      assert(footer.bottom <= bounds.bottom && doc.documentElement.scrollWidth <= win.innerWidth, "Selection actions overflow the viewport");
+    }
+    extraChoices.forEach(choice => choice.remove());
+    choices.scrollTop = 0;
+    frame.style.width = "390px"; frame.style.height = "1000px"; await pause();
+    results.push("PASS Article selection is fullscreen without help text; long lists scroll independently of header and actions on mobile and desktop");
     assert(!commonItemsDialog.textContent.includes("Art der Liste"), "Unwanted list-type heading is visible");
     assert([...commonItemsDialog.querySelectorAll('[role="tab"]')].map(tab=>tab.textContent).join("|")==="Häufigste|Kürzlich|Regelmäßig","List types are missing or reordered");
     assert([...doc.querySelectorAll("#common-items-list .common-item-name")].slice(0,3).map(item=>item.textContent).join("|")==="Butter|Bananen|Bier","Most-frequent ranking is wrong");

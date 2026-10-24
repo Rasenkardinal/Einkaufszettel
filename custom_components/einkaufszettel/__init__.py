@@ -62,6 +62,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_save_market_bonus_card,
         websocket_save_market_categories,
         websocket_save_supermarket,
+        websocket_set_product_statistics,
         websocket_sync_source,
         websocket_update_item,
     )
@@ -92,6 +93,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_rename_product,
         websocket_delete_product,
         websocket_merge_product,
+        websocket_set_product_statistics,
         websocket_dismiss_product_suggestion,
     ):
         websocket_api.async_register_command(hass, command)

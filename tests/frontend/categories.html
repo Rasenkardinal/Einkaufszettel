@@ -71,6 +71,12 @@ async function runTests() {
         m.id === payload.market_id ? {...m, name: payload.name,
           deposit_receipt_hint: payload.deposit_receipt_hint, show_bonus_card: payload.show_bonus_card} : m);
       if (command === "save_category") state.categories = state.categories.map(c => c.id === payload.category_id ? {...c, name:payload.name} : c);
+      if (command === "set_product_statistics") {
+        const product = state.products.find(p => p.key === payload.product_key);
+        const baseCount = Object.values(product.usage || {}).reduce((sum, stats) =>
+          sum + Math.max(stats.added, Object.values(stats.weeks).reduce((a, b) => a + b, 0)), 0);
+        product.usage_adjustment = payload.count - baseCount;
+      }
       if (command === "remove_category_product") state.products = state.products.map(product =>
         product.key === payload.product_key ? {...product, category_id:null} : product);
       if (command === "save_supermarket") return structuredClone(state.supermarkets);
@@ -805,12 +811,44 @@ async function runTests() {
   doc.querySelector("#catalog-back").click();
   assert(doc.querySelector("#catalog-title").textContent==="Kategorie bearbeiten", "Product page back did not return to category editor");
   results.push("PASS Product page returns to category editor");
+  const statisticsProduct = state.products[0];
+  api.openCatalog("product-statistics", statisticsProduct);
+  const statisticsInput = doc.querySelector("#product-usage-count");
+  statisticsInput.value = "5";
+  statisticsInput.dispatchEvent(new win.Event("input"));
+  fail = true;
+  statisticsInput.form.requestSubmit();
+  await pause(0);
+  assert(doc.querySelector("#catalog-message").textContent.includes("fehlgeschlagen") &&
+    statisticsInput.value === "5" && api.state().catalogDirty, "Failed statistics save lost draft or error");
+  fail = false;
+  statisticsInput.form.requestSubmit();
+  await pause(0);
+  assert(doc.querySelector("#catalog-title").textContent === "Artikel verwalten", "Statistics save did not return to article list");
+  api.loadCachedSupermarkets();
+  api.openCatalog("product-statistics", api.state().products.find(p => p.key === statisticsProduct.key));
+  assert(doc.querySelector("#product-usage-count").value === "5", "Offline cache lost corrected count");
+  doc.querySelector("#catalog-content .page-actions button").click();
+  results.push("PASS Statistics save preserves failed drafts and errors, persists the corrected total and restores it offline");
   state.supermarkets = [{
     id: "m", name: "Markt", category_ids: [],
     bonus_card: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/LQAAAABJRU5ErkJggg=="
   }];
   api.reset();
   api.openCatalog("market-edit", state.supermarkets[0]);
+  for (const [width, height] of [[360,640], [390,740], [430,844]]) {
+    frame.style.width = width + "px";
+    frame.style.height = height + "px";
+    await pause(0);
+    assert(doc.documentElement.scrollHeight <= win.innerHeight, `Market editor needs vertical scrolling at ${width}x${height}`);
+    assert(doc.documentElement.scrollWidth <= win.innerWidth, "Market editor overflows horizontally");
+    assert(doc.querySelector("#catalog-content .page-actions").getBoundingClientRect().bottom <= win.innerHeight, "Market save actions are outside the viewport");
+    for (const control of doc.querySelectorAll("#catalog-content .category-navigation, #catalog-content .market-checkout-option, #catalog-content .page-actions button")) {
+      assert(control.getBoundingClientRect().height >= 44, "Compact market editor shrank a touch target");
+    }
+  }
+  frame.style.width = "390px"; frame.style.height = "1000px";
+  results.push("PASS Market editor fits smartphone heights without scrolling and retains touch-sized controls");
   const receiptSwitch = doc.querySelector("#market-deposit_receipt_hint");
   const cardSwitch = doc.querySelector("#market-show_bonus_card");
   assert(receiptSwitch.checked && cardSwitch.checked, "Legacy markets must keep both options enabled");

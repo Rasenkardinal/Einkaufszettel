@@ -265,6 +265,7 @@ function applyCatalog(value) {
   if (!Array.isArray(nextProducts) || nextProducts.some(product =>
     !product || typeof product.name !== "string" || !productNameKey(product.name) ||
     product.key !== productNameKey(product.name) || !validProductUsage(product.usage === undefined ? {} : product.usage) ||
+    (product.usage_adjustment !== undefined && (!Number.isSafeInteger(product.usage_adjustment) || productUsageCount(product) < 0)) ||
     (product.category_known !== undefined && typeof product.category_known !== "boolean") ||
     (product.category_known === false && product.category_id !== null) ||
     (product.category_id !== null && !nextCategories.some(category => category.id === product.category_id))
@@ -689,7 +690,7 @@ async function saveCatalog(command, payload, nextView) {
 }
 
 function productUsageCount(product) {
-  return Object.values(product.usage || {}).reduce(
+  return (product.usage_adjustment || 0) + Object.values(product.usage || {}).reduce(
     (total, stats) => total + Math.max(stats.added, Object.values(stats.weeks).reduce((sum, count) => sum + count, 0)),
     0,
   );
@@ -825,6 +826,9 @@ function productManagementRow(product, suggestion) {
   }
   const actions = document.createElement("div");
   actions.className = "product-management-actions";
+  const statisticsButton = button("Statistik ›", () => openCatalog("product-statistics", product), "secondary product-outline-action");
+  const deleteButton = button("Löschen", () => openProductDelete(product), "secondary danger-button");
+  deleteButton.title = "Artikel, Statistik und Einträge auf den bestätigten Listen löschen.";
   if (!suggestion) {
     const primaryActions = document.createElement("div");
     primaryActions.className = "product-management-buttons";
@@ -834,13 +838,13 @@ function productManagementRow(product, suggestion) {
     mergeArrow.textContent = "›";
     mergeArrow.setAttribute("aria-hidden", "true");
     mergeButton.append(mergeArrow);
-    primaryActions.append(renameButton, mergeButton);
+    primaryActions.append(renameButton, mergeButton, statisticsButton, deleteButton);
     row.append(primaryActions);
   }
-  const deleteButton = button("Löschen", () => openProductDelete(product), "secondary danger-button");
-  deleteButton.title = "Artikel, Statistik und Einträge auf den bestätigten Listen löschen.";
-  actions.append(deleteButton);
-  row.append(actions);
+  if (suggestion) {
+    actions.append(statisticsButton, deleteButton);
+    row.append(actions);
+  }
   return row;
 }
 
@@ -894,6 +898,51 @@ function renderProductManagement() {
     button("＋ Artikel hinzufügen", () => openCatalog("product-edit", { key: "", name: "" }), "primary"),
   );
   elements.catalogFixedActions.hidden = false;
+}
+
+function renderProductStatistics() {
+  const product = products.find(item => item.key === catalogDraft.key);
+  elements.catalogTitle.textContent = "Statistik bearbeiten";
+  elements.catalogHelp.textContent = "Gesamtzahl über alle Einkaufslisten. Wochenstatistik und listenbezogene Häufigkeiten bleiben unverändert. Neue Verwendungen zählen weiter.";
+  if (!product) {
+    elements.catalogMessage.textContent = "Der Artikel wurde inzwischen geändert. Bitte die Übersicht neu öffnen.";
+    return;
+  }
+  const form = document.createElement("form");
+  form.className = "management-form";
+  const label = document.createElement("label");
+  label.htmlFor = "product-usage-count";
+  label.textContent = `${product.name} · Verwendungen insgesamt`;
+  const input = document.createElement("input");
+  input.id = "product-usage-count";
+  input.type = "number";
+  input.min = "0";
+  input.max = "2147483647";
+  input.step = "1";
+  input.required = true;
+  input.value = catalogDraft.statisticsCount ?? productUsageCount(product);
+  input.addEventListener("input", () => {
+    catalogDraft.statisticsCount = input.value;
+    catalogDirty = true;
+    input.setCustomValidity("");
+  });
+  const actions = document.createElement("div");
+  actions.className = "page-actions";
+  const save = button("Speichern", () => {}, "primary");
+  save.type = "submit";
+  actions.append(button("Abbrechen", () => openCatalog("products")), save);
+  form.append(label, input, actions);
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const count = input.valueAsNumber;
+    if (!Number.isInteger(count) || count < 0 || count > 2147483647) {
+      input.setCustomValidity("Bitte gib eine ganze Zahl von 0 bis 2147483647 ein.");
+      input.reportValidity();
+      return;
+    }
+    saveCatalog("set_product_statistics", { product_key: product.key, count }, "products");
+  });
+  elements.catalogContent.append(form);
 }
 
 function renderProductEdit() {
@@ -1129,6 +1178,7 @@ function renderCatalogPage() {
   elements.catalogFixedActions.hidden = true;
   const hasFixedActions = ["products", "markets", "categories", "market-select", "market-order", "market-bonus-card"].includes(catalogView);
   elements.catalogPage.classList.toggle("has-fixed-actions", hasFixedActions);
+  elements.catalogPage.classList.toggle("market-editor", catalogView === "market-edit");
   elements.catalogMessage.textContent = "";
   const isMarket = catalogView?.startsWith("market");
   const isList = catalogView === "markets" || catalogView === "categories" || catalogView === "products";
@@ -1139,13 +1189,13 @@ function renderCatalogPage() {
     : catalogView === "market-select" ? "Marktkategorien"
     : catalogView === "market-bonus-card" ? "Bonuskarten oder APP-Codes"
     : catalogView === "category-products" ? "Kategorie bearbeiten"
-    : catalogView === "product-edit" || catalogView === "product-merge" ? "Artikel verwalten"
+    : ["product-edit", "product-merge", "product-statistics"].includes(catalogView) ? "Artikel verwalten"
     : isMarket ? "Supermärkte" : "Produktkategorien";
   elements.catalogBack.onclick = () => {
     if (isList) leaveManagement();
     else if (catalogView === "category-products") openCatalog("category-edit", catalogDraft);
     else if (catalogView === "market-order" || catalogView === "market-bonus-card") openCatalog("market-edit", catalogDraft);
-    else if (catalogView === "product-edit" || catalogView === "product-merge") openCatalog("products");
+    else if (["product-edit", "product-merge", "product-statistics"].includes(catalogView)) openCatalog("products");
     else if (catalogView === "market-select") {
       leaveMarketCategorySelection(false);
     } else openCatalog(isMarket ? "markets" : "categories");
@@ -1153,6 +1203,8 @@ function renderCatalogPage() {
   elements.catalogHelp.textContent = "Gemeinsamer Katalog für alle Nutzer. Alle angemeldeten HA-Nutzer können ihn bearbeiten. Speichern benötigt eine Verbindung; Änderungen gelten für alle Nutzer.";
   if (catalogView === "products") {
     renderProductManagement();
+  } else if (catalogView === "product-statistics") {
+    renderProductStatistics();
   } else if (catalogView === "product-edit") {
     renderProductEdit();
   } else if (catalogView === "product-merge") {

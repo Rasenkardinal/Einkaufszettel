@@ -866,7 +866,62 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 26
+    assert env.websocket_api.async_register_command.call_count == 27
+
+
+@pytest.mark.parametrize("admin", [True, False])
+async def test_correct_product_statistics_persist_for_authenticated_users(
+    integration, admin
+):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=admin))
+    persisted = {
+        "products": [
+            {
+                "key": "milch",
+                "name": "Milch",
+                "category_id": None,
+                "usage": {
+                    "a": {"added": 4, "last_added": 1000, "weeks": {"2026-W43": 4}}
+                },
+            }
+        ]
+    }
+    store = env.stores.setdefault(
+        "einkaufszettel.supermarkets",
+        SimpleNamespace(async_load=AsyncMock(), async_save=AsyncMock()),
+    )
+    store.async_load.side_effect = lambda: persisted
+
+    async def save(data):
+        nonlocal persisted
+        persisted = data
+
+    store.async_save.side_effect = save
+    message = {
+        "id": 1,
+        "type": "einkaufszettel/set_product_statistics",
+        "product_key": "milch",
+        "count": 0,
+    }
+    await env.websocket.websocket_set_product_statistics(env.hass, connection, message)
+    connection.send_error.assert_not_called()
+    assert persisted["products"][0]["usage_adjustment"] == -4
+    assert persisted["products"][0]["usage"]["a"]["weeks"] == {"2026-W43": 4}
+    await env.websocket.websocket_get_catalog(
+        env.hass, connection, {"id": 2, "type": "einkaufszettel/get_catalog"}
+    )
+    assert (
+        connection.send_result.call_args.args[1]["products"][0]["usage_adjustment"]
+        == -4
+    )
+    store.async_save.reset_mock()
+    connection.user = None
+    await env.websocket.websocket_set_product_statistics(env.hass, connection, message)
+    connection.send_error.assert_called_with(
+        1, "unauthorized", "HA-Anmeldung erforderlich."
+    )
+    store.async_save.assert_not_called()
 
 
 @pytest.mark.parametrize("admin", [True, False])

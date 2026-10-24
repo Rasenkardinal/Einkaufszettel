@@ -25,6 +25,84 @@ def sample():
     }
 
 
+@pytest.mark.parametrize("count", [0, 1, 100, 2147483647])
+def test_correct_overall_statistics_without_changing_history(count):
+    data = sample()
+    usage = {
+        "a": {"added": 4, "last_added": 1000, "weeks": {"2026-W43": 4}},
+        "b": {"added": 3, "last_added": 2000, "weeks": {"2026-W43": 3}},
+    }
+    data["products"] = [
+        {"key": "milch", "name": "Milch", "category_id": None, "usage": usage}
+    ]
+    for value in [10, count]:
+        data = catalog.change_catalog(
+            data, "set_product_statistics", {"product_key": "milch", "count": value}
+        )
+    product = data["products"][0]
+    assert catalog.product_usage_count(product) == count
+    assert product["usage"] == usage
+    catalog.validate_catalog(data)
+    product["usage"]["a"]["added"] += 1
+    product["usage"]["a"]["weeks"]["2026-W43"] += 1
+    assert catalog.product_usage_count(product) == count + 1
+
+
+@pytest.mark.parametrize("count", [-1, 1.5, True, None, "3", 2147483648])
+def test_invalid_statistics_count_rejected(count):
+    data = sample()
+    data["products"] = [{"key": "milch", "name": "Milch", "category_id": None}]
+    with pytest.raises(ValueError, match="ganze Zahl"):
+        catalog.change_catalog(
+            data, "set_product_statistics", {"product_key": "milch", "count": count}
+        )
+
+
+@pytest.mark.parametrize("adjustment", [True, "1", 1.5, -1])
+def test_invalid_stored_statistics_adjustment_rejected(adjustment):
+    data = sample()
+    data["products"] = [
+        {
+            "key": "milch",
+            "name": "Milch",
+            "category_id": None,
+            "usage_adjustment": adjustment,
+        }
+    ]
+    with pytest.raises(ValueError):
+        catalog.validate_catalog(data)
+
+
+def test_corrected_statistics_survive_merge_and_rename():
+    data = sample()
+    data["products"] = [
+        {
+            "key": name,
+            "name": name,
+            "category_id": None,
+            "usage": {
+                "a": {"added": count, "last_added": 0, "weeks": {"2026-W43": count}}
+            },
+        }
+        for name, count in [("milch", 4), ("milhc", 7)]
+    ]
+    data = catalog.change_catalog(
+        data, "set_product_statistics", {"product_key": "milch", "count": 0}
+    )
+    data = catalog.change_catalog(
+        data, "set_product_statistics", {"product_key": "milhc", "count": 2}
+    )
+    data = catalog.change_catalog(
+        data, "merge_product", {"product_key": "milhc", "target_key": "milch"}
+    )
+    assert catalog.product_usage_count(data["products"][0]) == 2
+    assert data["products"][0]["usage"]["a"]["weeks"]["2026-W43"] == 11
+    data = catalog.change_catalog(
+        data, "rename_product", {"product_key": "milch", "name": "Hafermilch"}
+    )
+    assert catalog.product_usage_count(data["products"][0]) == 2
+
+
 @pytest.mark.parametrize("key", ["deposit_receipt_hint", "show_bonus_card"])
 @pytest.mark.parametrize("value", [None, 0, 1, "false", []])
 def test_market_checkout_options_reject_non_booleans(key, value):
