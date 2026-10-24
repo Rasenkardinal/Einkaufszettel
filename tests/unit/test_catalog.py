@@ -25,6 +25,15 @@ def sample():
     }
 
 
+@pytest.mark.parametrize("key", ["deposit_receipt_hint", "show_bonus_card"])
+@pytest.mark.parametrize("value", [None, 0, 1, "false", []])
+def test_market_checkout_options_reject_non_booleans(key, value):
+    data = sample()
+    data["supermarkets"][0][key] = value
+    with pytest.raises(ValueError, match="Supermarktoptionen"):
+        catalog.validate_catalog(data)
+
+
 @pytest.mark.parametrize(
     "usage",
     [

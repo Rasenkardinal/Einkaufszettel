@@ -150,6 +150,11 @@ def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
     ):
         raise ValueError("Ungültige Produktstatistik-Bestätigungen.")
     for market in data.get("supermarkets", []):
+        if any(
+            key in market and type(market[key]) is not bool
+            for key in ("deposit_receipt_hint", "show_bonus_card")
+        ):
+            raise ValueError("Ungültige Supermarktoptionen.")
         if "bonus_card" in market and not _validate_bonus_card(market["bonus_card"]):
             raise ValueError(
                 "Ungültiges Bonuskartenbild (maximal 512 KiB, PNG/JPEG/WebP)."

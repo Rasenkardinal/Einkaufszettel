@@ -69,13 +69,23 @@ async def _market_command(hass: HomeAssistant, connection, msg: dict[str, Any]) 
                         raise ValueError(
                             "Ein Supermarkt mit diesem Namen existiert bereits."
                         )
+                    options = {
+                        key: msg[key]
+                        for key in ("deposit_receipt_hint", "show_bonus_card")
+                        if key in msg
+                    }
+                    if any(type(value) is not bool for value in options.values()):
+                        raise ValueError("Ungültige Supermarktoptionen.")
                     if uid:
                         markets = [
-                            {**m, "name": name} if m["id"] == uid else m
+                            {**m, "name": name, **options} if m["id"] == uid else m
                             for m in markets
                         ]
                     else:
-                        markets = [*markets, {"id": uuid4().hex, "name": name}]
+                        markets = [
+                            *markets,
+                            {"id": uuid4().hex, "name": name, **options},
+                        ]
                 await store.async_save({**(data or {}), "supermarkets": markets})
         except (HomeAssistantError, OSError, ValueError, KeyError, TypeError) as err:
             connection.send_error(msg["id"], "cannot_manage_supermarkets", str(err))
@@ -97,6 +107,8 @@ async def websocket_get_supermarkets(
         vol.Required("type"): f"{DOMAIN}/save_supermarket",
         vol.Required("market_id"): str,
         vol.Required("name"): str,
+        vol.Optional("deposit_receipt_hint"): bool,
+        vol.Optional("show_bonus_card"): bool,
     }
 )
 @websocket_api.async_response

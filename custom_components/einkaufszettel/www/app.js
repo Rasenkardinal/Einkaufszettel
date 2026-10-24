@@ -239,6 +239,8 @@ function validateSupermarkets(value) {
   if (!Array.isArray(value) || value.some(market =>
     !market || typeof market.id !== "string" || !market.id ||
     typeof market.name !== "string" || !market.name.trim() || market.name.length > 100 ||
+    ["deposit_receipt_hint", "show_bonus_card"].some(key =>
+      market[key] !== undefined && typeof market[key] !== "boolean") ||
     (market.bonus_card !== undefined && (
       typeof market.bonus_card !== "string" ||
       !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(market.bonus_card) ||
@@ -1250,6 +1252,32 @@ function renderCatalogPage() {
         openCatalog("market-bonus-card", supermarkets.find(m => m.id === catalogDraft.id));
       }, "management-link category-navigation"));
     }
+    if (isMarket) {
+      const options = document.createElement("div");
+      options.className = "market-checkout-options";
+      for (const [key, text] of [
+        ["deposit_receipt_hint", "Pfandbon Hinweis"],
+        ["show_bonus_card", "Anzeige Bonuskarte"],
+      ]) {
+        const label = document.createElement("label");
+        label.className = "market-checkout-option";
+        const name = document.createElement("span");
+        name.textContent = text;
+        const toggle = document.createElement("input");
+        toggle.type = "checkbox";
+        toggle.id = `market-${key}`;
+        toggle.className = "market-option-switch";
+        toggle.setAttribute("role", "switch");
+        toggle.checked = catalogDraft[key] !== false;
+        toggle.addEventListener("change", () => {
+          catalogDraft[key] = toggle.checked;
+          catalogDirty = true;
+        });
+        label.append(name, toggle);
+        options.append(label);
+      }
+      form.append(options);
+    }
     if (catalogDraft.id) {
       const danger = document.createElement("section");
       danger.className = "danger-section";
@@ -1281,7 +1309,14 @@ function renderCatalogPage() {
         return;
       }
       saveCatalog(isMarket ? "save_supermarket" : "save_category",
-        { [isMarket ? "market_id" : "category_id"]: catalogDraft.id, name: input.value.trim() },
+        {
+          [isMarket ? "market_id" : "category_id"]: catalogDraft.id,
+          name: input.value.trim(),
+          ...(isMarket ? {
+            deposit_receipt_hint: catalogDraft.deposit_receipt_hint !== false,
+            show_bonus_card: catalogDraft.show_bonus_card !== false,
+          } : {}),
+        },
         isMarket ? "markets" : "categories");
     });
     content.append(form);
@@ -1942,8 +1977,17 @@ function openCashierReminder(touchGated = false) {
   if (elements.cashierReminder.open) return;
   const gateDialog = touchGated && longPressTouchPointerId !== null;
   const market = supermarkets.find(value => value.id === selectedMarket);
-  elements.cashierBonusCard.hidden = !market?.bonus_card;
-  if (market?.bonus_card) {
+  const showReceipt = market?.deposit_receipt_hint !== false;
+  const showCard = market?.show_bonus_card !== false && !!market?.bonus_card;
+  if (!showReceipt && !showCard) {
+    openEndShoppingConfirmation(touchGated);
+    return;
+  }
+  document.querySelector("#cashier-reminder-title").textContent = showReceipt
+    ? "Pfandbon nicht vergessen!" : "Bonuskarte / APP-Code";
+  document.querySelector("#cashier-reminder-description").hidden = !showReceipt;
+  elements.cashierBonusCard.hidden = !showCard;
+  if (showCard) {
     elements.cashierBonusCardImage.src = market.bonus_card;
     elements.cashierBonusCardImage.alt = `Bonuskarte oder APP-Code für ${market.name}`;
   } else {

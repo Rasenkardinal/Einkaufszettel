@@ -53,6 +53,7 @@ async function runTests() {
       renderMarketSelection,
       state: () => ({categories, supermarkets, products, currentItems, selectedMarket, catalogDraft, catalogDirty}),
       withoutMarket: () => { selectedMarket = ""; render(); },
+      selectMarket: id => { selectedMarket = id; render(); },
       reset: () => { categories = test.state.categories; supermarkets = test.state.supermarkets; },
       updateConnection
     };
@@ -66,9 +67,13 @@ async function runTests() {
         if (payload.bonus_card) state.supermarkets[0].bonus_card = payload.bonus_card;
         else delete state.supermarkets[0].bonus_card;
       }
+      if (command === "save_supermarket") state.supermarkets = state.supermarkets.map(m =>
+        m.id === payload.market_id ? {...m, name: payload.name,
+          deposit_receipt_hint: payload.deposit_receipt_hint, show_bonus_card: payload.show_bonus_card} : m);
       if (command === "save_category") state.categories = state.categories.map(c => c.id === payload.category_id ? {...c, name:payload.name} : c);
       if (command === "remove_category_product") state.products = state.products.map(product =>
         product.key === payload.product_key ? {...product, category_id:null} : product);
+      if (command === "save_supermarket") return structuredClone(state.supermarkets);
       return structuredClone(state);
     }
   }, { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) });
@@ -800,6 +805,62 @@ async function runTests() {
   doc.querySelector("#catalog-back").click();
   assert(doc.querySelector("#catalog-title").textContent==="Kategorie bearbeiten", "Product page back did not return to category editor");
   results.push("PASS Product page returns to category editor");
+  state.supermarkets = [{
+    id: "m", name: "Markt", category_ids: [],
+    bonus_card: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/LQAAAABJRU5ErkJggg=="
+  }];
+  api.reset();
+  api.openCatalog("market-edit", state.supermarkets[0]);
+  const receiptSwitch = doc.querySelector("#market-deposit_receipt_hint");
+  const cardSwitch = doc.querySelector("#market-show_bonus_card");
+  assert(receiptSwitch.checked && cardSwitch.checked, "Legacy markets must keep both options enabled");
+  receiptSwitch.click();
+  cardSwitch.click();
+  assert(api.state().catalogDirty && api.state().catalogDraft.deposit_receipt_hint === false &&
+    api.state().catalogDraft.show_bonus_card === false, "Switches do not edit draft");
+  doc.querySelector("#catalog-content form").requestSubmit();
+  await pause(0);
+  const savedOptions = messages.filter(m => m.command === "save_supermarket").at(-1).payload;
+  assert(savedOptions.deposit_receipt_hint === false && savedOptions.show_bonus_card === false, "Options not saved");
+  api.loadCachedSupermarkets();
+  assert(api.state().supermarkets[0].deposit_receipt_hint === false &&
+    api.state().supermarkets[0].show_bonus_card === false, "Offline cache lost options");
+  api.openCatalog("market-edit", api.state().supermarkets[0]);
+  assert(!doc.querySelector("#market-deposit_receipt_hint").checked &&
+    !doc.querySelector("#market-show_bonus_card").checked, "Saved options not restored");
+  doc.querySelector("#market-show_bonus_card").click();
+  doc.querySelector("#catalog-content .page-actions button:first-child").click();
+  assert(api.state().supermarkets[0].show_bonus_card === false, "Cancel saved an option");
+  results.push("PASS Market option switches default on, save together, survive offline reload and cancel safely");
+  for (const [receipt, card] of [[true, true], [true, false], [false, true], [false, false]]) {
+    state.supermarkets[0].deposit_receipt_hint = receipt;
+    state.supermarkets[0].show_bonus_card = card;
+    api.reset();
+    api.selectMarket("m");
+    const checkout = doc.querySelector("#items .end-shopping-action");
+    checkout.click();
+    if (receipt || card) {
+      assert(cashierReminder.open, "Expected checkout reminder");
+      assert(doc.querySelector("#cashier-reminder-description").hidden === !receipt, "Receipt option ignored");
+      assert(doc.querySelector("#cashier-bonus-card").hidden === !card, "Card option ignored");
+      assert(doc.querySelector("#cashier-reminder-title").textContent ===
+        (receipt ? "Pfandbon nicht vergessen!" : "Bonuskarte / APP-Code"), "Wrong reminder heading");
+      cashierReminder.close();
+    } else {
+      assert(!cashierReminder.open && endShoppingDialog.open, "Disabled options did not skip reminder");
+      endShoppingDialog.close();
+    }
+    await pause(0);
+  }
+  delete state.supermarkets[0].bonus_card;
+  state.supermarkets[0].deposit_receipt_hint = false;
+  state.supermarkets[0].show_bonus_card = true;
+  api.reset();
+  api.selectMarket("m");
+  doc.querySelector("#items .end-shopping-action").click();
+  assert(!cashierReminder.open && endShoppingDialog.open, "Missing card opened an empty reminder");
+  endShoppingDialog.close();
+  results.push("PASS All checkout option combinations work independently; absent cards never open an empty reminder");
   document.querySelector("#results").textContent = results.join("\n");
 }
 runTests().catch(error => {

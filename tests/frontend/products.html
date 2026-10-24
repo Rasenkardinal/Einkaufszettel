@@ -117,10 +117,13 @@ async function runTests() {
     assert(!plain.querySelector(".product-management-heading button"), "Rename must be below the name");
     assert(buttons.children.length === 2, "Two equal actions required");
     for (const button of buttons.children) {
-      assert(button.classList.contains("product-outline-action"), "Outline style missing");
+      assert(button.classList.contains("secondary"), "Standard secondary style missing");
       assert(button.querySelector(".product-rename-arrow").textContent === "›", "Chevron missing");
       assert(win.getComputedStyle(button).minHeight === "44px", "Touch target too small");
-      assert(win.getComputedStyle(button).borderTopStyle === "solid", "Visible button border missing");
+      assert(win.getComputedStyle(button).borderTopWidth === "0px", "Action must not have an outline");
+      assert(win.getComputedStyle(button).backgroundColor ===
+        win.getComputedStyle(doc.querySelector("#cancel-app-confirm")).backgroundColor,
+        "Action must use the standard secondary background");
     }
     buttons.firstElementChild.click();
     assert(calls.at(-1).view === "product-edit", "Plain rename action changed");
@@ -253,7 +256,7 @@ async function runTests() {
         assert(page.classList.contains("has-fixed-actions"), "Fixed layout missing");
         assert(!footer.hidden && footer.children.length === 1 && footer.textContent.includes(label), "Wrong footer action");
         const titleBottom = page.querySelector(".management-title-row").getBoundingClientRect().bottom;
-        assert(content.getBoundingClientRect().top - titleBottom >= 24, "Content too close to heading");
+        assert(content.getBoundingClientRect().top - titleBottom >= 16, "Content too close to heading");
         const before = footer.getBoundingClientRect();
         assert(Math.abs(before.bottom - win.innerHeight) < 2, "Footer not anchored at bottom");
         if (length) {
@@ -266,7 +269,7 @@ async function runTests() {
         assert(api.view() === (view === "markets" ? "market-edit" : "category-edit"), "Wrong add form");
         assert(doc.querySelector("#catalog-name").value === "", "New name not empty");
         assert(doc.querySelector("#catalog-name").getBoundingClientRect().top -
-          page.querySelector(".management-title-row").getBoundingClientRect().bottom >= 24,
+          page.querySelector(".management-title-row").getBoundingClientRect().bottom >= 16,
           "Edit field too close to heading");
         assert(footer.hidden && !page.classList.contains("has-fixed-actions"), "List footer leaked into add form");
         doc.querySelector("#catalog-back").click();

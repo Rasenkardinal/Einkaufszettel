@@ -1469,6 +1469,60 @@ async def test_supermarket_invalid_names_duplicates_and_stale_ids(
     store.async_save.assert_not_awaited()
 
 
+@pytest.mark.parametrize(
+    "receipt, card", [(True, True), (True, False), (False, True), (False, False)]
+)
+async def test_market_checkout_options_persist_and_survive_legacy_rename(
+    integration, receipt, card
+):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=False))
+    store = env.stores.setdefault(
+        "einkaufszettel.supermarkets",
+        SimpleNamespace(
+            async_load=AsyncMock(return_value=None), async_save=AsyncMock()
+        ),
+    )
+    await env.websocket.websocket_save_supermarket(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/save_supermarket",
+            "market_id": "",
+            "name": "Markt",
+            "deposit_receipt_hint": receipt,
+            "show_bonus_card": card,
+        },
+    )
+    connection.send_error.assert_not_called()
+    saved = store.async_save.call_args.args[0]
+    market = saved["supermarkets"][0]
+    assert market["deposit_receipt_hint"] is receipt
+    assert market["show_bonus_card"] is card
+    store.async_load.return_value = saved
+    await env.websocket.websocket_save_supermarket(
+        env.hass,
+        connection,
+        {
+            "id": 2,
+            "type": "einkaufszettel/save_supermarket",
+            "market_id": market["id"],
+            "name": "Neu",
+        },
+    )
+    renamed = store.async_save.call_args.args[0]["supermarkets"][0]
+    assert renamed["deposit_receipt_hint"] is receipt
+    assert renamed["show_bonus_card"] is card
+    store.async_load.return_value = store.async_save.call_args.args[0]
+    await env.websocket.websocket_get_supermarkets(
+        env.hass,
+        connection,
+        {"id": 3, "type": "einkaufszettel/get_supermarkets"},
+    )
+    assert connection.send_result.call_args.args[1][0] == renamed
+
+
 async def test_supermarket_persistence_failure_is_not_success(integration):
     env = integration
     connection = Mock(user=SimpleNamespace(is_admin=True))
