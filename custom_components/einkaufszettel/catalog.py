@@ -219,10 +219,6 @@ def change_catalog(
             )
             if product is None:
                 raise ValueError("Der Artikel wurde nicht gefunden. Bitte neu laden.")
-            usage_count = sum(
-                max(stats["added"], sum(stats["weeks"].values()))
-                for stats in product.get("usage", {}).values()
-            )
             if action == "rename_product":
                 name = msg["name"].strip()
                 if not name or len(name) > 200:
@@ -248,10 +244,6 @@ def change_catalog(
                         if target == source_key:
                             result["product_events"][receipt] = new_key
             elif action == "delete_product":
-                if usage_count:
-                    raise ValueError(
-                        "Der Artikel hat Verwendungen. Führe ihn mit einem anderen Artikel zusammen, damit die Statistik erhalten bleibt."
-                    )
                 products.remove(product)
                 result["product_aliases"] = {
                     alias: target

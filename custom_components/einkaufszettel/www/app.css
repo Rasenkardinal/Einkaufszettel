@@ -240,7 +240,7 @@ dialog form { display: grid; gap: 12px; }
 dialog h2, dialog p { margin: 0; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 #app-confirm { width: min(92vw, 440px); }
-#app-confirm-description { color: var(--muted); line-height: 1.55; overflow-wrap: anywhere; }
+#app-confirm-description { color: var(--muted); line-height: 1.55; overflow-wrap: anywhere; white-space: pre-line; }
 #app-confirm.danger-confirmation #accept-app-confirm { border: 1px solid #754940; background: #392522; color: #ffb4a8; }
 #app-confirm .dialog-actions { flex-wrap: wrap; }
 #app-confirm .dialog-actions button { flex: 1 1 130px; }
@@ -278,7 +278,7 @@ dialog h2, dialog p { margin: 0; }
 .management-page h1 { font-size: clamp(25px, 6vw, 32px); }
 .management-help { line-height: 1.6; }
 .management-page .management-help { margin: 12px 0 22px; }
-.management-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.management-title-row { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 24px; flex-shrink: 0; }
 .management-title-row h1 { min-width: 0; flex: 1; }
 .management-help-trigger { display: grid; place-items: center; flex: none; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); }
 .management-help-trigger:hover, .management-help-trigger[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
@@ -323,7 +323,7 @@ dialog h2, dialog p { margin: 0; }
 .product-merge-preview { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); font-size: 12px; line-height: 1.5; }
 .product-merge-preview strong { color: #f4f4f4; }
 .product-management-row[hidden] { display: none; }
-.management-form { display: grid; gap: 12px; margin-top: 24px; }
+.management-form { display: grid; gap: 12px; margin-top: 0; }
 .management-form label { color: var(--muted); font-size: 12px; }
 .management-form input { min-width: 0; width: 100%; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: #fff; }
 .category-navigation { margin-top: 20px; }

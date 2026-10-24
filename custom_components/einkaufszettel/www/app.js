@@ -608,7 +608,7 @@ async function loadCatalogPage(view) {
     }
   } catch (error) {
     if (request === catalogRequest) {
-      elements.catalogMessage.textContent = `Offline-Kopie. Änderungen benötigen eine Verbindung und HA-Administratorrechte: ${error.message}`;
+      elements.catalogMessage.textContent = `Offline-Kopie. Der Katalog konnte nicht aktualisiert werden: ${error.message}`;
     }
   }
 }
@@ -725,6 +725,39 @@ function similarProduct(product) {
   return best.product;
 }
 
+let productDeleteRequest = 0;
+
+async function openProductDelete(product) {
+  const request = ++productDeleteRequest;
+  try {
+    const info = await sendCommand(`${DOMAIN}/get_product_delete_info`, { product_key: product.key });
+    if (request !== productDeleteRequest) return;
+    if (!info || info.product?.key !== product.key || typeof info.product.name !== "string" ||
+        !validProductUsage(info.product.usage === undefined ? {} : info.product.usage) ||
+        !Array.isArray(info.lists) || info.lists.some(list =>
+          !list || typeof list.entry_id !== "string" || typeof list.name !== "string")) {
+      throw new Error("Die betroffenen Einkaufslisten konnten nicht geprüft werden. Bitte erneut laden.");
+    }
+    const count = productUsageCount(info.product);
+    const lines = [`„${info.product.name}“ endgültig löschen?`];
+    if (count) lines.push(`Statistik für diesen Artikel wird ebenfalls gelöscht! Bisher ${count} ${count === 1 ? "Verwendung" : "Verwendungen"}.`);
+    if (info.lists.length) lines.push(
+      `Der Artikel wird auch aus ${info.lists.length === 1 ? "der Liste" : "den Listen"} ${info.lists.map(list => `„${list.name}“`).join(", ")} entfernt.`,
+      "Verbundene HA-/Alexa-Listen werden beim nächsten Abgleich aktualisiert."
+    );
+    lines.push("Diese Aktion kann nicht rückgängig gemacht werden.");
+    requestAppConfirmation({
+      title: "Artikel löschen?",
+      description: lines.join("\n\n"),
+      onConfirm: () => saveCatalog("delete_product", {
+        product_key: product.key, confirmed_lists: info.lists,
+      }, "products"),
+    });
+  } catch (error) {
+    if (request === productDeleteRequest) elements.catalogMessage.textContent = error.message;
+  }
+}
+
 function productManagementRow(product, suggestion) {
   const row = document.createElement("article");
   row.className = "product-management-row";
@@ -802,15 +835,8 @@ function productManagementRow(product, suggestion) {
     primaryActions.append(renameButton, mergeButton);
     row.append(primaryActions);
   }
-  const deleteButton = button("Löschen", () => requestAppConfirmation({
-    title: "Artikel löschen?",
-    description: `„${product.name}“ endgültig löschen? Der Artikel kann nur ohne Verwendungen und ohne aktive Listeneinträge gelöscht werden.`,
-    onConfirm: () => saveCatalog("delete_product", { product_key: product.key }, "products"),
-  }), "secondary danger-button");
-  deleteButton.disabled = count > 0;
-  deleteButton.title = count
-    ? "Artikel mit Verwendungen müssen zusammengeführt werden, damit die Statistik erhalten bleibt."
-    : "Nur Artikel ohne Verwendungen können gelöscht werden.";
+  const deleteButton = button("Löschen", () => openProductDelete(product), "secondary danger-button");
+  deleteButton.title = "Artikel, Statistik und Einträge auf den bestätigten Listen löschen.";
   actions.append(deleteButton);
   row.append(actions);
   return row;
@@ -818,7 +844,7 @@ function productManagementRow(product, suggestion) {
 
 function renderProductManagement() {
   elements.catalogTitle.textContent = "Artikel verwalten";
-  elements.catalogHelp.textContent = "Artikel und Suchvorschläge für alle Listen. Umbenennen und Zusammenführen übernehmen auch die bisherige Statistik. Verwendete Artikel können nicht gelöscht werden.";
+  elements.catalogHelp.textContent = "Artikel und Suchvorschläge für alle Listen. Umbenennen und Zusammenführen übernehmen auch die bisherige Statistik. Löschen entfernt auch die Statistik und Einträge auf den im Dialog genannten Listen.";
   const search = document.createElement("input");
   search.className = "product-search";
   search.type = "search";
@@ -1099,7 +1125,7 @@ function renderCatalogPage() {
   content.replaceChildren();
   elements.catalogFixedActions.replaceChildren();
   elements.catalogFixedActions.hidden = true;
-  const hasFixedActions = ["products", "market-select", "market-order", "market-bonus-card"].includes(catalogView);
+  const hasFixedActions = ["products", "markets", "categories", "market-select", "market-order", "market-bonus-card"].includes(catalogView);
   elements.catalogPage.classList.toggle("has-fixed-actions", hasFixedActions);
   elements.catalogMessage.textContent = "";
   const isMarket = catalogView?.startsWith("market");
@@ -1122,7 +1148,7 @@ function renderCatalogPage() {
       leaveMarketCategorySelection(false);
     } else openCatalog(isMarket ? "markets" : "categories");
   };
-  elements.catalogHelp.textContent = "Gemeinsamer Katalog für alle Nutzer. Speichern benötigt eine Verbindung und HA-Administratorrechte.";
+  elements.catalogHelp.textContent = "Gemeinsamer Katalog für alle Nutzer. Alle angemeldeten HA-Nutzer können ihn bearbeiten. Speichern benötigt eine Verbindung; Änderungen gelten für alle Nutzer.";
   if (catalogView === "products") {
     renderProductManagement();
   } else if (catalogView === "product-edit") {
@@ -1131,7 +1157,10 @@ function renderCatalogPage() {
     renderProductMerge();
   } else if (isList) {
     elements.catalogTitle.textContent = isMarket ? "Supermärkte" : "Produktkategorien";
-    content.append(button(`＋ ${noun} hinzufügen`, () => openCatalog(isMarket ? "market-edit" : "category-edit"), "primary full-width"));
+    elements.catalogFixedActions.append(
+      button(`＋ ${noun} hinzufügen`, () => openCatalog(isMarket ? "market-edit" : "category-edit"), "primary")
+    );
+    elements.catalogFixedActions.hidden = false;
     const records = [...(isMarket ? supermarkets : categories)].sort((a, b) => nameOrder.compare(a.name, b.name));
     const list = document.createElement("div");
     list.className = "management-list";
@@ -1445,7 +1474,6 @@ function renderMarketCategories() {
   categorySelectionArrow.setAttribute("aria-hidden", "true");
   categorySelection.replaceChildren(categorySelectionIcon, categorySelectionLabel, categorySelectionArrow);
   content.append(categorySelection);
-  content.append(paragraph("Am Griff ziehen oder mit ↑ / ↓ verschieben. „Ohne Kategorie“ lässt sich sortieren, aber nicht entfernen."));
   if (!catalogDraft.category_ids.includes("")) catalogDraft.category_ids.push("");
   const list = document.createElement("ol");
   list.className = "category-order";

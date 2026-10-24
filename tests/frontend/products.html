@@ -28,8 +28,29 @@ async function runTests() {
     };
     renderCatalogPage = () => {};
     saveCatalog = (...args) => calls.push({save: args});
+    let deletionInfo = {
+      product: {key: "eier", name: "Eier", usage: {test: {added: 32, last_added: 1, weeks: {}}}},
+      lists: [{entry_id: "weekly", name: "Wocheneinkauf"}, {entry_id: "drugstore", name: "Drogerie"}],
+    };
+    sendCommand = async command => {
+      if (!command.endsWith("/get_product_delete_info")) throw Error("Unexpected command");
+      if (!deletionInfo) throw Error("Listenprüfung fehlgeschlagen");
+      return deletionInfo;
+    };
     return {
       productManagementRow, draft: () => catalogDraft,
+      setDeletionInfo(value) { deletionInfo = value; },
+      setupManagementList(view, length) {
+        openCatalog = originalOpenCatalog;
+        renderCatalogPage = originalRenderCatalogPage;
+        const records = Array.from({length}, (_, index) => ({
+          id: "record-" + index, name: "Eintrag " + String(index).padStart(2, "0")
+        }));
+        if (view === "markets") supermarkets = records;
+        else categories = records;
+        busy = false;
+        openCatalog(view);
+      },
       setupCatalog() {
         openCatalog = originalOpenCatalog;
         renderCatalogPage = originalRenderCatalogPage;
@@ -105,7 +126,7 @@ async function runTests() {
     assert(calls.at(-1).view === "product-edit", "Plain rename action changed");
     assert(buttons.lastElementChild.textContent === "Zusammenführen›", "Manual merge missing");
     assert(actions.lastElementChild.textContent === "Löschen", "Delete action missing");
-    assert(actions.lastElementChild.disabled, "Used products must not be deletable");
+    assert(!actions.lastElementChild.disabled, "Used product deletion must be enabled");
     buttons.lastElementChild.click();
     assert(calls.at(-1).view === "product-merge", "Manual merge action changed");
     const unused = api.productManagementRow({...source, usage: {}}, null);
@@ -144,23 +165,51 @@ async function runTests() {
     listTrigger.click();
     assert(listPopover.hidden, "List management help did not close");
   });
-  test("Product deletion uses app confirmation and only deletes after explicit approval", () => {
-    const unused = api.productManagementRow({...source, usage: {}}, null);
-    content.append(unused);
-    const deleteButton = unused.querySelector(".danger-button");
+  {
+    const used = api.productManagementRow(source, null);
+    content.append(used);
+    const deleteButton = used.querySelector(".danger-button");
     deleteButton.click();
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
     const dialog = doc.querySelector("#app-confirm");
+    test("Used product confirmation warns about statistics and named lists", () => {
     assert(dialog.open, "App confirmation dialog did not open");
     assert(doc.querySelector("#app-confirm-title").textContent === "Artikel löschen?", "Wrong dialog title");
-    assert(doc.querySelector("#app-confirm-description").textContent.includes("Eier"), "Article warning missing");
+    const description = doc.querySelector("#app-confirm-description").textContent;
+    assert(description.includes("Statistik für diesen Artikel wird ebenfalls gelöscht! Bisher 32 Verwendungen"), "Statistics warning missing");
+    assert(description.includes("„Wocheneinkauf“, „Drogerie“"), "List names missing");
+    assert(doc.activeElement.id === "cancel-app-confirm", "Safe initial focus missing");
     assert(!calls.some(call => call.save?.[0] === "delete_product"), "Deleted before confirmation");
+    });
     doc.querySelector("#cancel-app-confirm").click();
     assert(!dialog.open && !calls.some(call => call.save?.[0] === "delete_product"), "Cancel did not protect the article");
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
     deleteButton.click();
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
     doc.querySelector("#accept-app-confirm").click();
+    test("Only explicit confirmation deletes from the approved lists", () => {
     assert(calls.at(-1).save[0] === "delete_product", "Explicit confirmation did not delete");
-    unused.remove();
-  });
+    assert(calls.at(-1).save[1].confirmed_lists.length === 2, "Confirmed lists missing");
+    });
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    api.setDeletionInfo({product: {...source, usage: {}}, lists: []});
+    deleteButton.click();
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    test("Unused product without list occurrences has no statistics or list warning", () => {
+      const text = doc.querySelector("#app-confirm-description").textContent;
+      assert(!text.includes("Statistik") && !text.includes("aus der Liste") && !text.includes("aus den Listen"), "Unexpected warning");
+    });
+    doc.querySelector("#cancel-app-confirm").click();
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    api.setDeletionInfo(null);
+    deleteButton.click();
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    test("Failed list inspection blocks blind deletion and reports the error", () => {
+      assert(!dialog.open, "Dialog opened without inspection");
+      assert(doc.querySelector("#catalog-message").textContent === "Listenprüfung fehlgeschlagen", "Error hidden");
+    });
+    used.remove();
+  }
   test("Article add action uses the existing fixed footer on a long list", () => {
     assert(page.classList.contains("has-fixed-actions"), "Fixed-footer layout missing");
     assert(!footer.hidden && footer.children.length === 1, "Single footer action required");
@@ -196,6 +245,35 @@ async function runTests() {
     assert(doc.querySelector('label[for="product-name"]').classList.contains("visually-hidden"),
       "Article field label should not consume space");
   });
+  for (const view of ["markets", "categories"]) {
+    for (const length of [0, 60]) {
+      api.setupManagementList(view, length);
+      test(view + " keeps the add action fixed with " + length + " records", () => {
+        const label = view === "markets" ? "Supermarkt hinzufügen" : "Kategorie hinzufügen";
+        assert(page.classList.contains("has-fixed-actions"), "Fixed layout missing");
+        assert(!footer.hidden && footer.children.length === 1 && footer.textContent.includes(label), "Wrong footer action");
+        const titleBottom = page.querySelector(".management-title-row").getBoundingClientRect().bottom;
+        assert(content.getBoundingClientRect().top - titleBottom >= 24, "Content too close to heading");
+        const before = footer.getBoundingClientRect();
+        assert(Math.abs(before.bottom - win.innerHeight) < 2, "Footer not anchored at bottom");
+        if (length) {
+          assert(content.scrollHeight > content.clientHeight, "Long list does not scroll internally");
+          content.scrollTop = content.scrollHeight;
+          assert(Math.abs(footer.getBoundingClientRect().top - before.top) < 1, "Footer scrolls with list");
+          assert(content.querySelector(".management-link:last-child").getBoundingClientRect().bottom <= before.top + 1, "Last record hidden behind footer");
+        }
+        footer.querySelector("button").click();
+        assert(api.view() === (view === "markets" ? "market-edit" : "category-edit"), "Wrong add form");
+        assert(doc.querySelector("#catalog-name").value === "", "New name not empty");
+        assert(doc.querySelector("#catalog-name").getBoundingClientRect().top -
+          page.querySelector(".management-title-row").getBoundingClientRect().bottom >= 24,
+          "Edit field too close to heading");
+        assert(footer.hidden && !page.classList.contains("has-fixed-actions"), "List footer leaked into add form");
+        doc.querySelector("#catalog-back").click();
+        assert(api.view() === view && !footer.hidden, "List footer not restored");
+      });
+    }
+  }
   api.setupMerge(source, target);
   test("Merge target uses the app picker, supports keyboard selection, and keeps the preview", () => {
     const trigger = doc.querySelector("#product-merge-trigger");

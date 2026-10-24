@@ -25,12 +25,8 @@ from .sync import apply_operation, persist_items
 
 async def _market_command(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     action = msg["type"].rsplit("/", 1)[-1]
-    if action != "get_supermarkets" and (
-        connection.user is None or not connection.user.is_admin
-    ):
-        connection.send_error(
-            msg["id"], "unauthorized", "HA-Administratorrechte erforderlich."
-        )
+    if action != "get_supermarkets" and connection.user is None:
+        connection.send_error(msg["id"], "unauthorized", "HA-Anmeldung erforderlich.")
         return
     lock = hass.data.setdefault(f"{DOMAIN}.supermarkets_lock", asyncio.Lock())
     async with lock:
@@ -129,12 +125,8 @@ async def _catalog_command(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
     action = msg["type"].rsplit("/", 1)[-1]
-    if action != "get_catalog" and (
-        connection.user is None or not connection.user.is_admin
-    ):
-        connection.send_error(
-            msg["id"], "unauthorized", "HA-Administratorrechte erforderlich."
-        )
+    if action != "get_catalog" and connection.user is None:
+        connection.send_error(msg["id"], "unauthorized", "HA-Anmeldung erforderlich.")
         return
     product_actions = {
         "create_product",
@@ -142,6 +134,7 @@ async def _catalog_command(
         "delete_product",
         "merge_product",
         "dismiss_product_suggestion",
+        "get_product_delete_info",
     }
     entries = sorted(
         (
@@ -152,6 +145,7 @@ async def _catalog_command(
         key=lambda entry: entry.entry_id,
     )
     catalog_saved = False
+    lists_changed = False
     async with AsyncExitStack() as stack:
         if action in product_actions:
             for entry in entries:
@@ -162,18 +156,84 @@ async def _catalog_command(
             try:
                 stored = await store.async_load()
                 data = validate_catalog(stored if stored is not None else {})
-                if action == "delete_product":
-                    source_key = msg["product_key"]
-                    if any(
-                        product_key(item.summary) == source_key
-                        for entry in entries
-                        for item in entry.runtime_data.items
-                    ):
+                if action in ("delete_product", "get_product_delete_info"):
+                    unloaded = [
+                        entry.data[CONF_NAME]
+                        for entry in hass.config_entries.async_entries(DOMAIN)
+                        if CONF_SOURCE in entry.data
+                        and getattr(entry, "runtime_data", None) is None
+                    ]
+                    if unloaded:
                         raise ValueError(
-                            "Der Artikel kommt noch in einer Einkaufsliste vor. Führe ihn mit einem anderen Artikel zusammen."
+                            "Die Einkaufslisten konnten nicht vollständig geprüft werden. "
+                            "Bitte lade zuerst diese Listen in Home Assistant: "
+                            + ", ".join(unloaded)
+                        )
+                    source_key = msg["product_key"]
+                    aliases = data.get("product_aliases", {})
+                    affected_lists = [
+                        {"entry_id": entry.entry_id, "name": entry.data[CONF_NAME]}
+                        for entry in entries
+                        if any(
+                            aliases.get(
+                                product_key(item.summary), product_key(item.summary)
+                            )
+                            == source_key
+                            for item in entry.runtime_data.items
+                        )
+                    ]
+                    if action == "get_product_delete_info":
+                        product = next(
+                            (
+                                p
+                                for p in data.get("products", [])
+                                if p["key"] == source_key
+                            ),
+                            None,
+                        )
+                        if product is None:
+                            raise ValueError(
+                                "Der Artikel wurde nicht gefunden. Bitte neu laden."
+                            )
+                        connection.send_result(
+                            msg["id"], {"product": product, "lists": affected_lists}
+                        )
+                        return
+                    if msg.get("confirmed_lists", []) != affected_lists:
+                        raise ValueError(
+                            "Die betroffenen Einkaufslisten haben sich geändert. Bitte öffne den Löschdialog erneut und bestätige die aktuellen Listen."
                         )
                 if action != "get_catalog":
                     updated = change_catalog(data, action, msg)
+                    if action == "delete_product":
+                        for entry in entries:
+                            runtime = entry.runtime_data
+                            items = [
+                                item
+                                for item in runtime.items
+                                if aliases.get(
+                                    product_key(item.summary), product_key(item.summary)
+                                )
+                                != source_key
+                            ]
+                            if items == runtime.items:
+                                continue
+                            state = deepcopy(runtime.sync)
+                            remaining = {item.uid for item in items}
+                            for item in runtime.items:
+                                if item.uid not in remaining:
+                                    state["deleted"][item.uid] = item.to_dict()
+                            state["revision"] += 1
+                            await runtime.store.async_save(
+                                {
+                                    "items": [item.to_dict() for item in items],
+                                    "sync": state,
+                                }
+                            )
+                            runtime.items = items
+                            runtime.sync = state
+                            lists_changed = True
+                            async_dispatcher_send(hass, update_signal(entry.entry_id))
                     await store.async_save(updated)
                     catalog_saved = True
                     if action in ("rename_product", "merge_product"):
@@ -231,6 +291,11 @@ async def _catalog_command(
                 TypeError,
             ) as err:
                 detail = str(err)
+                if lists_changed:
+                    detail = (
+                        "Einige Listeneinträge wurden bereits entfernt, aber das Löschen "
+                        f"konnte nicht vollständig gespeichert werden. Bitte neu laden und erneut prüfen: {err}"
+                    )
                 if catalog_saved:
                     detail = (
                         "Der Artikelkatalog wurde gespeichert, aber nicht alle "
@@ -323,15 +388,32 @@ async def websocket_create_product(
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/get_product_delete_info",
+        vol.Required("product_key"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_get_product_delete_info(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Read current statistics and affected lists before deletion confirmation."""
+    await _catalog_command(hass, connection, msg)
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/delete_product",
         vol.Required("product_key"): str,
+        vol.Optional("confirmed_lists"): [
+            {vol.Required("entry_id"): str, vol.Required("name"): str}
+        ],
     }
 )
 @websocket_api.async_response
 async def websocket_delete_product(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
-    """Delete only an unused catalog product."""
+    """Delete a product, its statistics and confirmed shopping-list occurrences."""
     await _catalog_command(hass, connection, msg)
 
 
@@ -628,9 +710,7 @@ async def websocket_configure_list(
 ) -> None:
     """Persist shared aliases and visibility without renaming Alexa lists."""
     if connection.user is None:
-        connection.send_error(
-            msg["id"], "unauthorized", "HA-Anmeldung erforderlich."
-        )
+        connection.send_error(msg["id"], "unauthorized", "HA-Anmeldung erforderlich.")
         return
     source = msg["source_entity_id"]
     name = msg["name"].strip()

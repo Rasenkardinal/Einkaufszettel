@@ -351,7 +351,7 @@ def test_merge_product_adds_list_weekly_and_total_usage():
     assert len(data["products"]) == 2
 
 
-def test_delete_product_requires_zero_usage():
+def test_delete_product_removes_usage_and_references():
     data = sample()
     data["products"] = [
         {
@@ -361,8 +361,13 @@ def test_delete_product_requires_zero_usage():
             "usage": {"list-a": {"added": 1, "last_added": 1, "weeks": {}}},
         }
     ]
-    with pytest.raises(ValueError, match="Verwendungen"):
-        catalog.change_catalog(data, "delete_product", {"product_key": "milch"})
+    data["product_aliases"] = {"milhc": "milch"}
+    data["product_events"] = {"event": "milch"}
+    result = catalog.change_catalog(data, "delete_product", {"product_key": "milch"})
+    assert result["products"] == []
+    assert result["product_aliases"] == {}
+    assert result["product_events"] == {}
+    assert data["products"][0]["usage"]["list-a"]["added"] == 1
 
 
 def test_dismissed_product_suggestion_is_persisted_and_idempotent():

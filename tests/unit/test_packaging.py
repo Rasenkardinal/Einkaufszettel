@@ -87,7 +87,7 @@ def test_web_app_assets_are_versioned_and_precached():
     assert 'id="app-version"' in html
     for asset in assets:
         assert f'"{asset}"' in worker
-    assert "einkaufszettel-shell-v45" in worker
+    assert "einkaufszettel-shell-v46" in worker
     assert ".then(() => self.skipWaiting())" in worker
     script = (webapp / "app.js").read_text(encoding="utf-8")
     assert "serviceWorkerRegistration.update()" in script
@@ -141,8 +141,8 @@ def test_article_deletion_uses_app_confirmation_dialog():
         ROOT / "custom_components" / "einkaufszettel" / "www" / "app.js"
     ).read_text(encoding="utf-8")
     assert 'id="app-confirm" aria-labelledby="app-confirm-title"' in html
-    assert 'requestAppConfirmation({' in script
-    assert 'confirm(`„${product.name}“ endgültig löschen?' not in script
+    assert "requestAppConfirmation({" in script
+    assert "confirm(`„${product.name}“ endgültig löschen?" not in script
 
 
 def test_embedded_authentication_opens_standalone_app_before_oauth():
@@ -170,7 +170,8 @@ def test_app_menu_groups_existing_actions():
     html = (
         ROOT / "custom_components" / "einkaufszettel" / "www" / "app.html"
     ).read_text(encoding="utf-8")
-    assert "<h2>Menü</h2>" in html
+    assert "<h2>Einstellungen</h2>" in html
+    assert "Einkaufszettel · Verwaltung und Einstellungen" not in html
     management = re.search(
         r'<section class="setup-group" aria-labelledby="menu-manage-title">(.*?)</section>',
         html,

@@ -670,7 +670,8 @@ async function runTests() {
     assert(Math.abs(rect(note).left - expectedStart) < 1, "Note column differs from the preview 52/48 split");
     assert(parseFloat(win.getComputedStyle(modeToggle).marginRight) === 8, "Mode button not shifted left");
     const menuTitle = doc.querySelector(".setup-menu-header h2");
-    assert(menuTitle.textContent === "Menü", "Menu title changed unexpectedly");
+    assert(menuTitle.textContent === "Einstellungen", "Settings menu title missing");
+    assert(!menuTitle.parentElement.querySelector("p"), "Menu subtitle must be removed");
     assert(syncStyles.includes(".setup-menu-header { padding: 14px 12px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb,var(--accent) 8%,var(--surface));"), "Menu header accent tint is missing");
     const monoHeaderBackground = win.getComputedStyle(menuTitle.parentElement).backgroundColor;
     doc.body.dataset.theme = "botanical";

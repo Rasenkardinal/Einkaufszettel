@@ -866,12 +866,13 @@ async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
-    assert env.websocket_api.async_register_command.call_count == 25
+    assert env.websocket_api.async_register_command.call_count == 26
 
 
-async def test_product_catalog_crud_preserves_and_merges_usage(integration):
+@pytest.mark.parametrize("admin", [True, False])
+async def test_product_catalog_crud_preserves_and_merges_usage(integration, admin):
     env = integration
-    connection = Mock(user=SimpleNamespace(is_admin=True))
+    connection = Mock(user=SimpleNamespace(is_admin=admin))
     await env.websocket.websocket_get_catalog(
         env.hass, connection, {"id": 0, "type": "einkaufszettel/get_catalog"}
     )
@@ -971,11 +972,10 @@ async def test_product_catalog_crud_preserves_and_merges_usage(integration):
             "product_key": "milch",
         },
     )
-    connection.send_error.assert_called_with(
-        3,
-        "cannot_manage_catalog",
-        "Der Artikel hat Verwendungen. Führe ihn mit einem anderen Artikel zusammen, damit die Statistik erhalten bleibt.",
-    )
+    assert connection.send_result.call_args.args[0] == 3
+    assert persisted["products"] == []
+    assert persisted["product_events"] == {}
+    assert persisted["product_aliases"] == {}
     await env.websocket.websocket_create_product(
         env.hass,
         connection,
@@ -986,6 +986,119 @@ async def test_product_catalog_crud_preserves_and_merges_usage(integration):
         },
     )
     assert any(product["key"] == "tomaten" for product in persisted["products"])
+
+
+@pytest.mark.parametrize("confirmed", [True, False])
+@pytest.mark.parametrize("failure", [None, "list", "catalog"])
+async def test_product_deletion_confirms_lists_and_persists_source_tombstones(
+    integration, confirmed, failure
+):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    env.entry.runtime_data.items = [
+        env.model.ShoppingItem(uid="milk-a", summary="Milch", source_uid="remote-a"),
+        env.model.ShoppingItem(uid="milk-b", summary="Milhc", status="completed"),
+        env.model.ShoppingItem(uid="bread", summary="Brot"),
+    ]
+    second_store = SimpleNamespace(async_save=AsyncMock())
+    second = SimpleNamespace(
+        entry_id="z-second",
+        data={"name": "Drogerie", "source_entity_id": "todo.second"},
+        options={"enabled": False},
+        runtime_data=env.package.EinkaufszettelData(
+            store=second_store,
+            items=[env.model.ShoppingItem(uid="milk-c", summary="Milch")],
+        ),
+    )
+    env.hass.config_entries.async_entries.return_value = [env.entry, second]
+    store = env.stores["einkaufszettel.supermarkets"]
+    store.async_load.return_value = {
+        "products": [
+            {
+                "key": "milch",
+                "name": "Milch",
+                "category_id": None,
+                "usage": {
+                    "test": {"added": 42, "last_added": 1, "weeks": {"2026-W43": 42}}
+                },
+            }
+        ],
+        "product_aliases": {"milhc": "milch"},
+    }
+    store.async_save.reset_mock()
+    if failure == "list":
+        second_store.async_save.side_effect = OSError("list full")
+    if failure == "catalog":
+        store.async_save.side_effect = OSError("catalog full")
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_get_product_delete_info(
+        env.hass,
+        connection,
+        {
+            "id": 0,
+            "type": "einkaufszettel/get_product_delete_info",
+            "product_key": "milch",
+        },
+    )
+    preview = connection.send_result.call_args.args[1]
+    assert {item["name"] for item in preview["lists"]} == {"Einkaufszettel", "Drogerie"}
+    assert preview["product"]["usage"]["test"]["added"] == 42
+    store.async_save.assert_not_awaited()
+    connection.reset_mock()
+    await env.websocket.websocket_delete_product(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/delete_product",
+            "product_key": "milch",
+            "confirmed_lists": preview["lists"] if confirmed else [],
+        },
+    )
+    if not confirmed:
+        assert "haben sich geändert" in connection.send_error.call_args.args[2]
+        store.async_save.assert_not_awaited()
+        assert len(env.entry.runtime_data.items) == 3
+    elif failure:
+        assert (
+            "nicht vollständig gespeichert" in connection.send_error.call_args.args[2]
+        )
+        if failure == "list":
+            store.async_save.assert_not_awaited()
+    else:
+        connection.send_error.assert_not_called()
+        assert [item.summary for item in env.entry.runtime_data.items] == ["Brot"]
+        assert second.runtime_data.items == []
+        assert (
+            env.entry.runtime_data.sync["deleted"]["milk-a"]["source_uid"] == "remote-a"
+        )
+        assert "milk-b" in env.entry.runtime_data.sync["deleted"]
+        assert "milk-c" in second.runtime_data.sync["deleted"]
+        assert store.async_save.call_args.args[0]["products"] == []
+    if not confirmed or failure:
+        connection.send_result.assert_not_called()
+
+
+async def test_product_delete_preview_rejects_unloaded_lists(integration):
+    env = integration
+    env.hass.config_entries.async_entries.return_value = [
+        SimpleNamespace(
+            entry_id="missing",
+            data={"name": "Nicht geladen", "source_entity_id": "todo.missing"},
+        )
+    ]
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_get_product_delete_info(
+        env.hass,
+        connection,
+        {
+            "id": 0,
+            "type": "einkaufszettel/get_product_delete_info",
+            "product_key": "milch",
+        },
+    )
+    connection.send_result.assert_not_called()
+    assert "Nicht geladen" in connection.send_error.call_args.args[2]
 
 
 async def test_dismiss_product_suggestion_is_shared_in_catalog(integration):
@@ -1109,11 +1222,13 @@ async def test_renamed_product_alias_canonicalizes_stale_items_and_events(integr
     assert persisted["product_events"]["event-1"] == "mandelmilch"
 
 
+@pytest.mark.parametrize("admin", [True, False])
 async def test_catalog_shared_persistence_and_market_rename_preserves_categories(
     integration,
+    admin,
 ):
     env = integration
-    connection = Mock(user=SimpleNamespace(is_admin=True))
+    connection = Mock(user=SimpleNamespace(is_admin=admin))
     await env.websocket.websocket_get_catalog(
         env.hass, connection, {"id": 1, "type": "einkaufszettel/get_catalog"}
     )
@@ -1210,17 +1325,23 @@ async def test_catalog_shared_persistence_and_market_rename_preserves_categories
         "delete_category",
         "save_market_categories",
         "dismiss_product_suggestion",
+        "get_product_delete_info",
+        "delete_product",
+        "create_product",
+        "rename_product",
+        "merge_product",
+        "remove_category_product",
+        "save_market_bonus_card",
     ],
 )
-@pytest.mark.parametrize("user", [None, SimpleNamespace(is_admin=False)])
-async def test_catalog_writes_require_admin(integration, action, user):
+async def test_catalog_writes_require_login(integration, action):
     env = integration
-    connection = Mock(user=user)
+    connection = Mock(user=None)
     await getattr(env.websocket, f"websocket_{action}")(
         env.hass, connection, {"id": 1, "type": f"einkaufszettel/{action}"}
     )
     connection.send_error.assert_called_with(
-        1, "unauthorized", "HA-Administratorrechte erforderlich."
+        1, "unauthorized", "HA-Anmeldung erforderlich."
     )
     assert "einkaufszettel.supermarkets" not in env.stores
 
@@ -1249,9 +1370,10 @@ async def test_catalog_failed_save_reports_error_without_success(integration):
     connection.send_result.assert_not_called()
 
 
-async def test_supermarkets_shared_crud_and_restart(integration):
+@pytest.mark.parametrize("admin", [True, False])
+async def test_supermarkets_shared_crud_and_restart(integration, admin):
     env = integration
-    connection = Mock(user=SimpleNamespace(is_admin=True))
+    connection = Mock(user=SimpleNamespace(is_admin=admin))
     await env.websocket.websocket_get_supermarkets(
         env.hass, connection, {"id": 1, "type": "einkaufszettel/get_supermarkets"}
     )
@@ -1304,10 +1426,9 @@ async def test_supermarkets_shared_crud_and_restart(integration):
 
 
 @pytest.mark.parametrize("action", ["save_supermarket", "delete_supermarket"])
-@pytest.mark.parametrize("user", [None, SimpleNamespace(is_admin=False)])
-async def test_supermarket_writes_require_admin(integration, action, user):
+async def test_supermarket_writes_require_login(integration, action):
     env = integration
-    connection = Mock(user=user)
+    connection = Mock(user=None)
     await getattr(env.websocket, f"websocket_{action}")(
         env.hass,
         connection,
@@ -1582,6 +1703,41 @@ async def sync_environment(env, monkeypatch, *, features=49):
         calls=calls,
         data=env.entry.runtime_data,
     )
+
+
+@pytest.mark.parametrize("features", [49, 17])
+async def test_deleted_product_remains_deleted_during_source_sync(
+    integration, monkeypatch, features
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch, features=features)
+    env.hass.config_entries.async_entries.return_value = [env.entry]
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    store = env.stores["einkaufszettel.supermarkets"]
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_delete_product(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/delete_product",
+            "product_key": "milch",
+            "confirmed_lists": [
+                {"entry_id": env.entry.entry_id, "name": env.entry.data["name"]}
+            ],
+        },
+    )
+    connection.send_error.assert_not_called()
+    for _ in range(2):
+        await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.items == []
+    assert not any(p["key"] == "milch" for p in (await store.async_load())["products"])
+    if features == 49:
+        assert ctx.remote == []
+        assert any(service == "remove_item" for service, _ in ctx.calls)
+    else:
+        assert len(ctx.remote) == 1
+        assert "unterstützt das Löschen" in ctx.data.source_error
 
 
 async def conflict_environment(env, monkeypatch, *, ambiguous=False):
