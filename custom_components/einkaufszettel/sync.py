@@ -1,11 +1,12 @@
 """Durable, server-ordered field patches and source reconciliation state."""
 
+import hashlib
 import json
 from copy import deepcopy
 from dataclasses import replace
 from typing import Any
 
-from .model import ShoppingItem
+from .model import ShoppingItem, deletion_marker
 
 
 def new_sync_state() -> dict[str, Any]:
@@ -122,7 +123,7 @@ async def persist_items(
     previous = {item.uid: item for item in data.items}
     current = {item.uid: item for item in items}
     for uid in previous.keys() - current.keys():
-        state["deleted"][uid] = previous[uid].to_dict()
+        state["deleted"][uid] = deletion_marker(previous[uid])
     if items != data.items or state != getattr(data, "sync", new_sync_state()):
         state["revision"] += 1
     await data.store.async_save(
@@ -156,10 +157,14 @@ async def apply_operation(
     if action == "delete_item" and changes:
         raise ValueError("Deletion cannot contain an item patch")
     payload = json.dumps([action, uid, changes], sort_keys=True, allow_nan=False)
+    receipt_payload = payload
+    metadata_changes = changes.get("metadata")
+    if isinstance(metadata_changes, dict) and metadata_changes.get("image") is not None:
+        receipt_payload = f"sha256:{hashlib.sha256(payload.encode()).hexdigest()}"
     state = deepcopy(getattr(data, "sync", new_sync_state()))
     receipt = state["receipts"].get(operation_id)
     if receipt:
-        if receipt["payload"] != payload:
+        if receipt["payload"] not in (payload, receipt_payload):
             raise ValueError("Operation ID was already used for a different change")
         return receipt["result"]
     old = next((item for item in data.items if item.uid == uid), None)
@@ -189,7 +194,10 @@ async def apply_operation(
             if old
             else [*items, updated]
         )
-    state["receipts"][operation_id] = {"payload": payload, "result": result}
+    state["receipts"][operation_id] = {
+        "payload": receipt_payload,
+        "result": result,
+    }
     product_operation = None
     if (
         result == "applied"

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Article image regression tests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Artikeldialog" style="width:390px;height:844px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all(["app.html", "app.js"].map(file =>
+    fetch(base + file, {cache:"no-store"}).then(response => response.text())));
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document, operations = [];
+  const storage = {getItem: () => null, setItem() {}, removeItem() {}};
+  const api = win.Function("test", "localStorage",
+    script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+      enqueue = async operation => { test.operations.push(operation); };
+      entryId = "test"; busy = false;
+      categories = []; supermarkets = []; products = [];
+      currentItems = [{uid:"one",summary:"Tomaten",status:"needs_action",metadata:{quantity:"2"},description:"reif"}];
+      render();
+      return {state: () => currentItems, render};
+    `)( {operations}, storage);
+  const assert = (condition, message) => { if (!condition) throw Error(message); };
+  const results = [];
+  const label = doc.querySelector('[aria-label="Bearbeiten: Tomaten"]');
+  assert(!label.querySelector(".item-photo-icon"), "Photo indicator shown without an image");
+  assert(win.getComputedStyle(label.querySelector(".item-note")).fontSize === "13px", "Existing item note font size changed");
+  label.click();
+  assert(doc.querySelector("#edit-item").open, "Article editor did not open");
+  assert(doc.querySelector("#edit-image-upload").accept.includes("image/png"), "File selection missing");
+  assert(doc.querySelector("#edit-image-camera").getAttribute("capture") === "environment", "Camera capture missing");
+  assert(win.getComputedStyle(doc.querySelector("#edit-item-form")).gap === "10px", "Article fields are not compactly spaced");
+  assert(win.getComputedStyle(doc.querySelector("#edit-quantity")).padding === "10px", "Article fields have excessive padding");
+
+  const canvas = doc.createElement("canvas");
+  canvas.width = 8; canvas.height = 8;
+  canvas.getContext("2d").fillRect(0, 0, 8, 8);
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+  const transfer = new win.DataTransfer();
+  transfer.items.add(new win.File([blob], "artikel.png", {type:"image/png"}));
+  const upload = doc.querySelector("#edit-image-upload");
+  upload.files = transfer.files;
+  upload.dispatchEvent(new win.Event("change", {bubbles:true}));
+  for (let attempt = 0; attempt < 50 && doc.querySelector("#edit-item-form [type=submit]").disabled; attempt++) {
+    await new Promise(resolve => win.setTimeout(resolve, 100));
+  }
+  assert(!doc.querySelector("#edit-image-preview").hidden, "Selected image preview missing");
+  doc.querySelector("#edit-item-form").requestSubmit();
+  await new Promise(resolve => win.setTimeout(resolve, 0));
+  const image = operations.at(-1).metadata.image;
+  assert(/^data:image\/(?:png|webp);base64,/.test(image), "Image was not queued with article metadata");
+  results.push("PASS File image is optimized, previewed and saved through the offline operation");
+
+  api.state()[0].metadata.image = image;
+  api.render();
+  const savedLabel = doc.querySelector('[aria-label="Bearbeiten: Tomaten"]');
+  const photoIcon = savedLabel.querySelector(".item-photo-icon");
+  assert(photoIcon && photoIcon.getAttribute("aria-hidden") === "true", "Small photo icon missing for an item with an image");
+  assert(win.getComputedStyle(photoIcon).width === "32px", "Photo indicator is not the expected larger size");
+  const photoQuantity = savedLabel.querySelector(".item-photo-meta .item-note");
+  assert(photoQuantity.textContent === "2", "Photo item should show only its quantity");
+  assert(!savedLabel.querySelector(".item-note").textContent.includes("reif"), "Photo item should hide its extra information");
+  assert(win.getComputedStyle(savedLabel.querySelector(".item-note")).fontSize === "13px", "Quantity font size changed");
+  assert(savedLabel.classList.contains("has-photo"), "Photo item layout class missing");
+  const columnGap = parseFloat(win.getComputedStyle(savedLabel).columnGap);
+  const expectedQuantityLeft = savedLabel.getBoundingClientRect().left +
+    (savedLabel.getBoundingClientRect().width - columnGap) * 0.52 + columnGap;
+  assert(Math.abs(photoQuantity.getBoundingClientRect().left - expectedQuantityLeft) < 1,
+    "Photo quantity moved from the existing details column");
+  const labelRect = savedLabel.getBoundingClientRect();
+  const iconRect = photoIcon.getBoundingClientRect();
+  assert(Math.abs(iconRect.right - labelRect.right) < 1, "Photo icon is not aligned at the far right of the row");
+  doc.querySelector('[aria-label="Bearbeiten: Tomaten"]').click();
+  assert(!doc.querySelector("#edit-image-preview").hidden, "Saved image was not restored in the editor");
+  doc.querySelector("#edit-image-remove").click();
+  doc.querySelector("#edit-item-form").requestSubmit();
+  await new Promise(resolve => win.setTimeout(resolve, 0));
+  assert(operations.at(-1).metadata.image === null, "Image removal was not saved");
+  api.state()[0].metadata.image = null;
+  api.render();
+  assert(!doc.querySelector('[aria-label="Bearbeiten: Tomaten"]').querySelector(".item-photo-icon"), "Photo indicator remained after image removal");
+  results.push("PASS Saved images can be reopened and removed");
+  document.querySelector("#results").textContent = results.join("\n");
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent = "FAIL " + error.stack;
+  throw error;
+});
+</script>

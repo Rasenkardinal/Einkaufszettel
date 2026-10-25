@@ -1,11 +1,15 @@
 """Serializable shopping items, independent of Home Assistant."""
 
+import base64
+import binascii
+import re
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from typing import Any
 from uuid import uuid4
 
 STATUSES = {"needs_action", "completed"}
+MAX_ITEM_IMAGE_BYTES = 512 * 1024
 
 
 def parse_due(value: str | None) -> date | datetime | None:
@@ -51,6 +55,19 @@ class ShoppingItem:
             for key, value in self.metadata.items()
         ):
             raise ValueError("Metadata must contain named text values or null")
+        image = self.metadata.get("image")
+        if image is not None:
+            match = re.fullmatch(
+                r"data:image/(?:png|webp);base64,([A-Za-z0-9+/]+={0,2})", image
+            )
+            if match is None:
+                raise ValueError("Invalid item image")
+            try:
+                image_bytes = base64.b64decode(match.group(1), validate=True)
+            except (binascii.Error, ValueError):
+                raise ValueError("Invalid item image") from None
+            if not image_bytes or len(image_bytes) > MAX_ITEM_IMAGE_BYTES:
+                raise ValueError("Item image exceeds the size limit")
 
     def to_dict(self) -> dict[str, Any]:
         """Return the storage representation."""
@@ -86,6 +103,17 @@ def import_items(raw_items: object) -> list[ShoppingItem]:
         if item.status == "needs_action":
             items.append(item)
     return items
+
+
+def deletion_marker(item: ShoppingItem) -> dict[str, Any]:
+    """Keep identity and provenance without retaining an item's image."""
+    result = item.to_dict()
+    metadata = result.get("metadata")
+    if metadata:
+        metadata.pop("image", None)
+        if not metadata:
+            result.pop("metadata")
+    return result
 
 
 def load_items(data: object) -> list[ShoppingItem]:

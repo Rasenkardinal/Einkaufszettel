@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vorschau · Foto und Zusatzinfo in der Einkaufsliste</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #141414; color: #f4f4f4; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px 40px; }
+  header { width: min(100%, 520px); margin: 0 auto 14px; }
+  h1 { margin: 0 0 8px; font-size: 22px; }
+  p { margin: 0; color: #aaa; font-size: 14px; line-height: 1.5; }
+  iframe { display: block; width: min(100%, 520px); height: 820px; margin: 0 auto; border: 1px solid #383838; border-radius: 12px; background: #141414; }
+</style>
+<header>
+  <h1>Foto und Zusatzinfo in der Liste</h1>
+  <p>Ohne Foto stehen Menge und Zusatzinfo in der Zeile. Mit Foto bleibt nur die Menge in derselben Spalte sichtbar; das größere Foto-Icon sitzt ganz rechts.</p>
+</header>
+<iframe id="fixture" title="Einkaufsliste mit Foto und Zusatzinfo"></iframe>
+<script>
+async function renderPreview() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all(["app.html", "app.js"].map(file =>
+    fetch(base + file, {cache: "no-store"}).then(response => response.text())));
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const storage = {getItem: () => null, setItem() {}, removeItem() {}};
+  frame.contentWindow.Function("localStorage", script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+    entryId = "preview"; busy = false;
+    categories = []; supermarkets = []; products = [];
+    currentItems = [
+      {uid:"plain",summary:"Hafermilch",status:"needs_action",metadata:{quantity:"2 × 1 l"},description:""},
+      {uid:"note",summary:"Tomaten",status:"needs_action",metadata:{quantity:"2 Stück"},description:"Reif, möglichst lose"},
+      {uid:"photo",summary:"Äpfel",status:"needs_action",metadata:{quantity:"6 Stück",image:"data:image/png;base64,AA=="},description:""}
+    ];
+    render();
+  `)(storage);
+}
+renderPreview().catch(error => {
+  document.querySelector("header p").textContent = `Vorschau konnte nicht geladen werden: ${error.message}`;
+  throw error;
+});
+</script>
+</html>

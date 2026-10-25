@@ -95,6 +95,13 @@ const elements = {
   editCategoryEmpty: document.querySelector("#edit-category-empty"),
   editQuantity: document.querySelector("#edit-quantity"),
   editNotes: document.querySelector("#edit-notes"),
+  editImageUpload: document.querySelector("#edit-image-upload"),
+  editImageCamera: document.querySelector("#edit-image-camera"),
+  editImageChoose: document.querySelector("#edit-image-choose"),
+  editImageTake: document.querySelector("#edit-image-take"),
+  editImagePreview: document.querySelector("#edit-image-preview"),
+  editImageRemove: document.querySelector("#edit-image-remove"),
+  editImageMessage: document.querySelector("#edit-image-message"),
   cancelEdit: document.querySelector("#cancel-edit"),
   connectionDot: document.querySelector("#connection-dot"),
   connectionLabel: document.querySelector("#connection-label"),
@@ -110,8 +117,8 @@ const elements = {
   openHomeassistant: document.querySelector("#open-homeassistant"),
   openAppBrowser: document.querySelector("#open-app-browser"),
 };
-const MAX_BONUS_CARD_BYTES = 512 * 1024;
-const MAX_BONUS_CARD_INPUT_BYTES = 12 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 512 * 1024;
+const MAX_IMAGE_INPUT_BYTES = 12 * 1024 * 1024;
 
 const queryEntryId = new URLSearchParams(location.search).get("entry_id");
 let entryId = queryEntryId;
@@ -224,6 +231,8 @@ let lastOperationTime = 0;
 let availableLists = [];
 let editingUid;
 let editingCategory;
+let editingImage = null;
+let editingImageRequest = 0;
 let editingTrigger;
 let supermarkets = [];
 let selectedMarket = "";
@@ -253,7 +262,7 @@ function validateSupermarkets(value) {
     (market.bonus_card !== undefined && (
       typeof market.bonus_card !== "string" ||
       !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(market.bonus_card) ||
-      market.bonus_card.length > 4 * Math.ceil(MAX_BONUS_CARD_BYTES / 3) + 32
+      market.bonus_card.length > 4 * Math.ceil(MAX_IMAGE_BYTES / 3) + 32
     )) ||
     (market.category_ids !== undefined && (!Array.isArray(market.category_ids) ||
       market.category_ids.some(id => typeof id !== "string") ||
@@ -474,6 +483,30 @@ function chevron(className = "", down = false) {
   const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
   path.setAttribute("d", down ? "m6 9 6 6 6-6" : "m9 6 6 6-6 6");
   icon.append(path);
+  return icon;
+}
+
+function itemPhotoIcon() {
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("class", "item-photo-icon");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", "2");
+  icon.setAttribute("aria-hidden", "true");
+  const frame = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  frame.setAttribute("x", "3");
+  frame.setAttribute("y", "5");
+  frame.setAttribute("width", "18");
+  frame.setAttribute("height", "14");
+  frame.setAttribute("rx", "3");
+  const sun = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  sun.setAttribute("cx", "8.5");
+  sun.setAttribute("cy", "10");
+  sun.setAttribute("r", "1.5");
+  const landscape = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  landscape.setAttribute("d", "m21 15-5-5L5 19");
+  icon.append(frame, sun, landscape);
   return icon;
 }
 
@@ -1507,7 +1540,7 @@ function renderMarketBonusCard() {
   const processFile = async file => {
     if (!file) return;
     try {
-      const image = await prepareBonusCardImage(file);
+      const image = await prepareImageData(file);
       catalogDraft.bonus_card = image;
       preview.src = image;
       preview.hidden = false;
@@ -1536,8 +1569,8 @@ function renderMarketBonusCard() {
   elements.catalogFixedActions.hidden = false;
 }
 
-async function prepareBonusCardImage(file) {
-  if (!/^image\/(?:png|jpeg|webp)$/.test(file.type) || file.size > MAX_BONUS_CARD_INPUT_BYTES) {
+async function prepareImageData(file) {
+  if (!/^image\/(?:png|jpeg|webp)$/.test(file.type) || file.size > MAX_IMAGE_INPUT_BYTES) {
     throw new Error("Bitte wähle ein PNG-, JPEG- oder WebP-Bild bis maximal 12 MiB.");
   }
   let bitmap;
@@ -1559,7 +1592,7 @@ async function prepareBonusCardImage(file) {
         ...[0.92, 0.86, 0.8].map(quality => canvas.toDataURL("image/webp", quality)),
       ];
       const image = candidates.find(value =>
-        Math.ceil((value.length - value.indexOf(",") - 1) * 3 / 4) <= MAX_BONUS_CARD_BYTES);
+        Math.ceil((value.length - value.indexOf(",") - 1) * 3 / 4) <= MAX_IMAGE_BYTES);
       if (image) return image;
     }
     throw new Error("Das Bild ist nach der Optimierung noch zu groß. Bitte wähle ein kleineres Bild.");
@@ -2392,11 +2425,28 @@ function render() {
     label.type = "button";
     label.className = "item-name";
     label.dataset.uid = item.uid;
+    const title = document.createElement("span");
+    title.className = "item-title";
     const summary = document.createElement("span");
     summary.textContent = item.summary;
-    label.append(summary);
-    const details = [item.metadata?.quantity, item.description].filter(Boolean).join(" · ");
-    if (details) {
+    title.append(summary);
+    label.append(title);
+    const hasPhoto = Boolean(item.metadata?.image);
+    const details = [item.metadata?.quantity, ...(hasPhoto ? [] : [item.description])]
+      .filter(Boolean).join(" · ");
+    if (hasPhoto) {
+      const photoMeta = document.createElement("span");
+      photoMeta.className = "item-photo-meta";
+      if (details) {
+        const note = document.createElement("span");
+        note.className = "item-note";
+        note.textContent = details;
+        photoMeta.append(note);
+      }
+      photoMeta.append(itemPhotoIcon());
+      label.append(photoMeta);
+      label.classList.add("has-photo");
+    } else if (details) {
       const note = document.createElement("span");
       note.className = "item-note";
       note.textContent = details;
@@ -2437,6 +2487,17 @@ function render() {
         elements.editCategoryOptions.append(option);
       }
       const categoryId = item.metadata?.category_id || "";
+      editingImageRequest++;
+      editingImage = item.metadata?.image || null;
+      elements.editImageUpload.value = "";
+      elements.editImageCamera.value = "";
+      elements.editImageMessage.textContent = "";
+      elements.editImageMessage.dataset.status = "";
+      elements.editItemForm.querySelector('[type="submit"]').disabled = false;
+      elements.editImagePreview.hidden = !editingImage;
+      if (editingImage) elements.editImagePreview.src = editingImage;
+      else elements.editImagePreview.removeAttribute("src");
+      elements.editImageRemove.hidden = !editingImage;
       elements.editCategory.value = categoryId;
       const currentCategory = categories.find(category => category.id === categoryId);
       elements.editCategoryValue.textContent = currentCategory?.name ||
@@ -2861,6 +2922,58 @@ async function selectList(listId) {
 }
 
 elements.cancelEdit.addEventListener("click", closeEditItem);
+function updateEditingImage(image) {
+  editingImage = image;
+  elements.editImagePreview.hidden = !image;
+  elements.editImageRemove.hidden = !image;
+  if (image) elements.editImagePreview.src = image;
+  else elements.editImagePreview.removeAttribute("src");
+}
+
+async function selectItemImage(file) {
+  if (!file) return;
+  const request = ++editingImageRequest;
+  const uid = editingUid;
+  const saveButton = elements.editItemForm.querySelector('[type="submit"]');
+  saveButton.disabled = true;
+  elements.editImageMessage.dataset.status = "info";
+  elements.editImageMessage.textContent = "Bild wird verarbeitet …";
+  try {
+    const image = await prepareImageData(file);
+    if (request !== editingImageRequest || uid !== editingUid || !elements.editItem.open) return;
+    updateEditingImage(image);
+    elements.editImageMessage.dataset.status = "info";
+    elements.editImageMessage.textContent = "Bild bereit. Beim Speichern wird es mit dem Artikel übernommen.";
+  } catch (error) {
+    if (request !== editingImageRequest || uid !== editingUid || !elements.editItem.open) return;
+    elements.editImageMessage.dataset.status = "error";
+    elements.editImageMessage.textContent = error.message;
+  } finally {
+    if (request === editingImageRequest && uid === editingUid && elements.editItem.open) {
+      saveButton.disabled = false;
+    }
+  }
+}
+
+elements.editImageChoose.addEventListener("click", () => elements.editImageUpload.click());
+elements.editImageTake.addEventListener("click", () => elements.editImageCamera.click());
+elements.editImageUpload.addEventListener("change", () => {
+  const file = elements.editImageUpload.files[0];
+  elements.editImageUpload.value = "";
+  selectItemImage(file);
+});
+elements.editImageCamera.addEventListener("change", () => {
+  const file = elements.editImageCamera.files[0];
+  elements.editImageCamera.value = "";
+  selectItemImage(file);
+});
+elements.editImageRemove.addEventListener("click", () => {
+  editingImageRequest++;
+  updateEditingImage(null);
+  elements.editImageMessage.dataset.status = "info";
+  elements.editImageMessage.textContent = "Bild entfernt. Speichere, um die Änderung zu übernehmen.";
+  elements.editItemForm.querySelector('[type="submit"]').disabled = false;
+});
 elements.editItemForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const summary = elements.editSummary.value.trim();
@@ -2877,6 +2990,7 @@ elements.editItemForm.addEventListener("submit", async (event) => {
         ...(elements.editCategory.value !== editingCategory
           ? { category_id: elements.editCategory.value || null } : {}),
         quantity: elements.editQuantity.value.trim() || null,
+        image: editingImage,
       },
     });
     closeEditItem();

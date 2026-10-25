@@ -18,7 +18,7 @@ from homeassistant.helpers.storage import Store
 
 from .catalog import change_catalog, product_key, validate_catalog
 from .const import CONF_SOURCE, DOMAIN, update_signal
-from .model import ShoppingItem, append_new_items, update_item
+from .model import ShoppingItem, append_new_items, deletion_marker, update_item
 from .source import async_read_source
 from .sync import apply_operation, persist_items
 
@@ -235,7 +235,7 @@ async def _catalog_command(
                             remaining = {item.uid for item in items}
                             for item in runtime.items:
                                 if item.uid not in remaining:
-                                    state["deleted"][item.uid] = item.to_dict()
+                                    state["deleted"][item.uid] = deletion_marker(item)
                             state["revision"] += 1
                             await runtime.store.async_save(
                                 {

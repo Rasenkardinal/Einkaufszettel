@@ -2876,6 +2876,29 @@ async def test_receipts_survive_restart_and_retry_does_not_overwrite_newer_edit(
         )
 
 
+async def test_image_operation_receipt_hashes_large_payload_and_remains_idempotent(
+    integration, monkeypatch
+):
+    ctx = await sync_environment(integration, monkeypatch)
+    uid = ctx.data.items[0].uid
+    image = "data:image/png;base64,aGVsbG8="
+    patch = {"metadata": {"image": image}}
+    await ctx.protocol.apply_operation(ctx.data, "image", "update_item", uid, patch)
+    receipt = ctx.data.sync["receipts"]["image"]["payload"]
+    assert receipt.startswith("sha256:")
+    assert image not in receipt
+    assert ctx.data.items[0].metadata["image"] == image
+    await ctx.protocol.apply_operation(ctx.data, "image", "update_item", uid, patch)
+    with pytest.raises(ValueError, match="already used"):
+        await ctx.protocol.apply_operation(
+            ctx.data,
+            "image",
+            "update_item",
+            uid,
+            {"metadata": {"image": "data:image/png;base64,d29ybGQ="}},
+        )
+
+
 async def test_field_patches_preserve_metadata_and_last_accepted_field_wins(
     integration, monkeypatch
 ):

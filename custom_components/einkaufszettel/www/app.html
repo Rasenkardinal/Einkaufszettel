@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#141414">
     <meta name="description" content="Dein Einkaufszettel – auch offline verfügbar.">
-    <meta name="app-version" content="0.4.41">
+    <meta name="app-version" content="0.4.42">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.41">
+    <link rel="stylesheet" href="./app.css?v=0.4.42">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -224,6 +224,18 @@
         <input id="edit-quantity" maxlength="100" autocomplete="off" placeholder="z. B. 2 × 1 l">
         <label for="edit-notes">Zusatzinformation</label>
         <input id="edit-notes" maxlength="500" autocomplete="off" placeholder="z. B. laktosefrei">
+        <section class="edit-item-image">
+          <span class="edit-item-image-label">Bild zum Artikel</span>
+          <input id="edit-image-upload" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+          <input id="edit-image-camera" type="file" accept="image/png,image/jpeg,image/webp" capture="environment" hidden>
+          <div class="edit-item-image-actions">
+            <button id="edit-image-choose" class="secondary" type="button">Bild auswählen</button>
+            <button id="edit-image-take" class="secondary" type="button">Foto aufnehmen</button>
+          </div>
+          <img id="edit-image-preview" class="edit-item-image-preview" alt="Vorschau des Artikelbilds" hidden>
+          <button id="edit-image-remove" class="secondary danger-button" type="button" hidden>Bild entfernen</button>
+          <p id="edit-image-message" class="edit-item-image-message" role="status" aria-live="polite"></p>
+        </section>
         <div class="dialog-actions">
           <button id="cancel-edit" type="button" class="secondary">Abbrechen</button>
           <button type="submit" class="primary">Speichern</button>
@@ -301,6 +313,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.41" defer></script>
+    <script src="./app.js?v=0.4.42" defer></script>
   </body>
 </html>

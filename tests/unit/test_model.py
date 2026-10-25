@@ -1,5 +1,6 @@
 """Portable tests of the actual model, without importing Home Assistant."""
 
+import base64
 import importlib.util
 import sys
 from pathlib import Path
@@ -38,6 +39,35 @@ def test_round_trip_preserves_metadata_and_completed_status():
         "local-1", "Milch", "completed", "3 Flaschen", "2026-10-20", "alexa-1"
     )
     assert model.load_items({"items": [item.to_dict()]}) == [item]
+
+
+def test_item_image_is_preserved_and_size_limited():
+    image = "data:image/png;base64,aGVsbG8="
+    item = model.ShoppingItem("local-1", "Milch", metadata={"image": image})
+    assert model.load_items({"items": [item.to_dict()]}) == [item]
+    with pytest.raises(ValueError, match="Invalid item image"):
+        model.ShoppingItem(
+            "local-2", "Brot", metadata={"image": "data:image/svg+xml;base64,abc"}
+        )
+    oversized = (
+        "data:image/png;base64,"
+        + base64.b64encode(b"x" * (model.MAX_ITEM_IMAGE_BYTES + 1)).decode()
+    )
+    with pytest.raises(ValueError, match="size limit"):
+        model.ShoppingItem("local-3", "Käse", metadata={"image": oversized})
+
+
+def test_deletion_marker_keeps_item_identity_without_retaining_image():
+    item = model.ShoppingItem(
+        "local-1",
+        "Milch",
+        source_uid="source-1",
+        metadata={"image": "data:image/png;base64,aGVsbG8=", "quantity": "2"},
+    )
+    marker = model.deletion_marker(item)
+    assert marker["uid"] == item.uid
+    assert marker["source_uid"] == item.source_uid
+    assert marker["metadata"] == {"quantity": "2"}
 
 
 @pytest.mark.parametrize("status", ["completed", "needs_action"])

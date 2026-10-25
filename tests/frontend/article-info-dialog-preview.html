@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vorschau · Artikelinfo und Bild hinzufügen</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:#141414;color:#f4f4f4;--bg:#141414;--surface:#202020;--surface2:#2b2b2b;--line:#383838;--accent:#f5f5f5;--accent-text:#171717;--muted:#aaa;--error:#ffb4a8}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 18px 48px}
+header,.gallery,.notice{width:min(100%,980px);margin-inline:auto}
+.eyebrow{margin:0 0 8px;color:var(--muted);font-size:11px;font-weight:750;letter-spacing:.15em}
+h1{margin:0;font-size:clamp(24px,5vw,34px);letter-spacing:-.035em}
+.intro{max-width:740px;margin:10px 0 24px;color:var(--muted);font-size:14px;line-height:1.55}
+.gallery{display:grid;grid-template-columns:repeat(2,minmax(0,390px));justify-content:center;gap:18px}
+.preview-card{overflow:hidden;border:1px solid #343434;border-radius:15px;background:#101010;box-shadow:0 14px 38px #0005}
+.card-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #292929;background:#1b1b1b}
+.step{display:grid;place-items:center;width:26px;height:26px;flex:none;border:1px solid #444;border-radius:50%;color:var(--muted);font-size:11px;font-weight:700}
+.card-head h2{flex:1;margin:0;font-size:13px}
+.card-head small{color:var(--muted);font-size:9px;letter-spacing:.07em}
+.phone{position:relative;min-height:665px;padding:18px 15px 20px;background:linear-gradient(#181818,#101010)}
+.app-head{display:flex;align-items:center;justify-content:space-between;margin:1px 0 24px}
+.app-name{font-size:18px;font-weight:750;letter-spacing:-.04em}
+.app-status{color:#35d885;font-size:11px}
+.list-title{margin:0 0 10px;color:#999;font-size:11px;font-weight:700;letter-spacing:.08em}
+.list-row{display:flex;align-items:center;gap:11px;min-height:54px;margin-bottom:7px;padding:9px 11px;border:1px solid #383838;border-radius:9px;background:#2b2b2b}
+.checkbox{width:19px;height:19px;flex:none;border:1.5px solid #888;border-radius:5px}
+.list-row strong{font-size:15px}
+.list-note{margin-left:auto;color:#aaa;font-size:11px}
+.dim{position:absolute;inset:0;background:#0009}
+.dialog{position:absolute;z-index:1;top:50%;left:50%;width:calc(100% - 30px);max-height:calc(100% - 28px);overflow:auto;transform:translate(-50%,-50%);padding:18px;border:1px solid #383838;border-radius:16px;background:#202020;box-shadow:0 10px 42px #000b}
+.dialog h3{margin:0 0 3px;font-size:19px;letter-spacing:-.02em}
+.dialog-subtitle{margin:0 0 14px;color:var(--muted);font-size:12px;line-height:1.45}
+.field{display:grid;gap:5px;margin-top:10px}
+.field label,.section-label{font-size:12px;font-weight:650}
+.control{min-height:42px;padding:10px 11px;border:1px solid #383838;border-radius:8px;background:#141414;color:#f4f4f4;font-size:14px}
+.select{display:flex;align-items:center;justify-content:space-between}
+.chevron{width:9px;height:9px;border-right:1.5px solid #aaa;border-bottom:1.5px solid #aaa;transform:rotate(45deg) translateY(-2px)}
+.image-section{display:grid;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid #383838}
+.image-action{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:9px 11px;border:1px solid #424242;border-radius:9px;background:#2b2b2b;color:#f4f4f4;text-align:left;font:inherit;font-size:13px;font-weight:650}
+.image-action:hover,.image-action:focus-visible{border-color:#777;background:#333}
+.image-icon{display:grid;place-items:center;width:25px;height:25px;flex:none;border-radius:7px;background:#3a3a3a;color:#f5f5f5;font-size:15px}
+.action-hint{margin-left:auto;color:var(--muted);font-size:10px;font-weight:400}
+.preview-image{display:block;width:100%;height:118px;object-fit:cover;border:1px solid #383838;border-radius:9px;background:#181818}
+.help{margin:0;color:var(--muted);font-size:11px;line-height:1.45}
+.actions{display:flex;justify-content:space-between;gap:9px;margin-top:15px;padding-top:11px;border-top:1px solid #383838}
+.button{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 14px;border:1px solid #444;border-radius:9px;background:#2b2b2b;color:#f4f4f4;font:inherit;font-size:13px;font-weight:700}
+.button.primary{border-color:#f5f5f5;background:#f5f5f5;color:#171717}
+.options{display:grid;gap:9px;margin:16px 0}
+.option{min-height:62px}
+.option strong,.option small{display:block}
+.option small{margin-top:3px;color:var(--muted);font-size:11px;font-weight:400}
+.camera-preview{display:grid;place-items:center;height:170px;overflow:hidden;border:1px solid #383838;border-radius:10px;background:radial-gradient(ellipse at 48% 78%,#74513c 0 14%,transparent 15%),radial-gradient(ellipse at 58% 73%,#7d583e 0 18%,transparent 19%),linear-gradient(150deg,#263039,#14191c 48%,#1b1714)}
+.camera-preview svg{width:84px;height:84px;color:#f0e5d5;filter:drop-shadow(0 2px 12px #0008)}
+.picker-preview{display:none}
+.picker-preview.visible{display:block}
+.camera-preview.hidden{display:none}
+.picker-status{min-height:17px;color:var(--muted);font-size:11px}
+.notice{margin-top:16px;color:#888;font-size:11px;line-height:1.5}
+@media(max-width:700px){body{padding:20px 12px 34px}.gallery{grid-template-columns:minmax(0,390px);gap:14px}.phone{min-height:630px}.card-head small{display:none}}
+</style>
+<header>
+  <p class="eyebrow">DIALOGVORSCHAU · ARTIKELINFO</p>
+  <h1>Artikeldetails und Bild hinzufügen</h1>
+  <p class="intro">Zwei Ansichten im vorhandenen App-Stil. Bild und Zusatzinformation gehören nur zu diesem Einkaufslisteneintrag und werden nicht im Artikelprofil gespeichert.</p>
+</header>
+<main class="gallery">
+  <article class="preview-card">
+    <div class="card-head"><span class="step">01</span><h2>Artikelinfo bearbeiten</h2><small>HAUPTFENSTER</small></div>
+    <section class="phone" aria-label="Artikelinfo Dialog in der Einkaufsliste">
+      <div class="app-head"><span class="app-name">Einkaufszettel</span><span class="app-status">●</span></div>
+      <p class="list-title">AUF DER LISTE</p>
+      <div class="list-row"><span class="checkbox"></span><strong>Tomaten</strong><span class="list-note">2 Stück · reif</span></div>
+      <div class="list-row"><span class="checkbox"></span><strong>Hafermilch</strong><span class="list-note">ungesüßt</span></div>
+      <div class="dim" aria-hidden="true"></div>
+      <section class="dialog" aria-label="Artikel bearbeiten">
+        <h3>Artikelinfo</h3>
+        <div class="field"><label>Artikelname</label><div class="control">Tomaten</div></div>
+        <div class="field"><label>Produktkategorie</label><div class="control select"><span>Gemüse</span><span class="chevron"></span></div></div>
+        <div class="field"><label>Menge</label><div class="control">2 Stück</div></div>
+        <div class="field"><label>Zusatzinformation</label><div class="control">reif, möglichst lose</div></div>
+        <div class="image-section">
+          <span class="section-label">Foto oder Bild</span>
+          <button class="image-action" type="button" onclick="document.querySelector('#image-dialog-preview').scrollIntoView({behavior:'smooth',block:'center'})">
+            <span class="image-icon" aria-hidden="true">＋</span><span>Foto oder Bild hinzufügen</span>
+          </button>
+        </div>
+        <div class="actions"><button class="button" type="button">Abbrechen</button><button class="button primary" type="button">Speichern</button></div>
+      </section>
+    </section>
+  </article>
+  <article class="preview-card" id="image-dialog-preview">
+    <div class="card-head"><span class="step">02</span><h2>Foto oder Bild hinzufügen</h2><small>ANSICHT NACH AUSWAHL</small></div>
+    <section class="phone" aria-label="Foto oder Bild hinzufügen Dialog">
+      <div class="app-head"><span class="app-name">Einkaufszettel</span><span class="app-status">●</span></div>
+      <p class="list-title">ARTIKELINFO · TOMATEN</p>
+      <div class="list-row"><span class="checkbox"></span><strong>Tomaten</strong><span class="list-note">2 Stück</span></div>
+      <div class="dim" aria-hidden="true"></div>
+      <section class="dialog" aria-label="Foto oder Bild hinzufügen">
+        <h3>Foto oder Bild</h3>
+        <p class="dialog-subtitle">Füge ein Bild nur zu diesem Einkaufslisteneintrag hinzu.</p>
+        <div class="options">
+          <button class="image-action option" type="button" data-preview="camera">
+            <span class="image-icon" aria-hidden="true">◎</span><span><strong>Foto aufnehmen</strong><small>Kamera des Geräts verwenden</small></span><span class="action-hint">›</span>
+          </button>
+          <button class="image-action option" type="button" data-preview="file">
+            <span class="image-icon" aria-hidden="true">▧</span><span><strong>Bild auswählen</strong><small>Aus Fotos oder Dateien einfügen</small></span><span class="action-hint">›</span>
+          </button>
+        </div>
+        <div class="camera-preview" id="camera-preview" aria-label="Beispielvorschau eines aufgenommenen Fotos">
+          <svg viewBox="0 0 80 80" fill="none" aria-hidden="true"><path d="M17 27h10l5-7h17l5 7h9a5 5 0 0 1 5 5v27a5 5 0 0 1-5 5H17a5 5 0 0 1-5-5V32a5 5 0 0 1 5-5Z" stroke="currentColor" stroke-width="3"/><circle cx="40" cy="44" r="12" stroke="currentColor" stroke-width="3"/><circle cx="40" cy="44" r="5" fill="currentColor"/></svg>
+        </div>
+        <div class="picker-preview" id="picker-preview">
+          <img class="preview-image" alt="Ausgewähltes Tomatenbild" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 280'%3E%3Cdefs%3E%3ClinearGradient id='a' x2='0' y2='1'%3E%3Cstop stop-color='%2341442f'/%3E%3Cstop offset='1' stop-color='%23191d18'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23a)' d='M0 0h600v280H0z'/%3E%3Ccircle cx='230' cy='170' r='88' fill='%23c94c37'/%3E%3Ccircle cx='370' cy='157' r='82' fill='%23df6440'/%3E%3Cpath d='M230 85q-20-40-48-36 8 26 42 42m146 1q19-38 49-31-9 27-40 39' fill='none' stroke='%237da25c' stroke-width='13' stroke-linecap='round'/%3E%3C/svg%3E">
+        </div>
+        <div class="actions"><button class="button" type="button">Zurück</button><button class="button primary" type="button">Bild übernehmen</button></div>
+      </section>
+    </section>
+  </article>
+</main>
+<p class="notice">Vorschau zur Abstimmung: Die Aktionen zeigen nur beispielhaft die Dialogansichten und greifen nicht auf Kamera oder persönliche Dateien zu.</p>
+<script>
+const camera=document.querySelector("#camera-preview");
+const file=document.querySelector("#picker-preview");
+document.querySelectorAll("[data-preview]").forEach(button=>button.addEventListener("click",()=>{
+  const chosen=button.dataset.preview;
+  camera.classList.toggle("hidden",chosen==="file");
+  file.classList.toggle("visible",chosen==="file");
+}));
+</script>
