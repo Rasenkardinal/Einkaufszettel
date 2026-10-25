@@ -85,6 +85,23 @@ body { padding: 28px; margin: 0; }
 .comparison .phone .home-indicator { display: none; }
 .comparison .phone.keyboard-open .dock { padding-bottom: 12px; }
 .comparison .card-controls { display: none; }
+.contrast .phone { height: 540px; border-radius: 30px; }
+.contrast .dock { padding-bottom: 28px; }
+.contrast .keyboard-open .dock { padding-bottom: 12px; }
+.contrast .card-controls { display: none; }
+.contrast .description { min-height: 64px; }
+.contrast .c1 .dock { background: #202020; border-top-color: #484848; }
+.contrast .c2 .dock { background: #2a2a2a; border-top-color: #595959; }
+.contrast .c3 .dock { background: linear-gradient(#2c2c2c, #191919); border-top-color: #505050; }
+.contrast .c4 .dock { background: #181818; border-top: 2px solid #777; box-shadow: 0 -10px 22px #0008; }
+.contrast .c5 .dock { background: #202923; border-top-color: #536d5c; }
+.contrast .c6 .dock { background: #20262e; border-top-color: #53667e; }
+.contrast .c7 .dock { background: #1b1b1b; border-top-color: #4e4e4e; }
+.contrast .c7 .search-form { outline: 1px solid #686868; outline-offset: 5px; border-radius: 10px; }
+.contrast .c8 .dock { background: #25221e; border-top: 2px solid #a38b64; }
+.contrast .dock input { background: #111; border-color: #646464; color: #f4f4f4; }
+.contrast .dock input::placeholder { color: #b8b8b8; }
+.contrast .grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,350px),1fr)); }
 @media(max-width:480px) { body { padding: 16px; } .proposal { padding: 12px; } .app-header { padding-inline: 12px; } .heading { gap: 8px; } .heading h3 { font-size: 20px; } }
 </style>
 <body>
@@ -236,6 +253,53 @@ if (new URLSearchParams(location.search).get("compare") === "corners") {
       : index === 0 ? "Unterer Abstand: 12 px" : "Unterer Abstand: 28 px · +16 px";
   });
   document.querySelector(".note").textContent = "Maßstäbliche Vorschau mit simulierten Displayecken und Tastaturen. Auf Geräten mit größerer Safe-Area kommt deren Sicherheitsabstand hinzu. Die Änderung ist bereits vorbereitet, aber noch nicht veröffentlicht.";
+}
+if (new URLSearchParams(location.search).get("contrast") === "8") {
+  document.body.classList.add("contrast");
+  document.querySelector(".preview > h1").textContent = "Suchleisten-Abschnitt · 8 Kontrast-Entwürfe";
+  document.querySelector(".intro").textContent = "Gleiche Suchleiste, gleiche Position, gleiche Abstände – nur die Abgrenzung zur Einkaufsliste ändert sich. Alle Varianten behalten dunkle Eingabefelder und den bestehenden Plus-Button. Über „Alle Tastaturen öffnen“ lässt sich auch die angedockte Eingabe vergleichen.";
+  document.querySelector("#all-modes").hidden = true;
+  const concepts = [
+    ["1 · Sanft aufgehellt", "Neutrales Dunkelgrau (#202020), eine etwas hellere Trennlinie. Dezent und nah am bestehenden Design."],
+    ["2 · Klarer Flächenkontrast", "Helleres Anthrazit (#2a2a2a). Die gesamte Suchzone wird als eigener Bereich erkennbar."],
+    ["3 · Weicher Lichtverlauf", "Oben heller, zum Displayrand dunkler. Die Leiste hebt sich ab, ohne wie ein harter Block zu wirken."],
+    ["4 · Trennkante & Schatten", "Nahezu unveränderter dunkler Hintergrund. Stattdessen eine klare obere Linie und ein räumlicher Schatten."],
+    ["5 · Dezentes Salbeigrau", "Ein zurückhaltender grüngrauer Hintergrund. Ruhige Farbabgrenzung ohne grelle Akzentfläche."],
+    ["6 · Kühles Schiefergrau", "Eine leicht blaugraue Fläche trennt die Eingabe von der neutralen Liste. Technisch und klar."],
+    ["7 · Rahmen um die Eingabe", "Die Fläche bleibt dunkel; ein gemeinsamer zusätzlicher Rahmen fasst Suchfeld und Plus optisch zusammen."],
+    ["8 · Warme Akzentkante", "Warmgrauer Hintergrund mit schmaler sandfarbener Oberkante. Starke Abgrenzung mit wenig Farbfläche."]
+  ];
+  const grid = document.querySelector("#grid");
+  cards.forEach(card => card.remove());
+  concepts.forEach(([title, description], index) => {
+    const card = cards[0].cloneNode(true);
+    card.querySelector("h2").textContent = title;
+    card.querySelector(".description").textContent = description;
+    const phone = card.querySelector(".phone");
+    phone.className = `phone v1 c${index + 1}`;
+    phone.setAttribute("aria-label", title);
+    card.querySelector("input").id = `contrast-search-${index}`;
+    card.querySelector("label").htmlFor = `contrast-search-${index}`;
+    card.querySelector(".suggestions").id = `contrast-suggestions-${index}`;
+    card.querySelector("input").setAttribute("aria-controls", `contrast-suggestions-${index}`);
+    card.querySelector(".state-label").textContent = "Planungsmodus · 28 px unterer Abstand";
+    grid.append(card);
+    const input = card.querySelector("input");
+    input.onfocus = () => setKeyboard(card, true);
+    input.oninput = () => suggestions(card);
+    input.onkeydown = event => { if (event.key === "Escape") setKeyboard(card, false); };
+    card.querySelector("form").onsubmit = event => { event.preventDefault(); add(card, input.value); };
+  });
+  document.querySelector("#all-keyboards").onclick = event => {
+    const open = event.currentTarget.getAttribute("aria-pressed") !== "true";
+    for (const card of grid.children) {
+      setKeyboard(card, open);
+      if (open) { card.querySelector("input").value = "But"; suggestions(card); }
+    }
+    event.currentTarget.setAttribute("aria-pressed", String(open));
+    event.currentTarget.textContent = open ? "Alle Tastaturen schließen" : "Alle Tastaturen öffnen";
+  };
+  document.querySelector(".note").textContent = "Meine Favoriten: Nr. 1 für eine dezente Verbesserung und Nr. 2 für eine klar erkennbare Suchzone. Nr. 4 verändert die Fläche kaum, Nr. 6 ist eine farbige Alternative. Die Farben sind zunächst für das aktuelle dunkle Design visualisiert; eine spätere Übernahme wird an die aktiven Hell-/Dunkel-Paletten angepasst. Tastaturen sind simuliert. Nur Entwürfe – keine Änderung an der App.";
 }
 </script>
 </body>
