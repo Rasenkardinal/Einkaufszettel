@@ -124,7 +124,12 @@ async function runTests() {
     assert(buttons.children.length === 4, "Four actions required");
     for (const button of buttons.children) {
       assert(button.classList.contains("secondary"), "Standard secondary style missing");
-      if (button.querySelector(".product-rename-arrow")) assert(button.querySelector(".product-rename-arrow").textContent === "›", "Chevron missing");
+      if (button.classList.contains("product-outline-action")) {
+        const icon = button.querySelector("svg.chevron[aria-hidden='true']");
+        assert(icon && icon.querySelector("path"), "Shared SVG chevron missing");
+        const iconRect = icon.getBoundingClientRect(), buttonRect = button.getBoundingClientRect();
+        assert(Math.abs(iconRect.top + iconRect.height / 2 - buttonRect.top - buttonRect.height / 2) < 1, "Chevron is not vertically centered");
+      }
       assert(win.getComputedStyle(button).minHeight === "44px", "Touch target too small");
     }
     const originalTheme = doc.body.dataset.theme;
@@ -149,7 +154,7 @@ async function runTests() {
     assert(calls.at(-1).view === "product-statistics", "Statistics action missing");
     buttons.firstElementChild.click();
     assert(calls.at(-1).view === "product-edit", "Plain rename action changed");
-    assert(buttons.children[1].textContent === "Zusammenführen›", "Manual merge missing");
+    assert(buttons.children[1].textContent === "Zusammenführen", "Manual merge missing");
     assert(buttons.lastElementChild.textContent === "Löschen", "Delete action missing");
     assert(!buttons.lastElementChild.disabled, "Used product deletion must be enabled");
     assert(win.getComputedStyle(buttons.lastElementChild).color === "rgb(255, 180, 168)", "Delete must remain red");
@@ -291,9 +296,15 @@ async function runTests() {
     for (const length of [0, 60]) {
       api.setupManagementList(view, length);
       test(view + " keeps the add action fixed with " + length + " records", () => {
-        const label = view === "markets" ? "Supermarkt hinzufügen" : "Kategorie hinzufügen";
+        const label = view === "markets" ? "Hinzufügen" : "Kategorie hinzufügen";
         assert(page.classList.contains("has-fixed-actions"), "Fixed layout missing");
-        assert(!footer.hidden && footer.children.length === 1 && footer.textContent.includes(label), "Wrong footer action");
+        assert(!footer.hidden && footer.children.length === (view === "markets" ? 2 : 1) && footer.textContent.includes(label), "Wrong footer action");
+        if (view === "markets") {
+          const cancel = footer.querySelector(".secondary"), add = footer.querySelector(".primary");
+          assert(cancel.textContent === "Abbrechen" && add.textContent === "Hinzufügen", "Approved market actions missing");
+          assert(Math.abs(add.getBoundingClientRect().left - cancel.getBoundingClientRect().right - 12) < 1, "Market footer spacing differs from design");
+          assert(Math.abs(add.getBoundingClientRect().width - 114) < 1, "Market add button width differs from design");
+        }
         const titleBottom = page.querySelector(".management-title-row").getBoundingClientRect().bottom;
         assert(content.getBoundingClientRect().top - titleBottom >= 16, "Content too close to heading");
         const before = footer.getBoundingClientRect();
@@ -304,7 +315,7 @@ async function runTests() {
           assert(Math.abs(footer.getBoundingClientRect().top - before.top) < 1, "Footer scrolls with list");
           assert(content.querySelector(".management-link:last-child").getBoundingClientRect().bottom <= before.top + 1, "Last record hidden behind footer");
         }
-        footer.querySelector("button").click();
+        footer.querySelector(".primary").click();
         assert(api.view() === (view === "markets" ? "market-edit" : "category-edit"), "Wrong add form");
         assert(doc.querySelector("#catalog-name").value === "", "New name not empty");
         assert(doc.querySelector("#catalog-name").getBoundingClientRect().top -
@@ -322,6 +333,10 @@ async function runTests() {
     const flyout = doc.querySelector("#product-merge-flyout");
     assert(!doc.querySelector("#catalog-content select, #catalog-content input[type=radio]"), "Native selector remains");
     assert(trigger.getAttribute("role") === "combobox", "Accessible combobox role missing");
+    const chevron = trigger.querySelector("svg.chevron[aria-hidden='true']");
+    assert(chevron, "Merge picker does not use the shared SVG chevron");
+    const iconRect = chevron.getBoundingClientRect(), triggerRect = trigger.getBoundingClientRect();
+    assert(Math.abs(iconRect.top + iconRect.height / 2 - triggerRect.top - triggerRect.height / 2) < 1, "Merge picker chevron is not centered");
     trigger.focus();
     trigger.dispatchEvent(new win.KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true}));
     const option = doc.querySelector("#product-merge-options [role=option]");

@@ -34,7 +34,7 @@ async function runTests() {
       {key:"ährenbrot",name:"Ährenbrot",category_id:"b"},
     ],
   };
-  let fail = false;
+  let fail = false, failCache = false;
   win.confirm = () => true;
   const api = win.Function("test", "localStorage", script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
     sendCommand = async (type, payload) => test.send(type.split("/").pop(), payload);
@@ -49,7 +49,7 @@ async function runTests() {
     ];
     selectedMarket = "m";
     render();
-    return { openCatalog, render, saveCatalog, prepareBonusCardImage, refreshSupermarkets, loadCachedSupermarkets, initializeMode,
+    return { openCatalog, render, saveCatalog, setMessage, prepareBonusCardImage, refreshSupermarkets, loadCachedSupermarkets, initializeMode,
       renderMarketSelection,
       state: () => ({categories, supermarkets, products, currentItems, selectedMarket, catalogDraft, catalogDirty}),
       withoutMarket: () => { selectedMarket = ""; render(); },
@@ -82,8 +82,56 @@ async function runTests() {
       if (command === "save_supermarket") return structuredClone(state.supermarkets);
       return structuredClone(state);
     }
-  }, { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) });
+  }, {
+    getItem: key => storage.get(key) || null,
+    setItem: (key, value) => {
+      if (failCache) throw Error("Test: Offline-Speicher nicht verfügbar");
+      storage.set(key, value);
+    },
+    removeItem: key => storage.delete(key),
+  });
   function test(name, action) { action(); results.push(`PASS ${name}`); }
+  test("Notifications distinguish success, error and progress across every design", () => {
+    const originalTheme = doc.body.dataset.theme;
+    for (const theme of ["mono", "botanical", "midnight-plum", "market-journal", "fresh-signal", "tomato", "lime-focus", "indigo-pocket"]) {
+      doc.body.dataset.theme = theme;
+      for (const id of ["message", "catalog-message", "sync-conflicts-message", "management-message", "design-message"]) {
+        const element = doc.getElementById(id);
+        api.setMessage(element, "Gespeichert.", "success");
+        assert(win.getComputedStyle(element).color === "rgb(53, 216, 133)", `${id} success is not green in ${theme}`);
+        api.setMessage(element, "Speichern fehlgeschlagen.");
+        assert(win.getComputedStyle(element).color === "rgb(255, 180, 168)", `${id} error stayed green in ${theme}`);
+        api.setMessage(element, "Wird gespeichert …", "info");
+        assert(!["rgb(53, 216, 133)", "rgb(255, 180, 168)"].includes(win.getComputedStyle(element).color), `${id} progress is not neutral in ${theme}`);
+        api.setMessage(element, "");
+        assert(element.dataset.status === "" && element.textContent === "", "Clearing a notification retained its status");
+      }
+    }
+    doc.body.dataset.theme = originalTheme;
+  });
+  function assertChevronCentered(icon, control) {
+    assert(icon?.matches("svg.chevron[aria-hidden='true']"), "Shared decorative SVG chevron missing");
+    const iconRect = icon.getBoundingClientRect(), controlRect = control.getBoundingClientRect();
+    assert(Math.abs(iconRect.top + iconRect.height / 2 - controlRect.top - controlRect.height / 2) < 1, "Chevron is not vertically centered");
+    const bounds = icon.querySelector("path").getBBox();
+    assert(bounds.y + bounds.height / 2 === 12, "Chevron path is not centered in its viewBox");
+  }
+  test("Dropdown chevrons use centered SVGs and preserve expanded rotation", () => {
+    for (const selector of ["#list-select", "#market-select", "#sync-details-toggle", "#edit-category-trigger"]) {
+      const control = doc.querySelector(selector);
+      assert(control, `Missing dropdown ${selector}`);
+      const icon = control.querySelector("svg.chevron");
+      assert(icon, `Missing SVG chevron in ${selector}`);
+      if (!control.getBoundingClientRect().height) continue;
+      assertChevronCentered(icon, control);
+      const expanded = control.getAttribute("aria-expanded");
+      icon.style.transition = "none";
+      control.setAttribute("aria-expanded", "true");
+      assert(win.getComputedStyle(icon).transform !== "none", `Expanded rotation missing in ${selector}`);
+      control.setAttribute("aria-expanded", expanded);
+      icon.style.removeProperty("transition");
+    }
+  });
   const headingNames = () => [...doc.querySelectorAll(".item-category-title")].map(h => h.firstChild.textContent);
   api.initializeMode();
   const modeToggle = doc.querySelector("#mode-toggle");
@@ -216,6 +264,7 @@ async function runTests() {
   test("Category search flyout opens without focusing the keyboard field", () => {
     assert(!doc.querySelector("#edit-category-flyout").hidden, "Category flyout did not open");
     assert(doc.activeElement !== doc.querySelector("#edit-category-search"), "Search field received automatic focus");
+    assertChevronCentered(categoryTrigger.querySelector(".chevron"), categoryTrigger);
   });
   const categorySearch = doc.querySelector("#edit-category-search");
   categorySearch.focus();
@@ -489,7 +538,8 @@ async function runTests() {
     assert(doc.querySelector("main.app").hidden, "Shopping page not hidden");
     assert(!doc.querySelector("#catalog-page").hidden, "Catalog not shown");
     const names = [...doc.querySelectorAll(".management-link")].map(b => b.textContent);
-    assert(names.join("|") === "Äpfel  ›|Backwaren  ›|Zwiebeln  ›", "Not German A-Z");
+    assert(names.join("|") === "Äpfel|Backwaren|Zwiebeln", "Not German A-Z");
+    for (const link of doc.querySelectorAll(".management-link")) assertChevronCentered(link.querySelector(".chevron"), link);
   });
   test("Market edit links to a separate order page", () => {
     api.openCatalog("market-edit", state.supermarkets[0]);
@@ -497,8 +547,10 @@ async function runTests() {
     assert(doc.querySelector("#catalog-title").textContent === "Produktkategorien bearbeiten", "Wrong destination");
     const categorySelection = doc.querySelector(".category-selection-button");
     assert(categorySelection.textContent === "Kategorien für diesen Markt", "Category-selection button label is incorrect");
-    assert(categorySelection.querySelector("svg[aria-hidden='true']") && categorySelection.querySelector(".category-selection-arrow[aria-hidden='true']"), "Category-selection button icon or arrow missing");
-    assert(syncStyles.includes(".category-selection-button") && syncStyles.includes("color-mix(in srgb,var(--accent) 60%,var(--line))"), "Category-selection button does not use the theme accent outline");
+    assert(categorySelection.querySelector("svg.chevron[aria-hidden='true']"), "Category-selection button arrow missing");
+    assertChevronCentered(categorySelection.querySelector(".chevron"), categorySelection);
+    assert(categorySelection.classList.contains("management-link") &&
+      win.getComputedStyle(categorySelection).borderTopWidth === "1px", "Category-selection button does not use the standard navigation design");
     assert(doc.querySelectorAll(".move-grip").length === 3, "Uncategorized sorting row missing");
     assert(doc.querySelector(".category-order-row[data-category-id=''] .order-name").textContent === "3. Ohne Kategorie", "Uncategorized row was not appended by default");
     assert(!doc.querySelector(".category-order-row[data-category-id=''] [aria-label='Ohne Kategorie aus diesem Markt entfernen']"), "Uncategorized row was removable");
@@ -554,7 +606,7 @@ async function runTests() {
     assert(api.state().catalogDraft.category_ids.join() === "b,,z", "Could not set an intermediate uncategorized position");
     doc.querySelector("#catalog-content > .category-selection-button").click();
     const fixedActions = doc.querySelector("#catalog-fixed-actions");
-    assert(!fixedActions.hidden && [...fixedActions.querySelectorAll("button")].map(button => button.textContent).join("|") === "Abbrechen|Auswahl übernehmen", "Category selection actions are not fixed in the footer");
+    assert(!fixedActions.hidden && [...fixedActions.querySelectorAll("button")].map(button => button.textContent).join("|") === "Abbrechen|Übernehmen", "Category selection actions are not fixed in the footer");
     const choices = [...doc.querySelectorAll(".category-choice")];
     assert(choices.map(c=>c.textContent).join() === "Äpfel,Backwaren,Zwiebeln", "Selection not A-Z");
     choices[0].querySelector("input").click();
@@ -588,7 +640,17 @@ async function runTests() {
   await api.saveCatalog("save_market_categories", { market_id:"m", category_ids:api.state().catalogDraft.category_ids }, "markets");
   assert(state.supermarkets[0].category_ids.join() === "b,,a", "Order not saved");
   assert(storage.has("einkaufszettel.catalog"), "Atomic offline catalog cache missing");
+  assert(doc.querySelector("#catalog-message").dataset.status === "success" &&
+    win.getComputedStyle(doc.querySelector("#catalog-message")).color === "rgb(53, 216, 133)", "Save confirmation lost green success state during navigation");
   results.push("PASS Saving persists order and offline cache");
+  failCache = true;
+  await api.saveCatalog("save_market_categories", { market_id:"m", category_ids:state.supermarkets[0].category_ids }, "markets");
+  assert(doc.querySelector("#catalog-message").textContent.includes("Offline-Kopie fehlgeschlagen") &&
+    doc.querySelector("#catalog-message").dataset.status === "error", "Partial save failure appeared as a green success");
+  failCache = false;
+  await api.saveCatalog("save_market_categories", { market_id:"m", category_ids:state.supermarkets[0].category_ids }, "markets");
+  assert(doc.querySelector("#catalog-message").dataset.status === "success", "Successful retry retained red error state");
+  results.push("PASS Offline-cache failure stays red and successful retry becomes green");
   api.openCatalog("market-edit", state.supermarkets[0]);
   [...doc.querySelectorAll(".category-navigation")].find(button =>
     button.textContent.includes("Bonuskarten oder APP-Codes")).click();
@@ -621,6 +683,8 @@ async function runTests() {
   await api.saveCatalog("save_category", {category_id:"z", name:name.value}, "categories");
   assert(api.state().catalogDirty, "Failed save cleared dirty draft");
   assert(doc.querySelector("#catalog-message").textContent.includes("fehlgeschlagen"), "Failure hidden");
+  assert(doc.querySelector("#catalog-message").dataset.status === "error" &&
+    win.getComputedStyle(doc.querySelector("#catalog-message")).color === "rgb(255, 180, 168)", "Failed save is not red");
   assert(doc.querySelector("#catalog-name").value === "Neuer Name", "Failed save lost input");
   results.push("PASS Failed save retains draft and reports error");
   fail = false;
@@ -931,12 +995,16 @@ async function runTests() {
     assert(!doc.querySelector("#catalog-help-popover").hidden, "New header lost working help");
     help.click();
     const links = [...doc.querySelectorAll(".category-navigation")];
-    assert(links.every(link => link.querySelector(".market-link-label") && link.querySelector(".market-link-chevron[aria-hidden='true']")), "Navigation chevrons are still part of the label");
+    assert(links.every(link => link.querySelector(".navigation-label") && link.querySelector("svg.chevron[aria-hidden='true']")), "Navigation chevrons are still part of the label");
+    for (const link of links) assertChevronCentered(link.querySelector(".chevron"), link);
     assert(near(rect(links[1]).top - rect(links[0]).bottom, 12), "Navigation group gap differs from reference");
     if (width === 430) {
       assert(near(rect(input).left, 40) && near(rect(input).top, 120), "Reference form position differs");
+      assert(near(rect(help).left - rect(title).right, 16), "Info icon is not directly next to the title");
       assert(near(rect(links[0]).top, 200), "Reference navigation spacing differs");
-      assert(near(rect(doc.querySelector(".page-actions")).top, 576), "Reference administration separator differs");
+      assert(near(rect(doc.querySelector(".page-actions")).top, 584), "Reference administration separator differs");
+      assert(near(rect(doc.querySelector(".market-checkout-options")).top, 348), "Settings separator differs from reference");
+      assert(near(rect(doc.querySelector(".danger-section")).top, 492), "Delete separator differs from reference");
     }
     links[0].click();
     await pause(0);
@@ -951,6 +1019,19 @@ async function runTests() {
       const visibleBottom = rect(content).bottom;
       const lastContent = [...content.children].findLast(child =>
         !child.hidden && !child.classList.contains("visually-hidden"));
+      if (width === 430) {
+        content.scrollTop = 0;
+        const heading = doc.querySelector("#catalog-title");
+        const info = doc.querySelector("#catalog-page .management-help-trigger");
+        assert(near(rect(info).left - rect(heading).right, 16), `${view} info icon is not beside the title`);
+        if (view === "market-select") {
+          assert(!content.querySelector(".market-context"), "Hidden market hint reappeared");
+          assert(near(rect(content.querySelector(".category-choice")).top, 120), "Category group spacing differs from reference");
+          const apply = footer.querySelector(".primary");
+          assert(apply.textContent === "Übernehmen" && near(rect(apply).width, 114), "Apply button differs from approved design");
+          assert(doc.querySelector("#catalog-help-popover").textContent.includes("Produktgruppen bzw. Regale für REWE fest"), "Market-specific category help missing");
+        }
+      }
       content.scrollTop = content.scrollHeight;
       await new Promise(resolve => win.requestAnimationFrame(() => win.requestAnimationFrame(resolve)));
       assert(near(rect(footer).top, footerTop), `${view} footer moves when scrolling`);
@@ -965,8 +1046,8 @@ async function runTests() {
         assert(near(rect(doc.querySelector(".bonus-card-preview")).height, 180), "Bonus preview differs from approved reference height");
         if (width === 430) {
           content.scrollTop = 0;
-          assert(near(rect(doc.querySelector(".bonus-card-preview")).top, 300), "Bonus preview spacing differs from reference");
-          assert(near(rect(doc.querySelector(".bonus-card-remove-section")).top, 564), "Bonus deletion separator differs from reference");
+          assert(near(rect(doc.querySelector(".bonus-card-preview")).top, 320), "Bonus preview spacing differs from reference");
+          assert(near(rect(doc.querySelector(".bonus-card-remove-section")).top, 584), "Bonus deletion separator differs from reference");
         }
       }
     }

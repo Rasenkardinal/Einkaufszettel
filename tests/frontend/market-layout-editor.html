@@ -17,6 +17,8 @@ h1 { font-size: 24px; }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .tools button { font-size: 12px; padding-inline: 10px; }
+.tools select { width: auto; min-width: 200px; padding: 8px 10px; background: var(--bg); color: #f4f4f4; border: 1px solid var(--line); border-radius: 6px; }
+.editor-view-label { align-self: center; color: var(--muted); font-size: 12px; }
 .stage-scroll { max-width: 100%; overflow: auto; padding: 4px 6px 18px; }
 #stage { position: relative; width: 390px; height: 740px; background: var(--bg); border: 1px solid var(--line); box-sizing: content-box; }
 #stage.grid { background-image: linear-gradient(#8881 1px,transparent 1px),linear-gradient(90deg,#8881 1px,transparent 1px); background-size: 8px 8px; }
@@ -32,8 +34,10 @@ h1 { font-size: 24px; }
 .node .x { display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); color: var(--muted); }
 .x svg { width: 16px; height: 16px; }
 .node .management-link { display: flex; align-items: center; gap: 16px; padding: 10px 12px; min-height: 0; font-size: 13px; }
+.node .category-choice { width: 100%; height: 100%; margin: 0; }
+.node .category-choice input { flex: none; }
 .link-label { flex: 1; min-width: 0; }
-.link-chevron { flex: none; font-size: 22px; line-height: 1; }
+.link-chevron { flex: none; width: 16px; height: 16px; }
 .node .category-order-row { padding: 4px; gap: 4px; }
 .node .category-order-row .move-grip { min-width: 28px; width: 28px; font-size: 24px; height: 44px; }
 .node .category-order-row .move-button { min-width: 32px; width: 32px; padding: 0; }
@@ -47,10 +51,10 @@ h1 { font-size: 24px; }
 #help-popover { position: absolute; top: 80px; left: 40px; right: 40px; z-index: 5; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); color: var(--muted); font-size: 13px; line-height: 1.6; }
 .node .name { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: white; font-size: 16px; }
 .node .toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; background: transparent; color: #f4f4f4; border: 0; font-weight: 600; font-size: 14px; }
-.node[data-id="card"] .toggle { border-top: 1px solid var(--line); }
 .switch { display: block; position: relative; flex: none; width: 42px; height: 24px; border-radius: 20px; background: var(--accent); }
 .switch::after { content: ""; position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; border-radius: 50%; background: var(--accent-text); }
 .node .note { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.selection-editor .node[data-id="submit"] .visual { display: flex; align-items: center; justify-content: center; padding-inline: 6px; }
 .node .line { border-top: 1px solid var(--line); }
 #status { min-height: 22px; color: #9bd8b0; font-size: 13px; max-width: 1000px; }
 #elements { max-height: 250px; }
@@ -59,8 +63,16 @@ h1 { font-size: 24px; }
 </style>
 <body>
 <h1>Layout-Editor · Supermarkt bearbeiten</h1>
-<p class="intro">Element anklicken und verschieben. Am türkisfarbenen Eckgriff die Größe ändern. Texte, Positionen und Größen rechts bearbeiten. Löschen entfernt nur das ausgewählte Vorschau-Element. Doppelklick auf das Info-Icon zeigt die Hilfe. Kein Zugriff auf echte App-Daten.</p>
+<p class="intro">Element anklicken und verschieben. Am türkisfarbenen Eckgriff die Größe ändern. Texte, Positionen und Größen rechts bearbeiten. Untermenüs über „Menü öffnen“ oder die Menüauswahl wechseln. Doppelklick auf das Info-Icon zeigt die Hilfe. Kein Zugriff auf echte App-Daten.</p>
 <div class="tools">
+  <label class="editor-view-label" for="menu-view">Menüansicht öffnen</label>
+  <select id="menu-view" aria-label="Menüansicht öffnen">
+    <option value="markets">Supermärkte</option>
+    <option value="market-edit">Supermarkt bearbeiten</option>
+    <option value="market-order">Produktkategorien bearbeiten</option>
+    <option value="market-select">Kategorien auswählen</option>
+    <option value="market-bonus-card">Bonuskarte / APP-Code</option>
+  </select>
   <button id="undo" class="secondary">Rückgängig</button><button id="redo" class="secondary">Wiederherstellen</button>
   <button id="save" class="primary">Entwurf speichern</button><button id="load" class="secondary">Gespeicherten Entwurf laden</button>
   <button id="reset" class="secondary">Ausgangslayout</button>
@@ -87,7 +99,7 @@ h1 { font-size: 24px; }
     <fieldset id="inspector" disabled style="border:0;padding:0;margin:0">
       <label for="text">Text</label><textarea id="text"></textarea>
       <div class="pair"><div><label for="x">Links</label><input id="x" type="number"></div><div><label for="y">Oben</label><input id="y" type="number"></div><div><label for="w">Breite</label><input id="w" type="number" min="16"></div><div><label for="h">Höhe</label><input id="h" type="number" min="8"></div></div>
-      <div class="tools"><button id="left" class="secondary">Linker Rand</button><button id="center" class="secondary">Zentrieren</button><button id="full" class="secondary">Inhaltsbreite</button><button id="delete" class="secondary danger-button">Element löschen</button></div>
+      <div class="tools"><button id="left" class="secondary">Linker Rand</button><button id="center" class="secondary">Zentrieren</button><button id="full" class="secondary">Inhaltsbreite</button><button id="open-menu" class="secondary" hidden>Menü öffnen</button><button id="delete" class="secondary danger-button">Element löschen</button></div>
     </fieldset>
     <p class="hint">Pfeiltasten: 1 Pixel · Umschalt + Pfeil: 8 Pixel. Entf: löschen. Strg/Z bzw. Strg/Umschalt/Z: rückgängig/wiederherstellen. Textfelder bleiben normal editierbar.</p>
     <label for="transfer">Übergabe an mich / Sicherung</label><textarea id="transfer" placeholder="Export erscheint hier. Du kannst auch einen gespeicherten JSON-Entwurf einfügen."></textarea>
@@ -98,26 +110,50 @@ h1 { font-size: 24px; }
 <script>
 const orderEditor=new URLSearchParams(location.search).get("menu")==="market-order";
 const bonusEditor=new URLSearchParams(location.search).get("menu")==="market-bonus-card";
-const fixedActionsEditor=orderEditor||bonusEditor;
-const menuId=orderEditor?"market-order":bonusEditor?"market-bonus-card":"market-edit";
-const menuLabel=orderEditor?"Produktkategorien bearbeiten":bonusEditor?"Bonuskarte / APP-Code":"Supermarkt bearbeiten";
-const initial = bonusEditor ? [
-  {id:"title",type:"title",text:"Bonuskarte / APP-Code",x:40,y:24,w:258,h:48},
-  {id:"help",type:"help",text:"Hilfe zu Bonuskarten",x:310,y:31,w:34,h:34},
+const marketsEditor=new URLSearchParams(location.search).get("menu")==="markets";
+const selectingEditor=new URLSearchParams(location.search).get("menu")==="market-select";
+const fixedActionsEditor=orderEditor||selectingEditor||bonusEditor||marketsEditor;
+const menuId=marketsEditor?"markets":orderEditor?"market-order":selectingEditor?"market-select":bonusEditor?"market-bonus-card":"market-edit";
+const menuLabel=marketsEditor?"Supermärkte":orderEditor?"Produktkategorien bearbeiten":selectingEditor?"Kategorien auswählen":bonusEditor?"Bonuskarte / APP-Code":"Supermarkt bearbeiten";
+const initial = marketsEditor ? [
+  {id:"title",type:"title",text:"Supermärkte",x:40,y:24,w:124,h:48},
+  {id:"help",type:"help",text:"Hilfe zur Supermarktverwaltung",x:180,y:31,w:34,h:34},
   {id:"close",type:"close",text:"Schließen",x:356,y:31,w:34,h:34},
-  {id:"market",type:"context",text:"REWE",x:40,y:100,w:350,h:24},
-  {id:"choose-file",type:"primary",text:"Bild aus Dateien auswählen",x:40,y:144,w:350,h:56},
-  {id:"take-photo",type:"secondary",text:"QR-Code fotografieren",x:40,y:212,w:350,h:56},
-  {id:"card-preview",type:"image",text:"Aktuell gespeichertes Bild · Beispielkarte",x:40,y:300,w:350,h:180},
-  {id:"image-format",type:"note",text:"PNG, JPEG oder WebP · maximal 512 KiB nach Bildoptimierung.",x:40,y:492,w:350,h:40},
-  {id:"line-remove",type:"line",text:"Trennlinie Bild entfernen",x:40,y:564,w:350,h:8},
-  {id:"remove-image",type:"danger",text:"Bild entfernen",x:40,y:580,w:150,h:44},
+  {id:"market-aldi",type:"link",text:"ALDI",x:40,y:120,w:350,h:56},
+  {id:"market-edeka",type:"link",text:"EDEKA",x:40,y:188,w:350,h:56},
+  {id:"market-lidl",type:"link",text:"Lidl",x:40,y:256,w:350,h:56},
+  {id:"market-rewe",type:"link",text:"REWE",x:40,y:324,w:350,h:56},
+  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:768,w:350,h:8},
+  {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:784,w:114,h:44},
+  {id:"submit",type:"primary",text:"Hinzufügen",x:276,y:784,w:114,h:44}
+] : bonusEditor ? [
+  {id:"title",type:"title",text:"Bonuskarte / APP-Code",x:40,y:24,w:226,h:48},
+  {id:"help",type:"help",text:"Hilfe zu Bonuskarten",x:282,y:31,w:34,h:34},
+  {id:"close",type:"close",text:"Schließen",x:356,y:31,w:34,h:34},
+  {id:"market",type:"context",text:"REWE",x:40,y:120,w:350,h:24},
+  {id:"choose-file",type:"primary",text:"Bild aus Dateien auswählen",x:40,y:164,w:350,h:56},
+  {id:"take-photo",type:"secondary",text:"QR-Code fotografieren",x:40,y:232,w:350,h:56},
+  {id:"card-preview",type:"image",text:"Aktuell gespeichertes Bild · Beispielkarte",x:40,y:320,w:350,h:180},
+  {id:"image-format",type:"note",text:"PNG, JPEG oder WebP · maximal 512 KiB nach Bildoptimierung.",x:40,y:512,w:350,h:40},
+  {id:"line-remove",type:"line",text:"Trennlinie Bild entfernen",x:40,y:584,w:350,h:8},
+  {id:"remove-image",type:"danger",text:"Bild entfernen",x:40,y:600,w:150,h:44},
   {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:768,w:350,h:8},
   {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:784,w:114,h:44},
   {id:"submit",type:"primary",text:"Speichern",x:276,y:784,w:114,h:44}
+] : selectingEditor ? [
+  {id:"title",type:"title",text:"Kategorien auswählen",x:40,y:24,w:212,h:48},
+  {id:"help",type:"help",text:"Hilfe zur Kategorienauswahl",x:268,y:31,w:34,h:34},
+  {id:"close",type:"close",text:"Schließen",x:356,y:31,w:34,h:34},
+  {id:"market",type:"context",text:"REWE · Aus dem Kategoriespeicher wählen (A–Z).",x:40,y:100,w:350,h:40,deleted:true},
+  {id:"choice-bread",type:"choice",text:"Backwaren",checked:true,x:40,y:120,w:350,h:56},
+  {id:"choice-dairy",type:"choice",text:"Milchprodukte",checked:true,x:40,y:184,w:350,h:56},
+  {id:"choice-fruit",type:"choice",text:"Obst & Gemüse",checked:true,x:40,y:248,w:350,h:56},
+  {id:"choice-household",type:"choice",text:"Haushalt",checked:false,x:40,y:312,w:350,h:56},
+  {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:784,w:114,h:44},
+  {id:"submit",type:"primary",text:"Übernehmen",x:276,y:784,w:114,h:44}
 ] : orderEditor ? [
-  {id:"title",type:"title",text:"Produktkategorien bearbeiten",x:40,y:24,w:258,h:48},
-  {id:"help",type:"help",text:"Hilfe zur Kategorienreihenfolge",x:310,y:31,w:34,h:34},
+  {id:"title",type:"title",text:"Produktkategorien bearbeiten",x:40,y:24,w:181,h:48},
+  {id:"help",type:"help",text:"Hilfe zur Kategorienreihenfolge",x:237,y:31,w:34,h:34},
   {id:"close",type:"close",text:"Schließen",x:356,y:31,w:34,h:34},
   {id:"market",type:"context",text:"REWE",x:40,y:100,w:350,h:24},
   {id:"category-selection",type:"link",text:"Kategorien für diesen Markt",x:40,y:144,w:350,h:56},
@@ -129,21 +165,23 @@ const initial = bonusEditor ? [
   {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:540,w:114,h:44},
   {id:"submit",type:"primary",text:"Speichern",x:276,y:540,w:114,h:44}
 ] : [
-  {id:"title",type:"title",text:"Supermarkt bearbeiten",x:40,y:24,w:258,h:48},
-  {id:"help",type:"help",text:"Hilfe zu Supermarkt bearbeiten",x:310,y:31,w:34,h:34},
+  {id:"title",type:"title",text:"Supermarkt bearbeiten",x:40,y:24,w:221,h:48},
+  {id:"help",type:"help",text:"Hilfe zu Supermarkt bearbeiten",x:277,y:31,w:34,h:34},
   {id:"close",type:"close",text:"Schließen",x:356,y:31,w:34,h:34},
   {id:"name",type:"name",text:"REWE",x:40,y:120,w:350,h:48},
   {id:"categories",type:"link",text:"Produktkategorien für diesen Markt bearbeiten",x:40,y:200,w:350,h:56},
   {id:"bonus",type:"link",text:"Bonuskarten oder APP-Codes einbinden",x:40,y:268,w:350,h:56},
-  {id:"receipt",type:"toggle",text:"Pfandbon Hinweis",x:40,y:356,w:350,h:48},
-  {id:"card",type:"toggle",text:"Anzeige Bonuskarte",x:40,y:404,w:350,h:48},
-  {id:"line-delete",type:"line",text:"Trennlinie Löschen",x:40,y:491,w:350,h:8},
-  {id:"remove",type:"danger",text:"Löschen",x:40,y:512,w:106,h:44},
-  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:576,w:350,h:8},
-  {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:592,w:114,h:44},
-  {id:"submit",type:"primary",text:"Speichern",x:276,y:592,w:114,h:44},
+  {id:"line-options",type:"line",text:"Trennlinie Einstellungen",x:40,y:348,w:350,h:8},
+  {id:"receipt",type:"toggle",text:"Pfandbon Hinweis",x:40,y:372,w:350,h:48},
+  {id:"card",type:"toggle",text:"Anzeige Bonuskarte",x:40,y:420,w:350,h:48},
+  {id:"line-delete",type:"line",text:"Trennlinie Löschen",x:40,y:492,w:350,h:8},
+  {id:"remove",type:"danger",text:"Löschen",x:40,y:516,w:106,h:44},
+  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:584,w:350,h:8},
+  {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:608,w:114,h:44},
+  {id:"submit",type:"primary",text:"Speichern",x:276,y:608,w:114,h:44},
   {id:"note",type:"note",text:"Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.",x:40,y:660,w:350,h:44,deleted:true}
 ];
+initial.splice(3,0,{id:"line-title",type:"line",text:"Trennlinie unter dem Titel",x:40,y:88,w:350,h:8});
 const themes = [
  ["Mono",["#141414","#202020","#2b2b2b","#383838","#f5f5f5","#171717","#aaa"]],
  ["Botanical",["#111813","#1b251e","#26362a","#304035","#a3e635","#17220d","#aab7ac"]],
@@ -160,8 +198,25 @@ let state={version:1,menu:menuId,width:430,height:844,theme:0,nodes:clone(initia
 document.title="Layout-Editor · "+menuLabel;
 document.querySelector("h1").textContent="Layout-Editor · "+menuLabel;
 $("stage").classList.toggle("bonus-editor",bonusEditor);
+$("stage").classList.toggle("selection-editor",selectingEditor);
 let selected="title", selection=new Set(["title"]), undo=[], redo=[], drag=null;
+ $("menu-view").value=menuId;
+ function openMenu(nextMenu){
+  try{
+   localStorage.setItem(storageKey,JSON.stringify(state));
+  }catch(error){
+   tell("Menüwechsel fehlgeschlagen: Entwurf konnte nicht gespeichert werden. "+error.message);
+   $("menu-view").value=menuId;
+   return false;
+  }
+  const url=new URL(location.href);
+  url.searchParams.set("menu",nextMenu);
+  location.assign(url);
+  return true;
+ }
+ $("menu-view").onchange=()=>openMenu($("menu-view").value);
 function chosen(){return state.nodes.filter(node=>selection.has(node.id)&&!node.deleted);}
+function menuForElement(id){return id==="categories"?"market-order":id==="category-selection"?"market-select":id==="bonus"?"market-bonus-card":id.startsWith("market-")?"market-edit":undefined;}
 const tell = text => $("status").textContent=text;
 function snapshot(){undo.push(clone(state));if(undo.length>100)undo.shift();redo=[];}
 function current(){return state.nodes.find(node=>node.id===selected);}
@@ -186,11 +241,23 @@ function render(){
   Object.assign(box.style,{left:node.x+"px",top:node.y+"px",width:node.w+"px",height:node.h+"px"});
   let visual=document.createElement(node.type==="title"?"h2":node.type==="note"?"p":["name","line","context","category","image"].includes(node.type)?"div":"button");
   if(visual.tagName==="BUTTON")visual.type="button";
-  visual.className="visual "+({title:"",close:"x",help:"info",name:"name",context:"context",image:"card-preview",category:"category-order-row",link:"management-link",toggle:"toggle",note:"note",line:"line",danger:"secondary danger-button",primary:"primary",secondary:"secondary"}[node.type]);
+  visual.className="visual "+({title:"",close:"x",help:"info",name:"name",context:"context",image:"card-preview",category:"category-order-row",choice:"category-choice",link:"management-link",toggle:"toggle",note:"note",line:"line",danger:"secondary danger-button",primary:"primary",secondary:"secondary"}[node.type]);
   visual.textContent=node.text;
   if(node.type==="close"){visual.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';visual.setAttribute("aria-label",node.text);}
   if(node.type==="help"){visual.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .3c0 1.8-2.5 1.9-2.5 3.7"/><circle cx="12" cy="16.5" r=".9" fill="currentColor" stroke="none"/></svg>';visual.setAttribute("aria-label",node.text);box.ondblclick=()=>{const existing=$("help-popover");if(existing){existing.remove();return;}const help=document.createElement("div");help.id="help-popover";help.textContent="Name, Kategorienreihenfolge und Bonuskarte für diesen Supermarkt verwalten. Pfandbon Hinweis und Anzeige Bonuskarte steuern den Kassiervorgang. Änderungen werden erst mit Speichern für alle Nutzer übernommen.";help.onclick=()=>help.remove();$("stage").append(help);};}
-  if(node.type==="link"){visual.textContent="";const label=document.createElement("span");label.className="link-label";label.textContent=node.text.replace(/\s*›\s*$/,"");const chevron=document.createElement("span");chevron.className="link-chevron";chevron.textContent="›";chevron.setAttribute("aria-hidden","true");visual.append(label,chevron);}
+  if(node.type==="link"){
+   visual.textContent="";
+   const label=document.createElement("span");label.className="link-label";label.textContent=node.text.replace(/\s*›\s*$/,"");
+   const chevron=document.createElementNS("http://www.w3.org/2000/svg","svg");
+   chevron.classList.add("link-chevron");chevron.setAttribute("viewBox","0 0 24 24");chevron.setAttribute("fill","none");chevron.setAttribute("stroke","currentColor");chevron.setAttribute("stroke-width","2");chevron.setAttribute("stroke-linecap","round");chevron.setAttribute("stroke-linejoin","round");chevron.setAttribute("aria-hidden","true");
+   chevron.innerHTML='<path d="m9 6 6 6-6 6"/>';
+   visual.append(label,chevron);
+  }
+  if(node.type==="choice"){
+   visual.textContent="";
+   const checkbox=document.createElement("input");checkbox.type="checkbox";checkbox.checked=!!node.checked;checkbox.tabIndex=-1;checkbox.setAttribute("aria-hidden","true");
+   visual.append(checkbox,document.createTextNode(node.text));
+  }
   if(node.type==="line")visual.textContent="";
   if(node.type==="image"){
    const code=document.createElementNS("http://www.w3.org/2000/svg","svg");
@@ -215,11 +282,26 @@ function render(){
     if($("help-popover"))$("help-popover").textContent="Kategorien für diesen Supermarkt auswählen und ihre Reihenfolge festlegen. Diese Reihenfolge gilt nur für diesen Markt. Ohne Kategorie bleibt als verschiebbare Gruppe erhalten. Erst Speichern übernimmt die Änderungen.";
    };
   }
+  if(node.type==="help"&&selectingEditor){
+   const showHelp=box.ondblclick;
+   box.ondblclick=()=>{
+    showHelp();
+    const marketName=state.nodes.find(node=>node.id==="market").text.split(" · ")[0];
+    if($("help-popover"))$("help-popover").textContent=`Kategorien aus dem gemeinsamen Kategoriespeicher auswählen. Damit legst Du die verwendeten Produktgruppen bzw. Regale für ${marketName} fest. Die Liste ist alphabetisch sortiert. Mit „Übernehmen“ kehrst du zur Reihenfolge dieses Marktes zurück.`;
+   };
+  }
   if(node.type==="help"&&bonusEditor){
    const showHelp=box.ondblclick;
    box.ondblclick=()=>{
     showHelp();
     if($("help-popover"))$("help-popover").textContent="Bonuskarte oder APP-Code für diesen Supermarkt als Bild hinterlegen. Datei auswählen oder mit der Kamera fotografieren. Das Bild wird gemeinsam in Home Assistant gespeichert und steht auf allen Geräten bereit. Erst Speichern übernimmt Änderungen. Im Editor sind Bild und Aktionen nur Beispiele.";
+   };
+  }
+  if(node.type==="help"&&marketsEditor){
+   const showHelp=box.ondblclick;
+   box.ondblclick=()=>{
+    showHelp();
+    if($("help-popover"))$("help-popover").textContent="Supermärkte werden alphabetisch angezeigt. Einen Markt öffnen, um Name, Kategorienreihenfolge, Bonuskarte und Hinweise beim Kassiervorgang zu bearbeiten. Supermarkt hinzufügen bleibt im festen Footer erreichbar. Änderungen gelten für alle Nutzer. Die Märkte im Editor sind Beispiele.";
    };
   }
   const handle=document.createElement("span");handle.className="handle";box.append(visual,handle);
@@ -235,6 +317,7 @@ function render(){
  $("undo").disabled=!undo.length;$("redo").disabled=!redo.length;
  const node=current();$("inspector").disabled=!node||!!node.deleted;
  $("selection").textContent=selection.size>1?`${selection.size} Elemente ausgewählt · Eigenschaften: ${selected}`:node?node.id+(node.deleted?" · entfernt":""):"Bitte auswählen";
+ $("open-menu").hidden=!node||!!node.deleted||!menuForElement(node.id);
  for(const key of ["text","x","y","w","h"])$(key).value=node?node[key]:"";
 }
 function start(event,id,resize){
@@ -285,6 +368,7 @@ $("stage").addEventListener("pointerdown",event=>{
  if((event.target===$("stage")||event.target.classList.contains("order-content"))&&event.button===0){if(drag)cancel();$("deselect").click();}
 });
 $("delete").onclick=()=>{if(chosen().length)edit(()=>chosen().forEach(node=>node.deleted=true));};
+$("open-menu").onclick=()=>{const node=current();const nextMenu=node&&menuForElement(node.id);if(nextMenu)openMenu(nextMenu);};
 $("restore").onclick=()=>{if(selection.size)edit(()=>state.nodes.filter(node=>selection.has(node.id)).forEach(node=>node.deleted=false));};
 $("left").onclick=()=>edit(()=>current().x=20);
 $("center").onclick=()=>edit(()=>current().x=Math.max(0,Math.round((state.width-current().w)/2)));
@@ -296,10 +380,13 @@ themes.forEach(([name],i)=>$("theme").add(new Option(name,i)));
 $("theme").onchange=()=>edit(()=>state.theme=Number($("theme").value));
 $("grid").onchange=()=>$("stage").classList.toggle("grid",$("grid").checked);
 function validate(value){
- if(menuId==="market-edit"&&value&&value.version===1&&value.menu==="market-edit"&&Array.isArray(value.nodes)&&value.nodes.length===initial.length-1&&!value.nodes.some(node=>node.id==="help"))value={...value,nodes:[...value.nodes,clone(initial.find(node=>node.id==="help"))]};
+ if(value&&value.version===1&&value.menu===menuId&&Array.isArray(value.nodes)){
+  const additions=initial.filter(node=>["help","line-title","line-options",...(marketsEditor?["cancel"]:[])].includes(node.id)&&!value.nodes.some(item=>item.id===node.id));
+  value={...value,nodes:[...value.nodes,...clone(additions)]};
+ }
  if(!value||value.version!==1||value.menu!==menuId||!Number.isInteger(value.theme)||!themes[value.theme]||![320,360,390,430].includes(value.width)||!Number.isFinite(value.height)||value.height<300||value.height>2000||!Array.isArray(value.nodes)||value.nodes.length!==initial.length)throw Error("Ungültiger Editor-Entwurf.");
  const ids=new Set();
- for(const node of value.nodes){const original=initial.find(item=>item.id===node.id);if(!original||ids.has(node.id)||original.type!==node.type||typeof node.text!=="string"||node.text.length>2000||["x","y","w","h"].some(key=>!Number.isFinite(node[key])||node[key]<0||node[key]>10000)||node.w<16||node.h<8||(node.deleted!==undefined&&typeof node.deleted!=="boolean"))throw Error("Ungültige Elementdaten.");ids.add(node.id);}
+ for(const node of value.nodes){const original=initial.find(item=>item.id===node.id);if(!original||ids.has(node.id)||original.type!==node.type||typeof node.text!=="string"||node.text.length>2000||["x","y","w","h"].some(key=>!Number.isFinite(node[key])||node[key]<0||node[key]>10000)||node.w<16||node.h<8||(node.deleted!==undefined&&typeof node.deleted!=="boolean")||(original.type==="choice"&&typeof node.checked!=="boolean"))throw Error("Ungültige Elementdaten.");ids.add(node.id);}
  return value;
 }
 $("save").onclick=()=>{try{localStorage.setItem(storageKey,JSON.stringify(state));tell("Entwurf in diesem Browser gespeichert. Für die Übergabe zusätzlich exportieren.");}catch(error){tell("Speichern fehlgeschlagen: "+error.message+" Bitte JSON exportieren.");}};

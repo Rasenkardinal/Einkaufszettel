@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#141414">
     <meta name="description" content="Dein Einkaufszettel – auch offline verfügbar.">
-    <meta name="app-version" content="0.4.28">
+    <meta name="app-version" content="0.4.29">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.28">
+    <link rel="stylesheet" href="./app.css?v=0.4.29">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -20,7 +20,7 @@
           <div>
             <p class="eyebrow">EINKAUFSZETTEL</p>
             <div class="list-title">
-              <h1><button id="list-select" type="button" aria-label="Einkaufsliste auswählen" aria-expanded="false" aria-controls="list-flyout" disabled><span id="list-name">Liste auswählen</span><span class="list-arrow" aria-hidden="true"></span></button></h1>
+              <h1><button id="list-select" type="button" aria-label="Einkaufsliste auswählen" aria-expanded="false" aria-controls="list-flyout" disabled><span id="list-name">Liste auswählen</span><svg class="chevron list-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button></h1>
               <div id="list-flyout" aria-label="Einkaufsliste auswählen" hidden></div>
               <button id="mode-toggle" class="mode-button" type="button" aria-label="Einkaufen – aktuell Planungsmodus" title="Planungsmodus · Einkaufen">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h2l3 12h11l2-8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>
@@ -30,7 +30,7 @@
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(24 0) scale(-1 1)"><path d="M11 4a8 8 0 1 0 8 8v-4"/><path d="m15 12 4-4 4 4"/></g></svg>
                 </button>
                 <button id="sync-details-toggle" class="sync-details-toggle" type="button" aria-label="Sync- und Onlinestatus anzeigen" aria-expanded="false" aria-controls="sync-flyout">
-                  <span class="sync-details-arrow" aria-hidden="true"></span>
+                  <svg class="chevron sync-details-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                 </button>
                 <section id="sync-flyout" class="sync-flyout" aria-label="Sync- und Onlinestatus" tabindex="-1" hidden>
                   <div class="sync-status-heading"><span id="connection-dot" class="dot"></span><strong id="connection-label">Offline-Liste wird geladen</strong></div>
@@ -115,7 +115,7 @@
           <button id="market-select" type="button" aria-label="Supermarkt auswählen" aria-expanded="false" aria-controls="market-flyout" title="Marktauswahl und Reihenfolge der Kategorien" disabled>
           <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10M3 10l2-6h14l2 6M3 10c0 3 4 3 4 0 0 3 5 3 5 0 0 3 5 3 5 0 0 3 4 3 4 0M9 20v-6h6v6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
           <span id="market-name">Ohne Markt</span>
-          <span class="market-arrow" aria-hidden="true"></span>
+          <svg class="chevron market-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
           </button>
           <button id="market-bonus-card" class="market-bonus-card-button" type="button" aria-label="Bonuskarte anzeigen" title="Bonuskarte anzeigen" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM19 14h2v2h-2zM19 19h2v2h-2zM17 19v2h-3v-2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
@@ -194,7 +194,7 @@
         <label id="edit-category-label" for="edit-category-trigger">Produktkategorie</label>
         <div class="category-picker">
           <button id="edit-category-trigger" class="category-picker-trigger" type="button" role="combobox" aria-labelledby="edit-category-label edit-category-value" aria-expanded="false" aria-haspopup="listbox" aria-controls="edit-category-flyout">
-            <span id="edit-category-value">Ohne Kategorie</span><span class="category-picker-arrow" aria-hidden="true"></span>
+            <span id="edit-category-value">Ohne Kategorie</span><svg class="chevron category-picker-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
           </button>
           <div id="edit-category-flyout" class="category-picker-flyout" hidden>
             <label class="visually-hidden" for="edit-category-search">Kategorien suchen</label>
@@ -286,6 +286,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.28" defer></script>
+    <script src="./app.js?v=0.4.29" defer></script>
   </body>
 </html>

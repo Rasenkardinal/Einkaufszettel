@@ -439,12 +439,42 @@ function replayProductAssignments(operations) {
   }
 }
 
+function setMessage(element, text, status = "error") {
+  element.textContent = text;
+  element.dataset.status = text ? status : "";
+}
+
 function button(text, action, className = "secondary") {
   const element = document.createElement("button");
   element.type = "button";
   element.className = className;
   element.textContent = text;
   element.addEventListener("click", action);
+  return element;
+}
+
+function chevron(className = "", down = false) {
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("class", `chevron ${className}`.trim());
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", "2");
+  icon.setAttribute("stroke-linecap", "round");
+  icon.setAttribute("stroke-linejoin", "round");
+  icon.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", down ? "m6 9 6 6 6-6" : "m9 6 6 6-6 6");
+  icon.append(path);
+  return icon;
+}
+
+function navigationButton(text, action, className) {
+  const element = button("", action, className);
+  const label = document.createElement("span");
+  label.className = "navigation-label";
+  label.textContent = text;
+  element.append(label, chevron());
   return element;
 }
 
@@ -603,16 +633,16 @@ async function loadCatalogPage(view) {
   }
   openCatalog(view);
   const request = ++catalogRequest;
-  elements.catalogMessage.textContent = "Katalog wird geladen …";
+  setMessage(elements.catalogMessage, "Katalog wird geladen …", "info");
   try {
     await refreshSupermarkets();
     if (request === catalogRequest && catalogView === view && !catalogDirty) {
       renderCatalogPage();
-      elements.catalogMessage.textContent = "";
+      setMessage(elements.catalogMessage, "");
     }
   } catch (error) {
     if (request === catalogRequest) {
-      elements.catalogMessage.textContent = `Offline-Kopie. Der Katalog konnte nicht aktualisiert werden: ${error.message}`;
+      setMessage(elements.catalogMessage, `Offline-Kopie. Der Katalog konnte nicht aktualisiert werden: ${error.message}`);
     }
   }
 }
@@ -627,7 +657,7 @@ async function openCategoryProducts(category) {
   openCatalog("category-products", category);
   if (catalogView !== "category-products" || catalogDraft.id !== category.id) return;
   const request = ++catalogRequest;
-  elements.catalogMessage.textContent = "Produktzuordnungen werden geladen …";
+  setMessage(elements.catalogMessage, "Produktzuordnungen werden geladen …", "info");
   try {
     await refreshSupermarkets();
     if (request === catalogRequest && catalogView === "category-products" && catalogDraft.id === category.id) {
@@ -635,7 +665,7 @@ async function openCategoryProducts(category) {
     }
   } catch (error) {
     if (request === catalogRequest && catalogView === "category-products") {
-      elements.catalogMessage.textContent = `Offline-Kopie. Zuordnungen konnten nicht aktualisiert werden: ${error.message}`;
+      setMessage(elements.catalogMessage, `Offline-Kopie. Zuordnungen konnten nicht aktualisiert werden: ${error.message}`);
     }
   }
 }
@@ -650,7 +680,7 @@ async function saveCatalog(command, payload, nextView) {
   elements.catalogFixedActions.inert = true;
   elements.catalogBack.disabled = true;
   elements.catalogClose.disabled = true;
-  elements.catalogMessage.textContent = "Wird gespeichert …";
+  setMessage(elements.catalogMessage, "Wird gespeichert …", "info");
   let saved = false;
   try {
     const result = await sendCommand(`${DOMAIN}/${command}`, payload);
@@ -670,11 +700,11 @@ async function saveCatalog(command, payload, nextView) {
     catalogDirty = false;
     catalogView = nextView;
     cacheCatalog();
-    elements.catalogMessage.textContent = "In Home Assistant gespeichert.";
+    setMessage(elements.catalogMessage, "In Home Assistant gespeichert.", "success");
   } catch (error) {
-    elements.catalogMessage.textContent = saved
+    setMessage(elements.catalogMessage, saved
       ? `In Home Assistant gespeichert, aber Offline-Kopie fehlgeschlagen: ${error.message}`
-      : error.message;
+      : error.message);
   } finally {
     managingSupermarkets = false;
     elements.catalogContent.inert = false;
@@ -683,10 +713,11 @@ async function saveCatalog(command, payload, nextView) {
     elements.catalogClose.disabled = false;
     if (saved) {
       const message = elements.catalogMessage.textContent;
+      const status = elements.catalogMessage.dataset.status;
       loadMarketSelection();
       render();
       renderCatalogPage();
-      elements.catalogMessage.textContent = message;
+      setMessage(elements.catalogMessage, message, status);
       if (productScroll) restoreProductManagementScroll(productScroll);
     }
   }
@@ -760,7 +791,7 @@ async function openProductDelete(product) {
       }, "products"),
     });
   } catch (error) {
-    if (request === productDeleteRequest) elements.catalogMessage.textContent = error.message;
+    if (request === productDeleteRequest) setMessage(elements.catalogMessage, error.message);
   }
 }
 
@@ -785,10 +816,7 @@ function productManagementRow(product, suggestion) {
   renameIcon.className = "product-rename-icon";
   renameIcon.textContent = "✎";
   renameIcon.setAttribute("aria-hidden", "true");
-  const renameArrow = document.createElement("span");
-  renameArrow.className = "product-rename-arrow";
-  renameArrow.textContent = "›";
-  renameArrow.setAttribute("aria-hidden", "true");
+  const renameArrow = chevron();
   renameButton.prepend(renameIcon);
   renameButton.append(renameArrow);
   heading.append(name);
@@ -829,17 +857,14 @@ function productManagementRow(product, suggestion) {
   }
   const actions = document.createElement("div");
   actions.className = "product-management-actions";
-  const statisticsButton = button("Statistik ›", () => openCatalog("product-statistics", product), "secondary product-outline-action");
+  const statisticsButton = navigationButton("Statistik", () => openCatalog("product-statistics", product), "secondary product-outline-action");
   const deleteButton = button("Löschen", () => openProductDelete(product), "secondary danger-button");
   deleteButton.title = "Artikel, Statistik und Einträge auf den bestätigten Listen löschen.";
   if (!suggestion) {
     const primaryActions = document.createElement("div");
     primaryActions.className = "product-management-buttons";
     const mergeButton = button("Zusammenführen", () => openCatalog("product-merge", product), "secondary product-outline-action");
-    const mergeArrow = document.createElement("span");
-    mergeArrow.className = "product-rename-arrow";
-    mergeArrow.textContent = "›";
-    mergeArrow.setAttribute("aria-hidden", "true");
+    const mergeArrow = chevron();
     mergeButton.append(mergeArrow);
     primaryActions.append(renameButton, mergeButton, statisticsButton, deleteButton);
     row.append(primaryActions);
@@ -908,7 +933,7 @@ function renderProductStatistics() {
   elements.catalogTitle.textContent = "Statistik bearbeiten";
   elements.catalogHelp.textContent = "Gesamtzahl über alle Einkaufslisten. Wochenstatistik und listenbezogene Häufigkeiten bleiben unverändert. Neue Verwendungen zählen weiter.";
   if (!product) {
-    elements.catalogMessage.textContent = "Der Artikel wurde inzwischen geändert. Bitte die Übersicht neu öffnen.";
+    setMessage(elements.catalogMessage, "Der Artikel wurde inzwischen geändert. Bitte die Übersicht neu öffnen.");
     return;
   }
   const form = document.createElement("form");
@@ -952,7 +977,7 @@ function renderProductEdit() {
   const product = products.find(item => item.key === catalogDraft.key);
   const creating = !catalogDraft.key;
   if (!creating && !product) {
-    elements.catalogMessage.textContent = "Der Artikel wurde inzwischen geändert. Bitte die Übersicht neu öffnen.";
+    setMessage(elements.catalogMessage, "Der Artikel wurde inzwischen geändert. Bitte die Übersicht neu öffnen.");
     return;
   }
   elements.catalogTitle.textContent = creating ? "Artikel hinzufügen" : "Artikel umbenennen";
@@ -1001,7 +1026,7 @@ function renderProductEdit() {
 function renderProductMerge() {
   const source = products.find(item => item.key === catalogDraft.key);
   if (!source) {
-    elements.catalogMessage.textContent = "Der Artikel wurde inzwischen geändert. Bitte die Übersicht neu öffnen.";
+    setMessage(elements.catalogMessage, "Der Artikel wurde inzwischen geändert. Bitte die Übersicht neu öffnen.");
     return;
   }
   elements.catalogTitle.textContent = "Artikel zusammenführen";
@@ -1027,9 +1052,7 @@ function renderProductMerge() {
   trigger.setAttribute("aria-expanded", "false");
   trigger.setAttribute("aria-haspopup", "listbox");
   trigger.setAttribute("aria-controls", "product-merge-options");
-  const arrow = document.createElement("span");
-  arrow.className = "category-picker-arrow";
-  arrow.setAttribute("aria-hidden", "true");
+  const arrow = chevron("category-picker-arrow", true);
   trigger.append(value, arrow);
   const flyout = document.createElement("div");
   flyout.id = "product-merge-flyout";
@@ -1047,7 +1070,7 @@ function renderProductMerge() {
   const targetProducts = [...products].filter(item => item.key !== source.key)
     .sort((a, b) => nameOrder.compare(a.name, b.name));
   if (!targetProducts.length) {
-    elements.catalogMessage.textContent = "Zum Zusammenführen müssen mindestens zwei Artikel vorhanden sein.";
+    setMessage(elements.catalogMessage, "Zum Zusammenführen müssen mindestens zwei Artikel vorhanden sein.");
     return;
   }
   const optionButtons = targetProducts.map(product => {
@@ -1182,14 +1205,15 @@ function renderCatalogPage() {
   const hasFixedActions = ["products", "markets", "categories", "market-select", "market-order", "market-bonus-card"].includes(catalogView);
   elements.catalogPage.classList.toggle("has-fixed-actions", hasFixedActions);
   elements.catalogPage.classList.toggle("market-editor", catalogView === "market-edit");
-  const cleanMarketView = ["market-edit", "market-order", "market-select", "market-bonus-card"].includes(catalogView);
+  const cleanMarketView = ["markets", "market-edit", "market-order", "market-select", "market-bonus-card"].includes(catalogView);
   elements.catalogPage.classList.toggle("clean-market-view", cleanMarketView);
+  elements.catalogPage.dataset.view = catalogView;
   elements.catalogPage.classList.toggle("market-card-editor", catalogView === "market-bonus-card");
   const close = elements.catalogClose;
   close.hidden = !cleanMarketView;
   close.disabled = managingSupermarkets;
   close.onclick = () => elements.catalogBack.click();
-  elements.catalogMessage.textContent = "";
+  setMessage(elements.catalogMessage, "");
   const isMarket = catalogView?.startsWith("market");
   const isList = catalogView === "markets" || catalogView === "categories" || catalogView === "products";
   const noun = isMarket ? "Supermarkt" : "Kategorie";
@@ -1222,14 +1246,15 @@ function renderCatalogPage() {
   } else if (isList) {
     elements.catalogTitle.textContent = isMarket ? "Supermärkte" : "Produktkategorien";
     elements.catalogFixedActions.append(
-      button(`＋ ${noun} hinzufügen`, () => openCatalog(isMarket ? "market-edit" : "category-edit"), "primary")
+      ...(isMarket ? [button("Abbrechen", leaveManagement)] : []),
+      button(isMarket ? "Hinzufügen" : `＋ ${noun} hinzufügen`, () => openCatalog(isMarket ? "market-edit" : "category-edit"), "primary")
     );
     elements.catalogFixedActions.hidden = false;
     const records = [...(isMarket ? supermarkets : categories)].sort((a, b) => nameOrder.compare(a.name, b.name));
     const list = document.createElement("div");
     list.className = "management-list";
     for (const record of records) {
-      list.append(button(`${record.name}  ›`, () => openCatalog(isMarket ? "market-edit" : "category-edit", record), "management-link"));
+      list.append(navigationButton(record.name, () => openCatalog(isMarket ? "market-edit" : "category-edit", record), "management-link"));
     }
     content.append(list);
     if (!records.length) content.append(paragraph(`Noch keine ${isMarket ? "Supermärkte" : "Produktkategorien"} angelegt.`));
@@ -1285,10 +1310,10 @@ function renderCatalogPage() {
     });
     form.append(label, input);
     if (!isMarket && catalogDraft.id) {
-      form.append(button("Zugeordnete Produkte  ›", () => {
+      form.append(navigationButton("Zugeordnete Produkte", () => {
         const category = categories.find(record => record.id === catalogDraft.id);
         if (!category) {
-          elements.catalogMessage.textContent = "Die Kategorie wurde inzwischen entfernt. Bitte die Kategorienübersicht neu öffnen.";
+          setMessage(elements.catalogMessage, "Die Kategorie wurde inzwischen entfernt. Bitte die Kategorienübersicht neu öffnen.");
           return;
         }
         openCategoryProducts(category);
@@ -1305,8 +1330,8 @@ function renderCatalogPage() {
         catalogView = "market-order";
         renderCatalogPage();
       };
-      form.append(button("Produktkategorien für diesen Markt bearbeiten", openMarketOrder, "management-link category-navigation"));
-      form.append(button("Bonuskarten oder APP-Codes einbinden", () => {
+      form.append(navigationButton("Produktkategorien für diesen Markt bearbeiten", openMarketOrder, "management-link category-navigation"));
+      form.append(navigationButton("Bonuskarten oder APP-Codes einbinden", () => {
         if (catalogDirty) {
           requestDiscardChanges(() => openCatalog("market-bonus-card", supermarkets.find(m => m.id === catalogDraft.id)));
           return;
@@ -1384,18 +1409,6 @@ function renderCatalogPage() {
     content.append(form);
   }
   if (!cleanMarketView) content.append(paragraph("Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.", "management-footer"));
-  if (cleanMarketView) {
-    for (const link of content.querySelectorAll(".category-navigation")) {
-      const label = document.createElement("span");
-      label.className = "market-link-label";
-      label.textContent = link.textContent;
-      const arrow = document.createElement("span");
-      arrow.className = "market-link-chevron";
-      arrow.textContent = "›";
-      arrow.setAttribute("aria-hidden", "true");
-      link.replaceChildren(label, arrow);
-    }
-  }
   elements.catalogHelpPopover.textContent = elements.catalogHelp.textContent;
   elements.catalogHelp.hidden = true;
   elements.catalogHelpTrigger.hidden = !elements.catalogHelp.textContent;
@@ -1417,7 +1430,7 @@ function renderMarketBonusCard() {
   const content = elements.catalogContent;
   const market = supermarkets.find(value => value.id === catalogDraft.id);
   if (!market) {
-    elements.catalogMessage.textContent = "Der Supermarkt wurde inzwischen entfernt. Bitte die Übersicht neu öffnen.";
+    setMessage(elements.catalogMessage, "Der Supermarkt wurde inzwischen entfernt. Bitte die Übersicht neu öffnen.");
     return;
   }
   elements.catalogTitle.textContent = "Bonuskarte / APP-Code";
@@ -1467,9 +1480,9 @@ function renderMarketBonusCard() {
       removeSection.hidden = false;
       catalogDirty = true;
       status.textContent = "Bild bereit. Speichere, um es auf allen Geräten verfügbar zu machen.";
-      elements.catalogMessage.textContent = "";
+      setMessage(elements.catalogMessage, "");
     } catch (error) {
-      elements.catalogMessage.textContent = error.message;
+      setMessage(elements.catalogMessage, error.message);
     }
   };
   upload.addEventListener("change", () => processFile(upload.files[0]));
@@ -1529,8 +1542,10 @@ function renderMarketCategories() {
   const content = elements.catalogContent;
   const selecting = catalogView === "market-select";
   elements.catalogTitle.textContent = selecting ? "Kategorien auswählen" : "Produktkategorien bearbeiten";
-  elements.catalogHelp.textContent = `${catalogDraft.name} · ${selecting ? "Aus dem Kategoriespeicher wählen (A–Z)." : "Diese Reihenfolge gilt nur für diesen Markt."}`;
-  content.append(paragraph(catalogDraft.name, "market-context"));
+  elements.catalogHelp.textContent = selecting
+    ? `Kategorien aus dem gemeinsamen Kategoriespeicher auswählen. Damit legst Du die verwendeten Produktgruppen bzw. Regale für ${catalogDraft.name} fest. Die Liste ist alphabetisch sortiert. Mit „Übernehmen“ kehrst du zur Reihenfolge dieses Marktes zurück.`
+    : `${catalogDraft.name} · Diese Reihenfolge gilt nur für diesen Markt.`;
+  if (!selecting) content.append(paragraph(catalogDraft.name, "market-context"));
   if (selecting) {
     const selected = new Set(catalogDraft.category_ids);
     for (const category of [...categories].sort((a, b) => nameOrder.compare(a.name, b.name))) {
@@ -1557,35 +1572,19 @@ function renderMarketCategories() {
     if (!categories.length) content.append(paragraph("Noch keine Kategorien im Speicher. Bitte zuerst unter Produktkategorien verwalten anlegen."));
     elements.catalogFixedActions.append(
       button("Abbrechen", () => leaveMarketCategorySelection(false)),
-      button("Auswahl übernehmen", () => leaveMarketCategorySelection(true), "primary"),
+      button("Übernehmen", () => leaveMarketCategorySelection(true), "primary"),
     );
     elements.catalogFixedActions.hidden = false;
     return;
   }
-  const categorySelection = button("Kategorienauswahl", () => {
+  const categorySelection = navigationButton("Kategorien für diesen Markt", () => {
     marketSelectionSnapshot = {
       categoryIds: [...catalogDraft.category_ids],
       dirty: catalogDirty,
     };
     catalogView = "market-select";
     renderCatalogPage();
-  }, "category-selection-button");
-  const categorySelectionIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  categorySelectionIcon.setAttribute("viewBox", "0 0 24 24");
-  categorySelectionIcon.setAttribute("fill", "none");
-  categorySelectionIcon.setAttribute("stroke", "currentColor");
-  categorySelectionIcon.setAttribute("stroke-width", "1.8");
-  categorySelectionIcon.setAttribute("stroke-linecap", "round");
-  categorySelectionIcon.setAttribute("stroke-linejoin", "round");
-  categorySelectionIcon.setAttribute("aria-hidden", "true");
-  categorySelectionIcon.innerHTML = '<rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 17.5h7M17.5 14v7"></path>';
-  const categorySelectionLabel = document.createElement("span");
-  categorySelectionLabel.className = "category-selection-label";
-  categorySelectionLabel.textContent = "Kategorien für diesen Markt";
-  const categorySelectionArrow = document.createElement("span");
-  categorySelectionArrow.className = "category-selection-arrow";
-  categorySelectionArrow.setAttribute("aria-hidden", "true");
-  categorySelection.replaceChildren(categorySelectionIcon, categorySelectionLabel, categorySelectionArrow);
+  }, "management-link category-selection-button");
   content.append(categorySelection);
   if (!catalogDraft.category_ids.includes("")) catalogDraft.category_ids.push("");
   const list = document.createElement("ol");
@@ -1891,12 +1890,12 @@ function initializeDesign() {
 elements.designOptions.addEventListener("change", (event) => {
   const theme = event.target.value;
   applyDesign(theme);
-  elements.designMessage.textContent = "";
+  setMessage(elements.designMessage, "");
   try {
     localStorage.setItem(DESIGN_KEY, theme);
   } catch (error) {
     const message = `Das Farbschema konnte nicht auf diesem Gerät gespeichert werden: ${error.message}`;
-    elements.designMessage.textContent = message;
+    setMessage(elements.designMessage, message);
     showError(new Error(message));
   }
 });
@@ -2655,7 +2654,7 @@ async function selectList(listId) {
     url.searchParams.set("entry_id", entryId);
     history.replaceState(null, "", url);
     elements.openAppBrowser.href = url.href;
-    elements.message.textContent = "";
+    setMessage(elements.message, "");
     updateConnection(pendingOperations.length ? "pending" : "offline");
   } catch (error) {
     entryId = previousEntry;
@@ -2707,7 +2706,7 @@ function updateConnection(state, detail) {
 }
 
 function showError(error) {
-  elements.message.textContent = error instanceof Error ? error.message : String(error);
+  setMessage(elements.message, error instanceof Error ? error.message : String(error));
 }
 
 function readTokens() {
@@ -3177,7 +3176,7 @@ async function runSynchronization() {
       : localItems
         ? `Abgleich abgeschlossen. ${localItems} Artikel bleiben nur in der App-Liste.`
         : "App und verbundene Listen sind abgeglichen.");
-  elements.message.textContent = [...new Set(warnings)].join(" ");
+  setMessage(elements.message, [...new Set(warnings)].join(" "));
 }
 
 let syncConflicts = [];
@@ -3208,7 +3207,7 @@ async function refreshSyncConflicts() {
 }
 
 function openSyncConflicts() {
-  elements.syncConflictsMessage.textContent = "";
+  setMessage(elements.syncConflictsMessage, "");
   renderSyncConflicts();
   for (const conflict of syncConflicts) promptedSyncConflicts.add(conflict.token);
   if (!elements.syncConflicts.open) elements.syncConflicts.showModal();
@@ -3270,7 +3269,7 @@ function renderSyncConflicts() {
         (action === "retry" && conflict.deleted) || (action === "local" && conflict.local_only);
       button.addEventListener("click", () => {
         if (action === "link" && !select.value) {
-          elements.syncConflictsMessage.textContent = "Bitte zuerst einen Quellartikel auswählen.";
+          setMessage(elements.syncConflictsMessage, "Bitte zuerst einen Quellartikel auswählen.");
           return;
         }
         if (action === "retry" && !confirm(
@@ -3282,7 +3281,7 @@ function renderSyncConflicts() {
             : `„${conflict.summary}“ mit „${select.selectedOptions[0].textContent}“ verbinden? Name und Erledigt-Status aus unserer App-Liste werden übernommen. Notizen und Kategorie bleiben erhalten.`,
         )) return;
         resolveSyncConflict(conflict, action, select.value).catch(error => {
-          elements.syncConflictsMessage.textContent = error.message;
+          setMessage(elements.syncConflictsMessage, error.message);
           if (!elements.syncConflicts.open) showError(error);
         });
       });
@@ -3298,7 +3297,7 @@ async function resolveSyncConflict(conflict, action, sourceUid) {
   if (busy) throw new Error("Bitte warte, bis die Synchronisierung abgeschlossen ist.");
   setBusy(true);
   elements.syncConflictsContent.inert = true;
-  elements.syncConflictsMessage.textContent = "Entscheidung wird in HA gespeichert …";
+  setMessage(elements.syncConflictsMessage, "Entscheidung wird in HA gespeichert …", "info");
   try {
     if (syncPromise) await syncPromise;
     const snapshot = await sendCommand(`${DOMAIN}/resolve_source_conflict`, {
@@ -3308,11 +3307,11 @@ async function resolveSyncConflict(conflict, action, sourceUid) {
     await saveList(snapshot);
     await refreshSyncConflicts();
     renderSyncConflicts();
-    elements.syncConflictsMessage.textContent = action === "local"
+    setMessage(elements.syncConflictsMessage, action === "local"
       ? conflict.deleted
         ? "Die Rückfrage ist abgeschlossen. Der Artikel bleibt hier gelöscht; die verbundene Liste wurde nicht verändert."
         : "Der Artikel bleibt für alle Geräte in unserer App-Liste gespeichert. Die verbundene HA-/Alexa-Liste wird für diesen Artikel nicht verändert."
-      : "Entscheidung gespeichert. Der Abgleich wird fortgesetzt.";
+      : "Entscheidung gespeichert. Der Abgleich wird fortgesetzt.", "success");
     if (!syncConflicts.length) elements.syncConflicts.close();
   } finally {
     elements.syncConflictsContent.inert = false;
@@ -3386,8 +3385,9 @@ async function refreshRemoteLists() {
       pendingOperations = [];
       elements.listName.textContent = "Liste auswählen";
       render();
-      elements.message.textContent = marketError
-        ? marketError.message : "Wähle unter Einstellungen → Synchronisation → Listen verwalten eine HA-Liste aus.";
+      setMessage(elements.message, marketError
+        ? marketError.message : "Wähle unter Einstellungen → Synchronisation → Listen verwalten eine HA-Liste aus.",
+      marketError ? "error" : "info");
       return;
     }
     await synchronize();
@@ -3399,12 +3399,12 @@ async function refreshRemoteLists() {
 elements.manageLists.addEventListener("click", async () => {
   showManagementPage(elements.listManagement);
   document.querySelector("#list-management-title").focus();
-  elements.managementMessage.textContent = "HA-Listen werden geladen …";
+  setMessage(elements.managementMessage, "HA-Listen werden geladen …", "info");
   elements.sourceLists.replaceChildren();
   try {
     const sources = await sendCommand(`${DOMAIN}/get_sources`);
-    elements.managementMessage.textContent = sources.length
-      ? "" : "Keine HA-To-do-Listen gefunden. Lege eine Liste über Alexa an und stelle sie in HA bereit.";
+    setMessage(elements.managementMessage, sources.length
+      ? "" : "Keine HA-To-do-Listen gefunden. Lege eine Liste über Alexa an und stelle sie in HA bereit.", "info");
     for (const source of sources) {
       const form = document.createElement("form");
       form.className = "source-list";
@@ -3436,12 +3436,12 @@ elements.manageLists.addEventListener("click", async () => {
           return;
         }
         if (busy) {
-          elements.managementMessage.textContent = "Bitte warte, bis die aktuelle Aktion abgeschlossen ist.";
+          setMessage(elements.managementMessage, "Bitte warte, bis die aktuelle Aktion abgeschlossen ist.", "info");
           return;
         }
         elements.sourceLists.inert = true;
         setBusy(true);
-        elements.managementMessage.textContent = "Wird gespeichert …";
+        setMessage(elements.managementMessage, "Wird gespeichert …", "info");
         try {
           const result = await sendCommand(`${DOMAIN}/configure_list`, {
             source_entity_id: source.source_entity_id,
@@ -3462,9 +3462,9 @@ elements.manageLists.addEventListener("click", async () => {
           }
           setBusy(false);
           await loadRemoteLists();
-          elements.managementMessage.textContent = "Gespeichert. Der App-Name gilt für alle Nutzer.";
+          setMessage(elements.managementMessage, "Gespeichert. Der App-Name gilt für alle Nutzer.", "success");
         } catch (error) {
-          elements.managementMessage.textContent = error.message;
+          setMessage(elements.managementMessage, error.message);
         } finally {
           setBusy(false);
           elements.sourceLists.inert = false;
@@ -3474,7 +3474,7 @@ elements.manageLists.addEventListener("click", async () => {
       elements.sourceLists.append(form);
     }
   } catch (error) {
-    elements.managementMessage.textContent = error.message;
+    setMessage(elements.managementMessage, error.message);
   }
 });
 

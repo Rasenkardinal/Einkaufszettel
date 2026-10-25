@@ -87,7 +87,7 @@ def test_web_app_assets_are_versioned_and_precached():
     assert 'id="app-version"' in html
     for asset in assets:
         assert f'"{asset}"' in worker
-    assert "einkaufszettel-shell-v49" in worker
+    assert "einkaufszettel-shell-v51" in worker
     assert ".then(() => self.skipWaiting())" in worker
     script = (webapp / "app.js").read_text(encoding="utf-8")
     assert "serviceWorkerRegistration.update()" in script
@@ -273,7 +273,10 @@ def test_named_dark_designs_share_layout_and_storage():
     assert "localStorage.setItem(DESIGN_KEY" in script
     assert "localStorage.getItem(DESIGN_KEY)" in script
     assert ".item.completed .item-name { text-decoration: line-through; }" in css
-    assert 'class="list-arrow" aria-hidden="true"' in html
+    assert re.search(
+        r'<svg class="chevron list-arrow"[^>]+aria-hidden="true">',
+        html,
+    )
     assert "Design-Einstellungen folgen" not in html
 
 
