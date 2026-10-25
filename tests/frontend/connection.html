@@ -6,9 +6,10 @@
 <script>
 // Serve the repository root over HTTP and open this page to run the tests.
 async function runTests() {
-  const source = await (await fetch("../../custom_components/einkaufszettel/www/app.js")).text();
+  const source = await (await fetch("../../custom_components/einkaufszettel/www/app.js", {cache: "no-store"})).text();
+  const status = source.slice(source.indexOf("function updateConnection("), source.indexOf("function readTokens()"));
   const auth = source.slice(source.indexOf("function readTokens()"), source.indexOf("function base64UrlEncode"));
-  const connection = source.slice(source.indexOf("function scheduleReconnect()"), source.indexOf("const waiters = new Map();"));
+  const connection = source.slice(source.indexOf("class ConnectionUnavailableError"), source.indexOf("const waiters = new Map();"));
   const commands = source.slice(source.indexOf("function sendCommand("), source.indexOf("function scheduleSynchronization()"));
   const lifecycle = source.slice(source.indexOf("function resumeConnection()"), source.indexOf('window.addEventListener("beforeinstallprompt"'));
   function fixture() {
@@ -50,22 +51,27 @@ async function runTests() {
     const create = new Function("env", "WebSocket", `
       const { window, document, navigator, localStorage, location, AbortController, fetch } = env;
       const TOKEN_KEY = "test";
-      const elements = { connect: { hidden: false } };
+      const elements = { connect: { hidden: false }, connectionDot: {}, connectionLabel: {},
+        syncActions: {dataset: {}}, syncDetail: {}, message: {textContent: ""} };
       let database = {}, socket, connecting = false, authenticated = false, authenticationBlocked = false,
         refreshAfterRejection = false, reconnectTimer, reconnectAttempts = 0, connectionTimer,
         heartbeatTimer, heartbeatId, connectionGeneration = 0, connectionSyncTimer,
-        nextMessageId = 1, pendingOperations = [], busy = false;
+        nextMessageId = 1, pendingOperations = [], busy = false,
+        startupConnecting = false, startupConnectionTimer, startupConnectionMessage = "", serviceWorkerRegistration;
       const waiters = new Map();
-      let detail = "";
-      function updateConnection(state, message) { detail = message; }
-      function showError(error) { throw error; }
+      function setBusy(value) { busy = value; env.spinning = startupConnecting; }
+      function setMessage(element, text) { element.textContent = text; }
+      ${status}
       async function loadRemoteLists() { env.loads++; }
       ${auth}
       ${connection}
       ${commands}
       ${lifecycle}
-      return { connect, sendCommand, checkConnection, resumeConnection, setBusy: value => { busy = value; },
-        state: () => ({ authenticated, authenticationBlocked, connecting, detail, login: !elements.connect.hidden, waiters: waiters.size }) };
+      return { connect, sendCommand, checkConnection, resumeConnection, beginStartupConnection, showError,
+        setBusy: value => { busy = value; },
+        state: () => ({ authenticated, authenticationBlocked, connecting, detail: elements.syncDetail.textContent,
+          message: elements.message.textContent, status: elements.syncActions.dataset.status,
+          login: !elements.connect.hidden, waiters: waiters.size }) };
     `);
     const api = create(environment, FakeSocket);
     async function tick(milliseconds) {
@@ -83,6 +89,39 @@ async function runTests() {
   function assert(condition, message) { if (!condition) throw Error(message); }
   const results = [];
   async function test(name, fn) { await fn(fixture()); results.push(`PASS ${name}`); }
+  await test("Startup spins silently for exactly five seconds, then reports a connection failure", async ({api, env, tick}) => {
+    api.beginStartupConnection();
+    assert(env.spinning && api.state().status === "connecting" && !api.state().message, "startup not neutral");
+    await api.connect();
+    await api.sendCommand("test").catch(api.showError);
+    await tick(4999);
+    assert(!api.state().message && env.spinning, "startup error shown too early");
+    await tick(1);
+    assert(api.state().message.includes("nicht erreichbar") && !env.spinning, "timeout not reported at five seconds");
+  });
+  await test("Connection before startup timeout cancels the error and stops startup animation", async ({api, env, socket, tick}) => {
+    api.beginStartupConnection();
+    await api.connect(); await tick(4999); socket().authorize(); await tick(1);
+    assert(!api.state().message && api.state().status === "online" && !env.spinning, "successful startup reported failure");
+  });
+  await test("Recovery clears only the startup error and later disconnects do not restart grace", async ({api, socket, tick}) => {
+    api.beginStartupConnection(); await api.connect(); await tick(5000);
+    socket().authorize();
+    assert(!api.state().message, "startup error survived recovery");
+    socket().close();
+    assert(api.state().status === "offline", "later disconnect hidden by startup grace");
+  });
+  await test("Unrelated errors stay visible during startup and after recovery", async ({api, socket, tick}) => {
+    api.beginStartupConnection(); await api.connect();
+    api.showError(new Error("Lokale Daten konnten nicht geladen werden."));
+    await tick(5000); socket().authorize();
+    assert(api.state().message === "Lokale Daten konnten nicht geladen werden.", "unrelated error hidden");
+  });
+  await test("First-time login stops the startup spinner without a timeout error", async ({api, env, tick}) => {
+    env.localStorage.value = null;
+    api.beginStartupConnection(); await api.connect(); await tick(5000);
+    assert(!api.state().message && !env.spinning && api.state().login, "first login generated a startup failure");
+  });
   await test("First use without saved credentials requests login without retrying", async ({ api, env, tick }) => {
     env.localStorage.value = null;
     await api.connect(); await tick(60000);

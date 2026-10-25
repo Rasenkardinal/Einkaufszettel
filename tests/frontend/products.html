@@ -39,6 +39,15 @@ async function runTests() {
     };
     return {
       productManagementRow, draft: () => catalogDraft,
+      beginStartupConnection, updateConnection, setBusy, drawSyncSpinner,
+      setupNameForm(view, record) {
+        openCatalog = originalOpenCatalog;
+        renderCatalogPage = originalRenderCatalogPage;
+        busy = false;
+        catalogDirty = false;
+        if (view === "product-edit") products = record ? [record] : [];
+        openCatalog(view, record);
+      },
       setDeletionInfo(value) { deletionInfo = value; },
       setupManagementList(view, length) {
         openCatalog = originalOpenCatalog;
@@ -139,6 +148,25 @@ async function runTests() {
   frame.style.width = "390px";
   frame.style.height = "844px";
   await new Promise(resolve => win.requestAnimationFrame(resolve));
+  test("Startup animation survives local loading and ends once the connection is ready", () => {
+    api.beginStartupConnection();
+    api.setBusy(false);
+    assert(doc.querySelector(".sync-actions").classList.contains("syncing"), "Startup spinner stopped after local loading");
+    assert(doc.querySelector(".sync-actions").dataset.status === "connecting", "Startup must use a neutral connection state");
+    const spinner = doc.querySelector(".sync-spinner");
+    assert(win.getComputedStyle(spinner).display === "block" && spinner.querySelectorAll("path").length === 4,
+      "Double-sync spinner must show two arcs and two arrowheads");
+    assert(spinner.getBoundingClientRect().width === 21, "Spinner must retain the approved 21px size");
+    const firstArc = spinner.querySelector("path");
+    api.drawSyncSpinner(0);
+    const shortLength = firstArc.getTotalLength();
+    api.drawSyncSpinner(.9);
+    assert(firstArc.getTotalLength() > shortLength * 4, "Sync arcs must grow rather than only rotate");
+    api.updateConnection("online");
+    assert(!doc.querySelector(".sync-actions").classList.contains("syncing"), "Startup spinner not stopped after connection");
+    assert(win.getComputedStyle(spinner).display === "none", "Idle state must restore the original static sync icon");
+    assert(doc.querySelector(".sync-actions").dataset.status === "online", "Online state missing");
+  });
   const row = api.productManagementRow(source, target);
   doc.querySelector(".app").replaceChildren(row);
   test("Comparison rename uses a dark button beside the saved name with decorative icons", () => {
@@ -409,6 +437,32 @@ async function runTests() {
     assert(doc.querySelector('label[for="product-name"]').classList.contains("visually-hidden"),
       "Article field label should not consume space");
   });
+  for (const [view, selector, placeholder, record] of [
+    ["market-edit", "#catalog-name", "Neuer Supermarkt", {id: "market", name: "REWE", category_ids: []}],
+    ["category-edit", "#catalog-name", "Neue Kategorie", {id: "dairy", name: "Milchprodukte"}],
+    ["product-edit", "#product-name", "Neuer Artikel", {key: "butter", name: "Butter", usage: {}}],
+  ]) {
+    test(view + " keeps the new-name hint on focus and replaces it only while typing", () => {
+      api.setupNameForm(view);
+      const input = doc.querySelector(selector);
+      assert(input.value === "" && input.placeholder === placeholder, "New-name hint missing");
+      assert(input.matches(":placeholder-shown") && !input.validity.valid, "Hint must not count as a valid name");
+      const before = calls.length;
+      input.focus();
+      assert(doc.activeElement === input && input.matches(":placeholder-shown"), "Focus must retain the hint");
+      assert(api.draft().name === "" && calls.length === before, "Focus changed or saved the name");
+      input.value = "Mein Name";
+      input.dispatchEvent(new win.Event("input", {bubbles: true}));
+      assert(!input.matches(":placeholder-shown") && api.draft().name === "Mein Name", "Typing must replace the hint");
+      input.value = "";
+      input.dispatchEvent(new win.Event("input", {bubbles: true}));
+      assert(input.matches(":placeholder-shown") && api.draft().name === "", "Clearing must restore the hint");
+      api.setupNameForm(view, record);
+      const existing = doc.querySelector(selector);
+      existing.focus();
+      assert(existing.value === record.name && existing.placeholder === "", "Editing must preserve the existing name");
+    });
+  }
   for (const view of ["markets", "categories"]) {
     for (const length of [0, 60]) {
       api.setupManagementList(view, length);

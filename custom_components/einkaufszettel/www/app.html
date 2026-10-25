@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#141414">
     <meta name="description" content="Dein Einkaufszettel – auch offline verfügbar.">
-    <meta name="app-version" content="0.4.33">
+    <meta name="app-version" content="0.4.34">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.33">
+    <link rel="stylesheet" href="./app.css?v=0.4.34">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -25,9 +25,10 @@
               <button id="mode-toggle" class="mode-button" type="button" aria-label="Einkaufen – aktuell Planungsmodus" title="Planungsmodus · Einkaufen">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h2l3 12h11l2-8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>
               </button>
-              <div class="sync-actions">
+              <div class="sync-actions syncing">
                 <button id="sync" class="sync-icon" type="button" aria-label="Jetzt synchronisieren" title="Jetzt synchronisieren">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g transform="translate(24 0) scale(-1 1)"><path d="M11 4a8 8 0 1 0 8 8v-4"/><path d="m15 12 4-4 4 4"/></g></svg>
+                  <svg class="sync-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path/><path/><path/><path/></svg>
                 </button>
                 <button id="sync-details-toggle" class="sync-details-toggle" type="button" aria-label="Sync- und Onlinestatus anzeigen" aria-expanded="false" aria-controls="sync-flyout">
                   <svg class="chevron sync-details-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -301,6 +302,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.33" defer></script>
+    <script src="./app.js?v=0.4.34" defer></script>
   </body>
 </html>

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Einkaufszettel · 8 Sync-Spinner</title>
+<link rel="stylesheet" href="../../custom_components/einkaufszettel/www/app.css">
+<style>
+body { margin: 0; padding: 28px; background: var(--bg); color: var(--text); }
+.preview { max-width: 1580px; margin: auto; }
+.preview h1 { font-size: 28px; margin: 0 0 12px; }
+.intro { max-width: 850px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 24px 0; }
+.controls button, .controls select { min-height: 44px; padding: 8px 14px; font-size: 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); color: var(--text); }
+.controls label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,340px),1fr)); gap: 20px; }
+.proposal { overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.caption { padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.caption h2 { font-size: 17px; margin: 0 0 8px; }
+.caption p { min-height: 42px; margin: 0; font-size: 12px; line-height: 1.7; color: var(--muted); }
+.number { display: inline-grid; place-items: center; width: 25px; height: 25px; margin-right: 8px; border: 1px solid var(--line); border-radius: 7px; font-size: 13px; color: var(--accent); }
+.phone { margin: 12px; padding: 20px 16px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); }
+.phone header { display: flex; align-items: flex-start; gap: 8px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.phone .brand { gap: 8px; }
+.phone .eyebrow { margin: 0 0 5px; font-size: 9px; }
+.phone .list-title { gap: 4px; }
+.phone .list-title h3 { flex: 1; min-width: 0; margin: 0; font-size: 20px; letter-spacing: -.04em; white-space: nowrap; }
+.phone .mode-button { width: 28px; min-width: 28px; padding: 0; }
+.phone .sync-icon svg { animation: none; }
+.phone .sync-actions { --sync-state: var(--muted); }
+body[data-state="online"] .phone .sync-actions { --sync-state: var(--success); }
+body[data-state="pending"] .phone .sync-actions { --sync-state: #f2b84b; }
+.menu-dots { flex: none; padding: 0; border: 0; background: none; color: var(--text); font-size: 24px; line-height: 40px; width: 18px; }
+.list-heading { display: flex; justify-content: space-between; align-items: center; margin: 18px 0 12px; }
+.list-heading strong { font-size: 15px; }
+.list-heading span { color: var(--muted); font-size: 11px; }
+.shopping-row { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 9px; padding: 12px; margin-top: 8px; font-size: 14px; }
+.shopping-row i { width: 18px; height: 18px; border: 1px solid var(--line); border-radius: 5px; flex: none; }
+.shopping-row span { flex: 1; }
+.shopping-row small { color: var(--muted); font-size: 11px; }
+.detail { display: flex; align-items: center; gap: 18px; padding: 16px 20px 20px; }
+.detail svg { width: 56px; height: 56px; flex: none; color: var(--muted); }
+body[data-state="online"] .detail svg { color: var(--success); }
+body[data-state="pending"] .detail svg { color: #f2b84b; }
+.detail p { color: var(--muted); font-size: 11px; line-height: 1.7; margin: 0; }
+.detail strong { display: block; color: var(--text); font-size: 12px; margin-bottom: 3px; }
+.recommend { margin: 24px 0; padding: 16px 20px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.recommend strong { color: var(--text); }
+body[data-color-mode="light"] { --bg: #f4f6fa; --surface: #fff; --surface2: #e9eef5; --text: #172338; --muted: #526174; --line: #c7d0dd; --accent: #245c9f; --success: #246b46; color-scheme: light; }
+@media (max-width: 480px) { body { padding: 16px; } .preview h1 { font-size: 23px; } .phone { padding-inline: 12px; } }
+</style>
+<body data-state="connecting">
+<main class="preview">
+  <h1>Sync-Spinner · 8 animierte Entwürfe</h1>
+  <p class="intro">Alle Varianten im App-Header in Originalgröße (21 px). Darunter dieselbe Animation vergrößert zum Vergleichen. Die Bögen bauen sich tatsächlich auf und wieder ab – nicht nur das ganze Symbol dreht sich. Die Einkaufsliste und Farben bleiben zum Vergleich identisch.</p>
+  <div class="controls">
+    <button id="pause" type="button" aria-pressed="false">Animation pausieren</button>
+    <label>Tempo <select id="speed"><option value="0.65">Ruhig</option><option value="1" selected>Normal</option><option value="1.5">Schnell</option></select></label>
+    <label>Sync-Farbe <select id="state"><option value="connecting">Verbindungsaufbau · neutral</option><option value="pending">Änderungen ausstehend · gelb</option><option value="online">Verbunden · grün</option></select></label>
+    <button id="theme" type="button" aria-pressed="false">Helles Design</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <p class="recommend"><strong>Meine Favoriten: 1 und 3.</strong> Nr. 1 bleibt dem bisherigen Pfeil am nächsten, wirkt aber wie ein echter Spinner. Nr. 3 ist als klassisches Sync-Symbol mit zwei sich aufbauenden Pfeilen besonders eindeutig. Nr. 5 ist die ruhigere Alternative ohne sichtbare Pfeilspitzen. Bei reduzierten Bewegungen im Betriebssystem startet die Vorschau pausiert; sie lässt sich bewusst einschalten. Noch keine Variante ist in die App übernommen.</p>
+</main>
+<script>
+const proposals = [
+  ["Wachsender Pfeil", "Ein Pfeil zieht einen länger werdenden Bogen hinter sich her und holt ihn anschließend wieder ein.", "Klassisch · klar · Empfehlung", "1,55 s pro Zyklus"],
+  ["Kometenschweif", "Ein heller Pfeilkopf läuft voran; sein Schweif wächst weich in drei Helligkeitsstufen nach.", "Fließend · weich", "1,8 s pro Zyklus"],
+  ["Doppel-Sync", "Zwei gegenüberliegende Pfeile bauen ihre Bögen gleichzeitig auf und wieder ab.", "Eindeutiges Sync-Zeichen · Empfehlung", "1,8 s pro Zyklus"],
+  ["Zeichnen & Weiterziehen", "Der Kreis wird vom Pfeil fast vollständig gezeichnet, dann vom nachlaufenden Ende wieder abgebaut.", "Deutlicher Aufbau · dynamisch", "2,4 s pro Zyklus"],
+  ["Material-Bogen", "Ein einzelner Bogen wächst und schrumpft beim Umlauf. Ganz ohne Pfeilkopf, wie ein vertrauter Lade-Spinner.", "Minimal · ruhig", "1,8 s pro Zyklus"],
+  ["Segment-Pfeil", "Kleine Kreisbogenstücke werden nacheinander aufgebaut; ein Pfeil weist die Laufrichtung.", "Technisch · prägnant", "1,8 s pro Zyklus"],
+  ["Echo-Pfeile", "Zwei unterschiedlich lange Pfeile laufen versetzt; der kleinere folgt als dezentes Echo.", "Lebendig · zweistufig", "2 s pro Zyklus"],
+  ["Orbit & Kern", "Ein wachsender äußerer Pfeil umkreist einen kleinen gegenläufigen Innenbogen.", "Mehrschichtig · aktiv", "2,2 s pro Zyklus"]
+];
+const svg = '<svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"></svg>';
+const cart = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h2l3 12h11l2-8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>';
+const chevron = '<svg class="chevron sync-details-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+document.querySelector("#grid").innerHTML = proposals.map(([name, description, mood, duration], index) => `
+  <article class="proposal" data-variant="${index + 1}" aria-label="Vorschlag ${index + 1}: ${name}">
+    <div class="caption"><h2><span class="number">${index + 1}</span>${name}</h2><p>${description}</p></div>
+    <section class="phone" aria-label="App-Vorschau">
+      <header><div class="brand">
+        <img class="brand-icon" src="../../custom_components/einkaufszettel/www/icon.svg" alt="">
+        <div><p class="eyebrow">EINKAUFSZETTEL</p><div class="list-title">
+          <h3>Wocheneinkauf</h3>
+          <button class="mode-button" type="button" aria-label="Einkaufsmodus, Vorschau">${cart}</button>
+          <div class="sync-actions">
+            <button class="sync-icon" type="button" aria-label="Sync-Animation ${index + 1} pausieren">${svg}</button>
+            <button class="sync-details-toggle" type="button" aria-label="Statusfarbe wechseln">${chevron}</button>
+          </div>
+        </div></div></div><button class="menu-dots" type="button" aria-label="Design wechseln">⋮</button></header>
+      <div class="list-heading"><strong>Auf der Liste</strong><span>REWE</span></div>
+      <div class="shopping-row"><i></i><span>Milch</span><small>2 × 1 l</small></div>
+      <div class="shopping-row"><i></i><span>Brot</span><small>Vollkorn</small></div>
+    </section>
+    <div class="detail">${svg}<p><strong>${mood}</strong>${duration}<br>Oben Originalgröße · hier Detailansicht</p></div>
+  </article>`).join("");
+const ns = "http://www.w3.org/2000/svg";
+const point = (angle, radius) => [12 + radius * Math.cos(angle), 12 + radius * Math.sin(angle)];
+function arc(start, length, radius) {
+  const [x, y] = point(start, radius), [endX, endY] = point(start + length, radius);
+  return `M${x} ${y} A${radius} ${radius} 0 ${length > Math.PI ? 1 : 0} 1 ${endX} ${endY}`;
+}
+function arrow(angle, radius) {
+  const [x, y] = point(angle, radius);
+  const tx = -Math.sin(angle), ty = Math.cos(angle);
+  const nx = Math.cos(angle), ny = Math.sin(angle);
+  return `M${x - tx * 2.3 + nx * 2} ${y - ty * 2.3 + ny * 2} L${x} ${y} L${x - tx * 2.3 - nx * 2} ${y - ty * 2.3 - ny * 2}`;
+}
+const views = [...document.querySelectorAll(".proposal")].map(card => {
+  const paths = [...card.querySelectorAll(".spinner")].map(icon => {
+    return Array.from({length: 14}, () => {
+      const path = document.createElementNS(ns, "path");
+      icon.append(path);
+      return path;
+    });
+  });
+  return {card, paths, variant: Number(card.dataset.variant), paused: false, frozen: 0};
+});
+function draw(view, time) {
+  const specs = [], tau = Math.PI * 2;
+  const cycle = [1.55, 1.8, 1.8, 2.4, 1.8, 1.8, 2, 2.2][view.variant - 1];
+  const phase = (time / cycle) % 1, a = time / cycle * tau - Math.PI / 2;
+  const swell = .5 - .5 * Math.cos(phase * tau);
+  function add(start, length, radius = 8, head = true, opacity = 1) {
+    specs.push({d: arc(start, length, radius), opacity});
+    if (head) specs.push({d: arrow(start + length, radius), opacity});
+  }
+  if (view.variant === 1) add(a, .45 + swell * 4.2);
+  if (view.variant === 2) {
+    const length = .8 + swell * 3.8;
+    for (let i = 0; i < 3; i++) add(a + length * i / 3, length / 3, 8, i === 2, .2 + i * .4);
+  }
+  if (view.variant === 3) {
+    const length = .4 + swell * 1.7;
+    add(a, length); add(a + Math.PI, length);
+  }
+  if (view.variant === 4) {
+    const growth = phase < .5 ? phase * 2 : (1 - phase) * 2;
+    const length = .3 + growth * 5.2;
+    add(a + (phase < .5 ? 0 : (phase - .5) * 10.4), length);
+  }
+  if (view.variant === 5) add(a, .3 + swell * 4.8, 8, false);
+  if (view.variant === 6) {
+    const count = 2 + Math.floor(swell * 8);
+    for (let i = 0; i < count; i++) add(a + i * .48, .23, 8, false, .25 + .75 * (i + 1) / count);
+    specs.push({d: arrow(a + (count - 1) * .48 + .23, 8), opacity: 1});
+  }
+  if (view.variant === 7) {
+    add(a, .5 + swell * 2.1);
+    add(a + Math.PI + .3, .4 + (1 - swell) * 1.5, 8, true, .45);
+  }
+  if (view.variant === 8) {
+    add(a, .5 + swell * 3.5);
+    add(-a, .4 + (1 - swell) * 2.2, 4.5, false, .4);
+  }
+  for (const paths of view.paths) paths.forEach((path, i) => {
+    path.setAttribute("d", specs[i]?.d || "");
+    path.setAttribute("opacity", specs[i]?.opacity ?? 0);
+  });
+}
+const pauseButton = document.querySelector("#pause");
+let paused = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let elapsed = .3, previous;
+function updatePause() {
+  pauseButton.textContent = paused ? "Animation starten" : "Animation pausieren";
+  pauseButton.setAttribute("aria-pressed", String(paused));
+}
+updatePause();
+pauseButton.onclick = () => { paused = !paused; updatePause(); };
+const stateSelect = document.querySelector("#state");
+stateSelect.onchange = () => { document.body.dataset.state = stateSelect.value; };
+function toggleTheme() {
+  const light = document.body.dataset.colorMode !== "light";
+  document.body.dataset.colorMode = light ? "light" : "dark";
+  const button = document.querySelector("#theme");
+  button.textContent = light ? "Dunkles Design" : "Helles Design";
+  button.setAttribute("aria-pressed", String(light));
+}
+document.querySelector("#theme").onclick = toggleTheme;
+for (const view of views) {
+  view.card.querySelector(".sync-icon").onclick = event => {
+    view.paused = !view.paused;
+    if (view.paused) view.frozen = elapsed;
+    event.currentTarget.setAttribute("aria-label", `Sync-Animation ${view.variant} ${view.paused ? "starten" : "pausieren"}`);
+    event.currentTarget.setAttribute("aria-pressed", String(view.paused));
+  };
+  view.card.querySelector(".sync-details-toggle").onclick = () => {
+    stateSelect.selectedIndex = (stateSelect.selectedIndex + 1) % 3;
+    stateSelect.onchange();
+  };
+  view.card.querySelector(".menu-dots").onclick = toggleTheme;
+}
+function animate(timestamp) {
+  if (previous !== undefined && !paused) elapsed += Math.min((timestamp - previous) / 1000, .1) * Number(document.querySelector("#speed").value);
+  previous = timestamp;
+  for (const view of views) draw(view, view.paused ? view.frozen : elapsed);
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

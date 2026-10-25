@@ -131,6 +131,12 @@ let reconnectTimer;
 let reconnectAttempts = 0;
 let connectionTimer;
 let connectionSyncTimer;
+let startupConnecting = false;
+let startupConnectionTimer;
+let startupConnectionMessage = "";
+let syncAnimationFrame;
+const reducedSyncMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+reducedSyncMotion.addEventListener("change", updateSyncAnimation);
 let heartbeatTimer;
 let heartbeatId;
 let connectionGeneration = 0;
@@ -1003,6 +1009,7 @@ function renderProductEdit() {
   input.maxLength = 200;
   input.autocomplete = "off";
   input.value = creating ? "" : catalogDraft.name;
+  if (creating) input.placeholder = "Neuer Artikel";
   input.addEventListener("input", () => {
     catalogDraft.name = input.value;
     catalogDirty = true;
@@ -1328,6 +1335,7 @@ function renderCatalogPage() {
     input.maxLength = 100;
     input.autocomplete = "off";
     input.value = catalogDraft.name;
+    if (!catalogDraft.id) input.placeholder = isMarket ? "Neuer Supermarkt" : "Neue Kategorie";
     input.addEventListener("input", () => {
       input.setCustomValidity("");
       catalogDraft.name = input.value;
@@ -2470,6 +2478,39 @@ function render() {
   renderProductSuggestions();
 }
 
+function drawSyncSpinner(seconds) {
+  const paths = elements.sync.querySelectorAll(".sync-spinner path");
+  const phase = (seconds / 1.8) % 1;
+  const angle = seconds / 1.8 * Math.PI * 2 - Math.PI / 2;
+  const length = .4 + (.5 - .5 * Math.cos(phase * Math.PI * 2)) * 1.7;
+  for (let i = 0; i < 2; i++) {
+    const start = angle + i * Math.PI, end = start + length;
+    const x = 12 + 8 * Math.cos(end), y = 12 + 8 * Math.sin(end);
+    paths[i * 2]?.setAttribute("d", `M${12 + 8 * Math.cos(start)} ${12 + 8 * Math.sin(start)} A8 8 0 0 1 ${x} ${y}`);
+    const tx = -Math.sin(end), ty = Math.cos(end), nx = Math.cos(end), ny = Math.sin(end);
+    paths[i * 2 + 1]?.setAttribute("d", `M${x - tx * 2.3 + nx * 2} ${y - ty * 2.3 + ny * 2} L${x} ${y} L${x - tx * 2.3 - nx * 2} ${y - ty * 2.3 - ny * 2}`);
+  }
+}
+
+function updateSyncAnimation() {
+  const active = startupConnecting || !!syncPromise || !!listRefreshPromise;
+  elements.syncActions.classList.toggle("syncing", active);
+  if (!active || reducedSyncMotion.matches) {
+    window.cancelAnimationFrame(syncAnimationFrame);
+    syncAnimationFrame = undefined;
+    if (active) drawSyncSpinner(.45);
+    return;
+  }
+  if (syncAnimationFrame !== undefined) return;
+  const started = performance.now();
+  const animate = timestamp => {
+    drawSyncSpinner((timestamp - started) / 1000 + .3);
+    syncAnimationFrame = window.requestAnimationFrame(animate);
+  };
+  drawSyncSpinner(.3);
+  syncAnimationFrame = window.requestAnimationFrame(animate);
+}
+
 function setBusy(value) {
   busy = value;
   if (value) closeProductSuggestions();
@@ -2480,7 +2521,7 @@ function setBusy(value) {
   if (elements.marketSelect.disabled) closeFlyout(elements.marketSelect, elements.marketFlyout);
   elements.addForm.inert = blocked || !entryId;
   elements.sync.disabled = blocked || !!syncPromise || !!listRefreshPromise;
-  elements.syncActions.classList.toggle("syncing", !!syncPromise || !!listRefreshPromise);
+  updateSyncAnimation();
   elements.copySource.disabled = blocked || !!syncPromise || !entryId;
   elements.items.inert = blocked;
   elements.manageLists.disabled = blocked;
@@ -2796,11 +2837,18 @@ elements.editItemForm.addEventListener("submit", async (event) => {
 elements.editSummary.addEventListener("input", () => elements.editSummary.setCustomValidity(""));
 
 function updateConnection(state, detail) {
+  if (state === "online") finishStartupConnection();
+  if (startupConnecting) {
+    state = "connecting";
+    detail = "Verbindung zu Home Assistant wird hergestellt.";
+  }
   elements.connectionDot.className = `dot ${state}`;
   elements.syncActions.dataset.status = state;
   elements.connectionLabel.textContent =
     state === "online"
       ? "Mit Home Assistant verbunden"
+      : state === "connecting"
+        ? "Verbindung wird hergestellt"
       : state === "pending"
         ? "Synchronisierung ausstehend"
         : "Offline – lokale Liste";
@@ -2808,6 +2856,7 @@ function updateConnection(state, detail) {
 }
 
 function showError(error) {
+  if (startupConnecting && error instanceof ConnectionUnavailableError) return;
   setMessage(elements.message, error instanceof Error ? error.message : String(error));
 }
 
@@ -3004,6 +3053,31 @@ async function completeAuthorization() {
   localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
 }
 
+class ConnectionUnavailableError extends Error {}
+
+function beginStartupConnection() {
+  startupConnecting = true;
+  updateConnection("connecting");
+  setBusy(busy);
+  startupConnectionTimer = window.setTimeout(() => {
+    finishStartupConnection();
+    updateConnection(pendingOperations.length ? "pending" : "offline",
+      "Home Assistant ist nicht erreichbar. Die Verbindung wird automatisch erneut versucht.");
+    startupConnectionMessage = "Home Assistant ist nicht erreichbar. Die Verbindung wird automatisch erneut versucht.";
+    if (!elements.message.textContent) showError(new ConnectionUnavailableError(startupConnectionMessage));
+  }, 5000);
+}
+
+function finishStartupConnection() {
+  window.clearTimeout(startupConnectionTimer);
+  startupConnecting = false;
+  if (startupConnectionMessage && elements.message.textContent === startupConnectionMessage) {
+    setMessage(elements.message, "");
+  }
+  startupConnectionMessage = "";
+  setBusy(busy);
+}
+
 function scheduleReconnect() {
   if (reconnectTimer || authenticationBlocked || !navigator.onLine) return;
   const delay = Math.min(1000 * 2 ** Math.min(reconnectAttempts++, 5), 30000);
@@ -3048,6 +3122,7 @@ async function connect() {
   reconnectTimer = undefined;
   let tokens = readTokens();
   if (!tokens) {
+    finishStartupConnection();
     updateConnection(
       pendingOperations.length ? "pending" : "offline",
       "Verbinde die App einmal online mit Home Assistant, damit die Liste geladen wird.",
@@ -3195,7 +3270,7 @@ elements.connect.addEventListener("click", () => {
 
 function sendCommand(type, payload = {}) {
   if (!authenticated || socket?.readyState !== WebSocket.OPEN) {
-    return Promise.reject(new Error("Home Assistant ist gerade nicht erreichbar."));
+    return Promise.reject(new ConnectionUnavailableError("Home Assistant ist gerade nicht erreichbar."));
   }
   const id = nextMessageId++;
   return new Promise((resolve, reject) => {
@@ -3956,6 +4031,7 @@ elements.install.addEventListener("click", async () => {
 });
 
 async function start() {
+  beginStartupConnection();
   initializeMode();
   elements.appVersion.textContent = `v${document.querySelector('meta[name="app-version"]').content}`;
   window.setInterval(() => {
@@ -4002,6 +4078,7 @@ async function start() {
     try {
       await completeAuthorization();
     } catch (error) {
+      finishStartupConnection();
       showError(error);
     }
     setBusy(false);
@@ -4011,6 +4088,7 @@ async function start() {
     }
     connect();
   } catch (error) {
+    finishStartupConnection();
     showError(error);
     elements.connectionLabel.textContent = "Lokaler Speicher nicht verfügbar";
   }
