@@ -81,7 +81,7 @@ async function runTests() {
         catalogDirty = false;
         products = [
           {key: "buter", name: "Buter", usage: {}},
-          {key: "butter", name: "Butter", usage: {}}
+          {key: "butter", name: "Butter", category_id: "dairy", usage: {}}
         ];
         categories = [{id: "dairy", name: "Milchprodukte"}];
         openCatalog(view, view.startsWith("category") ? categories[0]
@@ -174,6 +174,17 @@ async function runTests() {
     }
     doc.body.dataset.theme = originalTheme;
     reference.remove();
+  });
+  test("Comparison dismissal uses a bordered standard button with centered text", () => {
+    const button = row.querySelector(".product-similar-dismiss");
+    const style = win.getComputedStyle(button), box = button.getBoundingClientRect();
+    assert(style.borderTopWidth === "1px" && style.borderTopStyle === "solid", "Dismiss button has no standard border");
+    assert(style.alignItems === "center" && style.justifyContent === "center", "Dismiss content is not centered");
+    const range = doc.createRange();
+    range.selectNodeContents(button);
+    const text = range.getBoundingClientRect();
+    assert(Math.abs(text.top + text.height / 2 - box.top - box.height / 2) <= 2, "Dismiss text not vertically centered");
+    assert(Math.abs(text.left + text.width / 2 - box.left - box.width / 2) <= 2, "Dismiss text not horizontally centered");
   });
   test("Kein Fehler keeps its persistent pair dismissal", () => {
     row.querySelector(".product-similar-dismiss").click();
@@ -406,6 +417,9 @@ async function runTests() {
         assert(page.classList.contains("has-fixed-actions"), "Fixed layout missing");
         assert(!footer.hidden && footer.children.length === 2 && footer.textContent.includes(label), "Wrong footer action");
         if (view === "markets") {
+          for (const link of content.querySelectorAll(".management-link")) {
+            assert(win.getComputedStyle(link).fontSize === "16px", "Market names must use approved 16px");
+          }
           const cancel = footer.querySelector(".secondary"), add = footer.querySelector(".primary");
           assert(cancel.textContent === "Abbrechen" && add.textContent === "Hinzufügen", "Approved market actions missing");
           assert(Math.abs(add.getBoundingClientRect().left - cancel.getBoundingClientRect().right - 12) < 1, "Market footer spacing differs from design");
@@ -496,6 +510,28 @@ async function runTests() {
         assert(!footer.hidden && Math.abs(footer.getBoundingClientRect().bottom - win.innerHeight) < 1, "Footer not fixed");
         for (const button of footer.querySelectorAll("button")) {
           assert(Math.abs(button.getBoundingClientRect().width - 114) < 1, "Footer control width differs from design");
+        }
+        for (const button of page.querySelectorAll("button.primary, button.secondary")) {
+          const style = win.getComputedStyle(button);
+          assert(style.borderTopWidth === "1px" && style.borderTopStyle === "solid", "Standard action lacks border");
+          assert(style.alignItems === "center" && style.justifyContent === "center", "Standard action is not centered");
+        }
+        const typography = {
+          categories: [".management-link", "16px"],
+          "category-edit": [".category-navigation", "16px"],
+          "product-merge": [".market-context", "22px"],
+        }[view];
+        if (typography) assert(win.getComputedStyle(content.querySelector(typography[0])).fontSize === typography[1],
+          "Approved editor typography was not applied");
+        if (view === "product-merge") {
+          assert(win.getComputedStyle(doc.querySelector("#product-merge-trigger")).fontSize === "16px", "Merge target must use 16px");
+        }
+        if (view === "category-products") {
+          const remove = content.querySelector(".category-product-row button");
+          assert(remove, "Assigned product removal button missing");
+          const style = win.getComputedStyle(remove);
+          assert(style.borderTopWidth === "1px" && style.borderTopStyle === "solid", "Remove button needs standard border");
+          assert(style.alignItems === "center" && style.justifyContent === "center", "Remove label needs centering");
         }
         assert(doc.documentElement.scrollWidth <= width, "Page overflows horizontally");
         for (const action of content.querySelectorAll(".product-management-buttons button")) {

@@ -1890,10 +1890,76 @@ elements.modeToggle.addEventListener("click", () => {
   }
 });
 
+const additionalDesigns = [
+  ["deep-ocean", "Deep Ocean", "dark", "#67dfed"],
+  ["copper-night", "Copper Night", "dark", "#eeb184"],
+  ["arctic-graphite", "Arctic Graphite", "dark", "#b4d5ee"],
+  ["velvet-berry", "Velvet Berry", "dark", "#f2a9d1"],
+  ["petrol-brass", "Petrol Brass", "dark", "#e1cd87"],
+  ["cobalt-ink", "Cobalt Ink", "dark", "#9fbaff"],
+  ["olive-stone", "Olive Stone", "dark", "#d6db9d"],
+  ["espresso-cream", "Espresso Cream", "dark", "#ead4b8"],
+  ["porcelain-blue", "Porcelain Blue", "light", "#2456a6"],
+  ["sage-paper", "Sage Paper", "light", "#446536"],
+  ["warm-linen", "Warm Linen", "light", "#9b492e"],
+  ["rose-quartz", "Rose Quartz", "light", "#963b68"],
+  ["glacier-mint", "Glacier Mint", "light", "#17695c"],
+  ["lavender-mist", "Lavender Mist", "light", "#7046a2"],
+  ["sand-sea", "Sand & Sea", "light", "#216779"],
+  ["lemon-notebook", "Lemon Notebook", "light", "#74600e"],
+  ["skyline", "Skyline", "light", "#21638b"],
+  ["apricot-studio", "Apricot Studio", "light", "#a04729"],
+  ["pistachio", "Pistachio", "light", "#486526"],
+  ["nordic-grey", "Nordic Grey", "light", "#40586d"],
+  ["lilac-ink", "Lilac & Ink", "light", "#574181"],
+  ["coral-chalk", "Coral Chalk", "light", "#ad4035"],
+  ["aqua-glass", "Aqua Glass", "light", "#176878"],
+  ["ivory-burgundy", "Ivory Burgundy", "light", "#823b52"],
+];
+const lastDesigns = { dark: "mono", light: "porcelain-blue" };
+for (const [theme, name, mode, accent] of additionalDesigns) {
+  const label = document.createElement("label");
+  label.className = "design-row";
+  const input = document.createElement("input");
+  input.type = "radio";
+  input.name = "design";
+  input.value = theme;
+  input.dataset.mode = mode;
+  const swatch = document.createElement("span");
+  swatch.className = "design-swatch";
+  swatch.style.setProperty("--swatch", accent);
+  swatch.setAttribute("aria-hidden", "true");
+  const text = document.createElement("span");
+  text.textContent = name;
+  const check = document.createElement("span");
+  check.className = "design-check";
+  check.textContent = "✓";
+  check.setAttribute("aria-hidden", "true");
+  label.hidden = mode === "light";
+  label.append(input, swatch, text, check);
+  elements.designOptions.append(label);
+}
+
+function designOption(theme) {
+  const option = [...elements.designOptions.querySelectorAll("input")].find(input => input.value === theme);
+  if (!option) {
+    throw new Error("Das gespeicherte Farbschema ist unbekannt. Bitte wähle unter Menü → Design ein neues aus.");
+  }
+  return option;
+}
+
 function applyDesign(theme) {
+  const selected = designOption(theme);
+  const mode = selected.dataset.mode || "dark";
   document.body.dataset.theme = theme;
+  document.body.dataset.colorMode = mode;
+  lastDesigns[mode] = theme;
+  for (const input of document.querySelectorAll('#design-mode input')) {
+    input.checked = input.value === mode;
+  }
   for (const option of elements.designOptions.querySelectorAll("input")) {
     option.checked = option.value === theme;
+    option.parentElement.hidden = (option.dataset.mode || "dark") !== mode;
     if (option.checked) elements.designName.textContent = option.parentElement.querySelector("span:not([aria-hidden])").textContent;
   }
   document.querySelector('meta[name="theme-color"]').content =
@@ -1902,27 +1968,38 @@ function applyDesign(theme) {
 
 function initializeDesign() {
   try {
-    const theme = localStorage.getItem(DESIGN_KEY) || "mono";
-    if (![...elements.designOptions.querySelectorAll("input")].some((option) => option.value === theme)) {
-      throw new Error("Das gespeicherte Farbschema ist unbekannt. Bitte wähle unter Menü → Design ein neues aus.");
+    for (const mode of ["dark", "light"]) {
+      const remembered = localStorage.getItem(`${DESIGN_KEY}.${mode}`);
+      if (remembered) {
+        if ((designOption(remembered).dataset.mode || "dark") !== mode) {
+          throw new Error("Das gespeicherte Farbschema passt nicht zur Helligkeit. Bitte wähle unter Menü → Design ein neues aus.");
+        }
+        lastDesigns[mode] = remembered;
+      }
     }
+    const theme = localStorage.getItem(DESIGN_KEY) || "mono";
     applyDesign(theme);
   } catch (error) {
     showError(error);
   }
 }
 
-elements.designOptions.addEventListener("change", (event) => {
-  const theme = event.target.value;
+function saveDesign(theme) {
   applyDesign(theme);
   setMessage(elements.designMessage, "");
   try {
     localStorage.setItem(DESIGN_KEY, theme);
+    localStorage.setItem(`${DESIGN_KEY}.${document.body.dataset.colorMode}`, theme);
   } catch (error) {
     const message = `Das Farbschema konnte nicht auf diesem Gerät gespeichert werden: ${error.message}`;
     setMessage(elements.designMessage, message);
     showError(new Error(message));
   }
+}
+
+elements.designOptions.addEventListener("change", event => saveDesign(event.target.value));
+document.querySelector("#design-mode").addEventListener("change", event => {
+  saveDesign(lastDesigns[event.target.value]);
 });
 
 function openDatabase() {
@@ -3061,6 +3138,33 @@ async function connect() {
 }
 
 const waiters = new Map();
+
+function fitSetupMenu(section) {
+  if (!elements.setup.open) return;
+  const menu = elements.setup.querySelector(".setup-actions");
+  const viewport = window.visualViewport;
+  const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+  menu.style.setProperty("--setup-available-height", `${Math.max(0, bottom - menu.getBoundingClientRect().top - 16)}px`);
+  if (!section?.open) return;
+  const box = menu.getBoundingClientRect();
+  const content = section.getBoundingClientRect();
+  const top = box.top + menu.clientTop + 8;
+  const visibleBottom = box.top + menu.clientTop + menu.clientHeight - 8;
+  if (content.height > visibleBottom - top || content.top < top) {
+    menu.scrollTop += content.top - top;
+  } else if (content.bottom > visibleBottom) {
+    menu.scrollTop += content.bottom - visibleBottom;
+  }
+}
+
+elements.setup.addEventListener("toggle", () => fitSetupMenu());
+elements.setup.querySelectorAll(".setup-section").forEach(section => {
+  section.addEventListener("toggle", () => fitSetupMenu(section));
+});
+window.addEventListener("resize", () => fitSetupMenu());
+window.addEventListener("scroll", () => fitSetupMenu(), { passive: true });
+window.visualViewport?.addEventListener("resize", () => fitSetupMenu());
+window.visualViewport?.addEventListener("scroll", () => fitSetupMenu());
 
 document.addEventListener("click", (event) => {
   if (!elements.setup.contains(event.target)) elements.setup.open = false;

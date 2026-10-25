@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Approved editor typography regression tests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Testoberfläche" style="width:390px;height:844px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all(["app.html", "app.js"].map(file =>
+    fetch(base + file, {cache: "no-store"}).then(response => response.text())));
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document;
+  const api = win.Function(script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+    busy = false;
+    categories = [{id: "dairy", name: "Milchprodukte"}];
+    supermarkets = [{id: "market", name: "REWE", category_ids: ["dairy"],
+      bonus_card: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/LQAAAABJRU5ErkJggg=="}];
+    products = [
+      {key: "buter", name: "Buter", category_id: "dairy", usage: {test: {added: 3, weeks: {}}}},
+      {key: "butter", name: "Butter", category_id: "dairy", usage: {test: {added: 20, weeks: {}}}}
+    ];
+    return {
+      open(view) {
+        catalogDirty = false;
+        openCatalog(view, view.startsWith("market-") ? supermarkets[0]
+          : view.startsWith("category-") ? categories[0]
+          : view.startsWith("product-") ? products[0] : undefined);
+      },
+      compare() {
+        openCatalog("products");
+        elements.catalogContent.replaceChildren(productManagementRow(products[0], products[1]));
+      },
+      deletion() {
+        requestAppConfirmation({title: "Artikel löschen?", productName: "Butter",
+          description: "Statistik und Einträge werden gelöscht.", onConfirm() {}});
+      }
+    };
+  `)();
+  const results = [];
+  const assert = (condition, message) => { if (!condition) throw Error(message); };
+  // All text groups read from the 17 approved editor drafts on 2026-10-25.
+  const groups = {
+    markets: {".management-link":16},
+    "market-edit": {"#catalog-name":16, ".category-navigation":14, ".market-checkout-option":14, ".danger-button":16},
+    "market-order": {".market-context":13, ".category-selection-button":16, ".order-name":16},
+    "market-select": {".category-choice":16},
+    "market-bonus-card": {".market-context":17, ".full-width":16, ".management-help":11, ".bonus-card-remove":16},
+    categories: {".management-link":16},
+    "category-edit": {"#catalog-name":16, ".category-navigation":16, ".danger-button":16},
+    "category-products": {".market-context":14, ".category-product-row > span":16, ".category-product-row button":16},
+    products: {".product-search":16, ".product-list-summary":14, ".product-management-row:not(.product-comparison) .product-management-name":13,
+      ".product-outline-action":14, ".product-management-buttons .danger-button":16},
+    "product-edit": {"#product-name":16},
+    "product-statistics": {"label":13, "#product-usage-count":16},
+    "product-merge": {".market-context":22, "#product-merge-trigger":16, ".product-merge-preview":11},
+  };
+  function size(selector, expected, root) {
+    const nodes = root.querySelectorAll(selector);
+    assert(nodes.length, "Missing text group " + selector);
+    for (const node of nodes) {
+      assert(parseFloat(win.getComputedStyle(node).fontSize) === expected,
+        `${selector}: expected ${expected}px, found ${win.getComputedStyle(node).fontSize}`);
+    }
+  }
+  function centered(button) {
+    const style = win.getComputedStyle(button), box = button.getBoundingClientRect();
+    assert(style.borderTopWidth === "1px", "Button border missing");
+    assert(style.alignItems === "center" && style.justifyContent === "center", "Button alignment missing");
+    const range = doc.createRange();
+    range.selectNodeContents(button);
+    const text = range.getBoundingClientRect();
+    assert(Math.abs(text.top + text.height / 2 - box.top - box.height / 2) <= 2, "Text is not vertically centered");
+  }
+  for (const width of [320, 390, 430]) {
+    frame.style.width = width + "px";
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    for (const [view, expected] of Object.entries(groups)) {
+      api.open(view);
+      const page = doc.querySelector("#catalog-page"), content = doc.querySelector("#catalog-content");
+      size("#catalog-title",22,page);
+      size("#catalog-fixed-actions button, .page-actions button",16,page);
+      for (const [selector, px] of Object.entries(expected)) size(selector,px,content);
+      for (const button of page.querySelectorAll(".primary, .secondary")) {
+        if (button.getClientRects().length) centered(button);
+      }
+      assert(doc.documentElement.scrollWidth <= width, view + " overflows");
+      for (const button of content.querySelectorAll(".product-management-buttons button")) {
+        assert(button.scrollWidth <= button.clientWidth, "Article action text overflows");
+      }
+      results.push(`PASS ${view}: all approved text groups and centered actions at ${width}px`);
+    }
+    api.open("product-edit");
+    size("#product-name",16,doc);
+    results.push(`PASS product-add shares the approved 16px name field at ${width}px`);
+    api.open("product-merge");
+    doc.querySelector("#product-merge-trigger").click();
+    size(".category-option",16,doc);
+    size("#product-merge-trigger",16,doc);
+    results.push(`PASS product-target: approved search and option sizes at ${width}px`);
+    doc.querySelector("#product-merge-options [role=option]").click();
+    doc.querySelector('#catalog-fixed-actions [type="submit"]').click();
+    assert(doc.querySelector("#product-merge-confirm").open, "Merge confirmation missing");
+    size("#product-merge-title",22,doc);
+    size("#product-merge-names",32,doc);
+    size("#product-merge-description",16,doc);
+    size("#product-merge-confirm .dialog-actions button",16,doc);
+    doc.querySelector("#product-merge-confirm").close();
+    results.push(`PASS product-merge-confirm: complete typography at ${width}px`);
+    api.deletion();
+    size("#app-confirm-title",22,doc);
+    size("#app-confirm-product",32,doc);
+    size("#app-confirm-description",16,doc);
+    size("#app-confirm .dialog-actions button",16,doc);
+    doc.querySelector("#app-confirm").close();
+    results.push(`PASS product-delete: complete typography at ${width}px`);
+    api.compare();
+    const comparison = doc.querySelector(".product-comparison");
+    size(".product-management-name, .product-management-usage, .product-similar-target",13,comparison);
+    size(".product-rename, .product-similar-actions button, .product-management-actions button:not(.danger-button)",14,comparison);
+    size(".danger-button",16,comparison);
+    const dismiss = comparison.querySelector(".product-similar-dismiss");
+    centered(dismiss);
+    const range = doc.createRange();
+    range.selectNodeContents(dismiss);
+    const text = range.getBoundingClientRect(), box = dismiss.getBoundingClientRect();
+    assert(Math.abs(text.left + text.width / 2 - box.left - box.width / 2) <= 1, "Kein Fehler is not horizontally centered");
+    results.push(`PASS product-compare: every text group and Kein Fehler centered at ${width}px`);
+  }
+  document.querySelector("#results").textContent = results.join("\n");
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent += "\nFAIL " + error.stack;
+  throw error;
+});
+</script>
+</html>

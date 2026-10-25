@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Einkaufszettel · 24 neue Farbschemata</title>
+<style>
+:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color-scheme: dark; color: #f4f4f4; background: #141414; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; padding: 28px clamp(16px, 3vw, 40px); }
+h1 { font-size: clamp(24px, 4vw, 34px); margin: 0 0 12px; }
+.intro { color: #bdbdbd; line-height: 1.6; max-width: 1000px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 18px; align-items: center; padding: 18px 0 24px; }
+button, select, input { font: inherit; }
+button, select { cursor: pointer; }
+.toolbar select { background: #292929; color: #f4f4f4; border: 1px solid #777; border-radius: 8px; padding: 10px; }
+.toolbar label { display: flex; gap: 10px; align-items: center; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 1fr)); gap: 28px; align-items: start; }
+.proposal { min-width: 0; }
+.proposal > h2 { font-size: 18px; margin: 0 0 6px; }
+.description { color: #bdbdbd; font-size: 13px; line-height: 1.5; min-height: 40px; margin: 0 0 12px; }
+.phone { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--bg); color: var(--text); padding: 24px 20px; min-height: 760px; color-scheme: var(--scheme); }
+.phone button { color: var(--text); background: var(--surface2); border: 1px solid var(--line); border-radius: 10px; min-height: 44px; padding: 10px 12px; font-weight: 650; }
+.phone :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.phone input { accent-color: var(--accent); }
+.eyebrow { color: var(--muted); font-size: 10px; letter-spacing: .14em; margin: 0 0 18px; font-weight: 700; }
+.header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+.header h3 { margin: 0; font-size: 25px; letter-spacing: -.04em; flex: 1; }
+.menu-trigger { font-size: 20px; width: 44px; padding: 0 !important; }
+.add { display: flex; gap: 8px; margin-bottom: 24px; }
+.add input { min-width: 0; width: 100%; border-radius: 10px; padding: 12px; border: 1px solid var(--line); color: var(--text); background: var(--surface); }
+.add input::placeholder { color: var(--muted); opacity: 1; }
+.phone .primary { background: var(--accent); color: var(--accentText); border-color: var(--accent); }
+.section-title { display: flex; justify-content: space-between; align-items: center; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 12px; }
+.market { color: var(--accent); font-weight: 700; }
+.items { list-style: none; padding: 0; margin: 0 0 24px; }
+.items li { border-bottom: 1px solid var(--line); padding: 17px 0; }
+.items label { display: flex; align-items: center; gap: 12px; min-height: 24px; }
+.items input { width: 21px; height: 21px; margin: 0; flex: none; }
+.items label span { flex: 1; font-weight: 600; }
+.items small { color: var(--muted); font-size: 12px; }
+.items input:checked + span { text-decoration: line-through; color: var(--muted); }
+.success { color: var(--success); font-size: 12px; margin: 0 0 24px; }
+.product { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 12px; }
+.product-title { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+.product-title h4 { margin: 0; font-size: 16px; }
+.phone .info { display: grid; place-items: center; width: 34px; min-height: 34px; height: 34px; border-radius: 50%; padding: 0; background: var(--surface); color: var(--muted); }
+.info svg { width: 20px; height: 20px; }
+.help { color: var(--muted); line-height: 1.5; font-size: 13px; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.actions button { font-size: 12px; overflow-wrap: anywhere; }
+.phone .danger { color: var(--danger); background: transparent; }
+.footer { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+.footer button { min-width: 100px; font-size: 13px; }
+.swatches { display: flex; gap: 8px; margin-top: 12px; color: #bdbdbd; align-items: center; font-size: 11px; flex-wrap: wrap; }
+.swatch { width: 24px; height: 24px; border: 1px solid #888; border-radius: 50%; }
+.shade { position: absolute; inset: 0; background: rgb(0 0 0 / .5); z-index: 1; }
+.popup { position: absolute; top: 88px; right: 16px; left: 16px; z-index: 2; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 0 8px 8px; box-shadow: 0 8px 30px #0006; max-height: calc(100% - 108px); overflow-y: auto; }
+.popup h4 { margin: 0; padding: 18px 12px; border-bottom: 1px solid var(--line); }
+.popup section { padding: 16px 0; }
+.popup section + section { border-top: 1px solid var(--line); margin-top: 16px; }
+.popup h5 { margin: 0 12px 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; font-size: 10px; }
+.popup button { display: block; width: 100%; min-height: 56px; text-align: left; background: transparent; border: 0; }
+.popup button + button { margin-top: 4px; }
+.popup .offline { padding: 16px 12px 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.badge { color: #bdbdbd; font-size: 11px; font-weight: 400; margin-left: 8px; }
+</style>
+<body>
+<h1>24 neue Farbschemata</h1>
+<p class="intro">8 zusätzliche dunkle und 16 neue helle Entwürfe. Gleiche Inhalte, Abstände und Bedienelemente in allen Vorschlägen. Checkboxen, Info-Icons und Dreipunktmenüs sind bedienbar. Nur Farbstudien mit Beispieldaten – noch keine Änderung der App. Bei den hellen Entwürfen werden auch Schrift, Flächen und Statusfarben angepasst, nicht nur der Hintergrund.</p>
+<div class="toolbar">
+  <label>Ansicht <select id="filter"><option value="all">Alle 24 Vorschläge</option><option value="dark">8 dunkle Vorschläge</option><option value="light">16 helle Vorschläge</option></select></label>
+  <label><input id="menus" type="checkbox"> Dreipunktmenü in allen Vorschlägen zeigen</label>
+</div>
+<main class="grid"></main>
+<template id="card">
+  <article class="proposal">
+    <h2></h2><p class="description"></p>
+    <div class="phone">
+      <p class="eyebrow">EINKAUFSZETTEL</p>
+      <header class="header"><h3>Wocheneinkauf</h3><button class="menu-trigger" type="button" aria-label="Menü öffnen" aria-expanded="false">⋯</button></header>
+      <div class="add"><input placeholder="Was fehlt noch?" aria-label="Neuer Artikel (Vorschau)"><button class="primary" type="button" aria-label="Beispielartikel hinzufügen">＋</button></div>
+      <h4 class="section-title">Auf der Liste <span class="market">REWE ▾</span></h4>
+      <ul class="items">
+        <li><label><input type="checkbox"><span>Milch</span><small>2 × 1 Liter</small></label></li>
+        <li><label><input type="checkbox"><span>Butter</span><small>ungesalzen</small></label></li>
+        <li><label><input type="checkbox"><span>Äpfel</span><small>1 kg</small></label></li>
+        <li><label><input type="checkbox" checked><span>Brot</span><small>Vollkorn</small></label></li>
+      </ul>
+      <p class="success" role="status">✓ Alle Änderungen synchronisiert</p>
+      <section class="product">
+        <div class="product-title"><h4>Artikel verwalten</h4><button class="info" type="button" aria-label="Hilfe anzeigen" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .3c0 1.8-2.5 1.9-2.5 3.7"/><circle cx="12" cy="16.5" r=".9" fill="currentColor" stroke="none"/></svg></button></div>
+        <p class="help" hidden>Artikel für alle Listen verwalten. Diese Vorschau verändert keine echten Daten.</p>
+        <div class="actions"><button type="button">Umbenennen ›</button><button type="button">Zusammenführen ›</button><button type="button">Statistik ›</button><button class="danger" type="button">Löschen</button></div>
+      </section>
+      <footer class="footer"><button type="button">Abbrechen</button><button class="primary" type="button">Speichern</button></footer>
+      <div class="shade" hidden></div>
+      <div class="popup" hidden>
+        <h4>Einstellungen</h4>
+        <section><h5>Verwalten</h5><button type="button">Supermärkte verwalten</button><button type="button">Produktkategorien verwalten</button><button type="button">Artikel verwalten</button></section>
+        <section><h5>Einstellungen</h5><button type="button">Synchronisation ＋</button><button type="button">Installation ＋</button><button type="button">Design ＋</button></section>
+        <div class="offline">App und Liste sind offline verfügbar</div>
+      </div>
+    </div>
+    <div class="swatches"></div>
+  </article>
+</template>
+<script>
+const palettes = [
+  ["D1", "Deep Ocean", "dark", "Tiefes Marineblau mit klarem Aqua.", "#0c1724", "#142638", "#1e354b", "#3d5770", "#edf6ff", "#b0c4d8", "#67dfed", "#082b35", "#ffb4a8", "#7fe0ad"],
+  ["D2", "Copper Night", "dark", "Anthrazit mit warmem Kupfer statt Orange.", "#191614", "#26211d", "#352c25", "#59483b", "#fff3e8", "#cdb9a7", "#eeb184", "#321c0d", "#ffb4a8", "#9cd9ad"],
+  ["D3", "Arctic Graphite", "dark", "Kühles Graphit und ruhiges Eisblau.", "#14191d", "#202930", "#2c3841", "#475965", "#f0f6fa", "#b6c4cf", "#b4d5ee", "#132b3c", "#ffb4a8", "#8cddb9"],
+  ["D4", "Velvet Berry", "dark", "Dunkles Beerenrot mit weichem Rosé.", "#1d121c", "#2c1d29", "#3c2938", "#62445b", "#fff0fa", "#d3b1ca", "#f2a9d1", "#3b1230", "#ffb4a8", "#a2dfbe"],
+  ["D5", "Petrol Brass", "dark", "Gedämpftes Petrol mit edlem Messing.", "#101d1d", "#1a2c2c", "#263d3c", "#45605c", "#eef9f5", "#b1c8c2", "#e1cd87", "#302707", "#ffb4a8", "#96dfb0"],
+  ["D6", "Cobalt Ink", "dark", "Fast schwarze Tinte mit kräftigem Kornblumenblau.", "#111524", "#1b2339", "#28334d", "#455576", "#eff3ff", "#b2bfdc", "#9fbaff", "#14234a", "#ffb4a8", "#8cddb9"],
+  ["D7", "Olive Stone", "dark", "Mineralisches Oliv mit hellem Sandakzent.", "#191b14", "#272b20", "#353c2b", "#596348", "#f6f7e9", "#c0c5aa", "#d6db9d", "#292e0e", "#ffb4a8", "#a9dda1"],
+  ["D8", "Espresso Cream", "dark", "Dunkler Kaffee mit cremigem, neutralem Akzent.", "#1c1613", "#2b221e", "#3c3029", "#614f43", "#fff4e9", "#cebcae", "#ead4b8", "#352418", "#ffb4a8", "#a5dab4"],
+  ["H1", "Porcelain Blue", "light", "Klares Porzellanweiß mit klassischem Blau.", "#f3f7fc", "#ffffff", "#e4edf8", "#9bacc2", "#17263b", "#4e6078", "#2456a6", "#ffffff", "#a52b32", "#216341"],
+  ["H2", "Sage Paper", "light", "Salbeigrünes Papier, weich und natürlich.", "#f2f5ed", "#fcfdf9", "#e4ebdc", "#9caa91", "#263221", "#52614b", "#446536", "#ffffff", "#a52b32", "#28603e"],
+  ["H3", "Warm Linen", "light", "Warmes Leinen mit zurückhaltendem Terrakotta.", "#f8f3ea", "#fffcf7", "#eee4d5", "#b5a38d", "#382b22", "#70604e", "#9b492e", "#ffffff", "#a52b32", "#28603e"],
+  ["H4", "Rose Quartz", "light", "Sehr helles Rosé mit beerigem Akzent.", "#fbf1f4", "#fffcfd", "#f2e0e8", "#b89aa9", "#3c2532", "#765365", "#963b68", "#ffffff", "#a52b32", "#28603e"],
+  ["H5", "Glacier Mint", "light", "Frisches Eisgrün mit kräftigem Petrol.", "#eef9f6", "#fcfffe", "#dcefe9", "#8eadab", "#163b35", "#456b64", "#17695c", "#ffffff", "#a52b32", "#216341"],
+  ["H6", "Lavender Mist", "light", "Zarter Lavendel ohne grelle Violettflächen.", "#f5f2fc", "#fefcff", "#e9e2f5", "#a99cbd", "#312743", "#685879", "#7046a2", "#ffffff", "#a52b32", "#28603e"],
+  ["H7", "Sand & Sea", "light", "Heller Sand mit tiefem Meeresblau.", "#f7f4ec", "#fffdf8", "#e8e6db", "#a4aaa2", "#233a3d", "#53676a", "#216779", "#ffffff", "#a52b32", "#216341"],
+  ["H8", "Lemon Notebook", "light", "Warmes Notizpapier mit gedämpftem Senfgelb.", "#faf8e9", "#fffef7", "#f0ebcf", "#b5ac7b", "#38341b", "#6f6741", "#74600e", "#ffffff", "#a52b32", "#28603e"],
+  ["H9", "Skyline", "light", "Luftiges Himmelblau mit sachlichem Stahlblau.", "#edf6fc", "#fbfeff", "#dcebf6", "#93adbf", "#19364a", "#4c697b", "#21638b", "#ffffff", "#a52b32", "#216341"],
+  ["H10", "Apricot Studio", "light", "Helles Apricot, akzentuiert mit Ziegelrot.", "#fff3eb", "#fffdf9", "#f8e2d3", "#bda08b", "#422c22", "#795c4c", "#a04729", "#ffffff", "#a52b32", "#28603e"],
+  ["H11", "Pistachio", "light", "Sanfte Pistazie mit konzentriertem Waldgrün.", "#f4f8ea", "#fdfff8", "#e6edcf", "#a0ae83", "#2b381c", "#5b6a46", "#486526", "#ffffff", "#a52b32", "#28603e"],
+  ["H12", "Nordic Grey", "light", "Neutral, kühl und nahezu monochrom.", "#f2f4f5", "#ffffff", "#e3e7ea", "#a0aab2", "#242d34", "#596670", "#40586d", "#ffffff", "#a52b32", "#216341"],
+  ["H13", "Lilac & Ink", "light", "Fliederweiß mit dunklem Indigo.", "#f7f3fa", "#fffdfd", "#eee3f1", "#b29cbb", "#35273e", "#705c7b", "#574181", "#ffffff", "#a52b32", "#28603e"],
+  ["H14", "Coral Chalk", "light", "Kreideweiß mit markantem, dunklem Korallrot.", "#fcf4f1", "#fffdfb", "#f4e2dc", "#bfa199", "#402923", "#795e56", "#ad4035", "#ffffff", "#a52b32", "#28603e"],
+  ["H15", "Aqua Glass", "light", "Helles Aquamarin mit klarer Türkislinie.", "#eff9fa", "#fcffff", "#dceff1", "#8eafb5", "#193a40", "#4b6970", "#176878", "#ffffff", "#a52b32", "#216341"],
+  ["H16", "Ivory Burgundy", "light", "Ruhiges Elfenbein mit elegantem Bordeaux.", "#faf6ef", "#fffdfa", "#eee5d9", "#b6a496", "#3a282c", "#735b61", "#823b52", "#ffffff", "#a52b32", "#28603e"]
+];
+const keys = ["bg", "surface", "surface2", "line", "text", "muted", "accent", "accentText", "danger", "success"];
+for (const [id, name, mode, description, ...colors] of palettes) {
+  const card = document.querySelector("#card").content.firstElementChild.cloneNode(true);
+  card.dataset.mode = mode;
+  card.id = id;
+  card.querySelector("h2").textContent = `${id} · ${name}`;
+  const badge = document.createElement("span");
+  badge.className = "badge";
+  badge.textContent = mode === "dark" ? "Dunkel" : "Hell";
+  card.querySelector("h2").append(badge);
+  card.querySelector(".description").textContent = description;
+  const phone = card.querySelector(".phone");
+  keys.forEach((key, i) => phone.style.setProperty("--" + key, colors[i]));
+  phone.style.setProperty("--scheme", mode);
+  const trigger = card.querySelector(".menu-trigger");
+  const setMenu = open => {
+    card.querySelector(".shade").hidden = !open;
+    card.querySelector(".popup").hidden = !open;
+    trigger.setAttribute("aria-expanded", String(open));
+  };
+  trigger.onclick = () => setMenu(trigger.getAttribute("aria-expanded") !== "true");
+  card.querySelector(".shade").onclick = () => { setMenu(false); trigger.focus(); };
+  card.querySelectorAll(".popup button").forEach(button => button.onclick = () => { setMenu(false); trigger.focus(); });
+  phone.addEventListener("keydown", event => {
+    if (event.key === "Escape" && trigger.getAttribute("aria-expanded") === "true") {
+      setMenu(false); trigger.focus();
+    }
+  });
+  const info = card.querySelector(".info");
+  info.setAttribute("aria-controls", "help-" + id);
+  card.querySelector(".help").id = "help-" + id;
+  info.onclick = () => {
+    const help = card.querySelector(".help");
+    help.hidden = !help.hidden;
+    info.setAttribute("aria-expanded", String(!help.hidden));
+  };
+  card.querySelector(".add button").onclick = () => {
+    const input = card.querySelector(".add input");
+    if (!input.value.trim()) { input.focus(); return; }
+    const row = document.createElement("li");
+    const label = document.createElement("label");
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    const text = document.createElement("span");
+    text.textContent = input.value.trim();
+    label.append(check, text); row.append(label);
+    card.querySelector(".items").append(row);
+    input.value = "";
+  };
+  for (const key of ["bg", "surface", "surface2", "accent"]) {
+    const swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.background = colors[keys.indexOf(key)];
+    swatch.title = `${key}: ${colors[keys.indexOf(key)]}`;
+    card.querySelector(".swatches").append(swatch);
+  }
+  const code = document.createElement("span");
+  code.textContent = `Akzent ${colors[6]}`;
+  card.querySelector(".swatches").append(code);
+  document.querySelector(".grid").append(card);
+}
+document.querySelector("#filter").onchange = event => {
+  document.querySelectorAll(".proposal").forEach(card => {
+    card.hidden = event.target.value !== "all" && card.dataset.mode !== event.target.value;
+  });
+};
+document.querySelector("#menus").onchange = event => {
+  document.querySelectorAll(".proposal").forEach(card => {
+    card.querySelector(".shade").hidden = !event.target.checked;
+    card.querySelector(".popup").hidden = !event.target.checked;
+    card.querySelector(".menu-trigger").setAttribute("aria-expanded", String(event.target.checked));
+  });
+};
+</script>
+</body>
+</html>

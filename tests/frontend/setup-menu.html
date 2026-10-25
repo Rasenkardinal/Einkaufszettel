@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Expanding setup menu regression tests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Testoberfläche" style="width:390px;height:740px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all([
+    fetch(base + "app.html", {cache: "no-store"}).then(response => response.text()),
+    fetch(base + "app.js", {cache: "no-store"}).then(response => response.text()),
+  ]);
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document;
+  win.Function(script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, ""))();
+  const results = [];
+  const assert = (condition, message) => { if (!condition) throw Error(message); };
+  const test = (name, action) => { action(); results.push("PASS " + name); };
+  const settle = () => new Promise(resolve => win.setTimeout(() => win.requestAnimationFrame(resolve), 30));
+  const setup = doc.querySelector("#setup"), menu = setup.querySelector(".setup-actions");
+  const sections = [...setup.querySelectorAll(".setup-section")];
+  const trigger = setup.querySelector("summary");
+  for (const [width, height] of [[320, 568], [390, 740], [430, 844], [700, 1000]]) {
+    frame.style.width = width + "px";
+    frame.style.height = height + "px";
+    await settle();
+    for (const section of sections) {
+      setup.open = false;
+      sections.forEach(section => section.open = false);
+      await settle();
+      trigger.click();
+      await settle();
+      const collapsedHeight = menu.getBoundingClientRect().height;
+      menu.scrollTop = menu.scrollHeight;
+      const pageScroll = win.scrollY;
+      section.querySelector("summary").focus({preventScroll: true});
+      section.querySelector("summary").click();
+      await settle();
+      test(`${section.id} expands and reveals its content at ${width}x${height}`, () => {
+        const box = menu.getBoundingClientRect();
+        const available = height - box.top - 16;
+        const fullHeight = menu.scrollHeight + 2;
+        assert(setup.open && section.open, "Expansion closed the menu");
+        assert(Math.abs(box.height - Math.min(fullHeight, available)) <= 2,
+          `Popup leaves unused screen space: height ${box.height}, available ${available}, content ${fullHeight}`);
+        assert(box.height >= collapsedHeight, "Expansion shrank popup");
+        assert(box.bottom <= height - 15, "Popup extends below viewport");
+        const title = section.querySelector("summary").getBoundingClientRect();
+        const content = section.querySelector(".setup-submenu").getBoundingClientRect();
+        assert(title.top >= box.top && title.bottom <= box.bottom, "Expanded section heading is outside popup");
+        assert(content.top < box.bottom - 40, "Expanded content is not revealed");
+        const sectionBox = section.getBoundingClientRect();
+        if (sectionBox.height <= menu.clientHeight - 16) {
+          assert(sectionBox.bottom <= box.bottom - 1, "A fitting submenu is still clipped");
+        } else {
+          assert(Math.abs(title.top - box.top - 9) <= 2, "Tall submenu should start near popup top");
+        }
+        assert(win.scrollY === pageScroll, "Expansion scrolled the shopping list");
+        assert(doc.activeElement === section.querySelector("summary"), "Expansion stole focus");
+        assert(menu.scrollWidth <= menu.clientWidth && doc.documentElement.scrollWidth <= width, "Horizontal overflow");
+      });
+      section.querySelector("summary").click();
+      await settle();
+      test(`${section.id} collapse keeps popup bounded at ${width}px`, () => {
+        assert(menu.getBoundingClientRect().height <= collapsedHeight + 1, "Popup stays stretched after collapse");
+        assert(setup.open, "Collapsing submenu closed popup");
+      });
+    }
+  }
+  doc.querySelector("#menu-design").open = true;
+  await settle();
+  for (const height of [480, 820]) {
+    frame.style.height = height + "px";
+    await settle();
+    test(`Open popup adapts to resized viewport ${height}px`, () => {
+      const box = menu.getBoundingClientRect();
+      assert(Math.abs(box.bottom - (height - 16)) <= 2, "Popup did not adapt to viewport height");
+      assert(menu.scrollHeight > menu.clientHeight, "Long designs must remain internally scrollable");
+    });
+  }
+  menu.scrollTop = menu.scrollHeight;
+  const last = [...doc.querySelectorAll(".design-row")].filter(row => !row.hidden).at(-1);
+  test("Last design remains reachable after expansion", () => {
+    const box = menu.getBoundingClientRect(), row = last.getBoundingClientRect();
+    assert(row.top >= box.top && row.bottom <= box.bottom, "Last palette cannot be reached");
+  });
+  const viewport = win.visualViewport;
+  const reducedViewport = new win.EventTarget();
+  reducedViewport.height = 400;
+  reducedViewport.offsetTop = 20;
+  Object.defineProperty(win, "visualViewport", {configurable: true, value: reducedViewport});
+  win.dispatchEvent(new win.Event("resize"));
+  reducedViewport.dispatchEvent(new win.Event("resize"));
+  test("Visible viewport limits the popup when browser chrome or keyboard reduces available space", () => {
+    assert(Math.abs(menu.getBoundingClientRect().bottom - 404) <= 2, "Popup ignores the visible viewport");
+  });
+  reducedViewport.height = 500;
+  reducedViewport.offsetTop = 30;
+  viewport.dispatchEvent(new win.Event("scroll"));
+  test("Visible viewport scrolling recalculates the popup boundary", () => {
+    assert(Math.abs(menu.getBoundingClientRect().bottom - 514) <= 2, "Popup ignores visible viewport scrolling");
+  });
+  Object.defineProperty(win, "visualViewport", {configurable: true, value: undefined});
+  win.dispatchEvent(new win.Event("resize"));
+  test("Browsers without VisualViewport use the window height", () => {
+    assert(Math.abs(menu.getBoundingClientRect().bottom - (win.innerHeight - 16)) <= 2, "Window height fallback failed");
+  });
+  Object.defineProperty(win, "visualViewport", {configurable: true, value: viewport});
+  setup.querySelector(".setup-backdrop").click();
+  await settle();
+  test("Background dismissal and focus return survive automatic scrolling", () => {
+    assert(!setup.open && doc.activeElement === trigger, "Dismissal or focus restore failed");
+    assert(setup.querySelector(".setup-backdrop").getClientRects().length === 0, "Backdrop stayed visible");
+  });
+  document.querySelector("#results").textContent = results.join("\n");
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent += "\nFAIL " + error.stack;
+  throw error;
+});
+</script>
+</html>

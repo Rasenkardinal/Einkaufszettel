@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#141414">
     <meta name="description" content="Dein Einkaufszettel – auch offline verfügbar.">
-    <meta name="app-version" content="0.4.31">
+    <meta name="app-version" content="0.4.32">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.31">
+    <link rel="stylesheet" href="./app.css?v=0.4.32">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -81,6 +81,10 @@
               <summary>Design <span class="current-design"><span class="design-swatch" aria-hidden="true"></span><span id="design-name">Mono</span></span></summary>
               <div class="setup-submenu">
                 <p id="design-help">Farbschema auswählen</p>
+                <fieldset id="design-mode" aria-label="Helligkeit">
+                  <label><input type="radio" name="design-mode" value="dark" checked><span>Dunkel</span></label>
+                  <label><input type="radio" name="design-mode" value="light"><span>Hell</span></label>
+                </fieldset>
                 <fieldset id="design-options" aria-label="Farbschema">
                   <label class="design-row"><input type="radio" name="design" value="mono" checked><span class="design-swatch" style="--swatch:#f5f5f5" aria-hidden="true"></span><span>Mono</span><span class="design-check" aria-hidden="true">✓</span></label>
                   <label class="design-row"><input type="radio" name="design" value="botanical"><span class="design-swatch" style="--swatch:#a3e635" aria-hidden="true"></span><span>Botanical</span><span class="design-check" aria-hidden="true">✓</span></label>
@@ -131,7 +135,7 @@
         <li class="end-shopping-item">
           <button class="end-shopping-action" type="button" aria-label="Einkauf beenden" aria-description="Zum Beenden des Einkaufs lange drücken oder mit der Tastatur bestätigen.">
             <span class="end-shopping-sequence" aria-hidden="true">
-              <svg class="end-shopping-cart-filled" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5h2.3l2.1 10.7c.2 1.1 1.1 1.8 2.2 1.8h8.5c1.1 0 2-.7 2.3-1.8L22 7H6"/><path d="M9.1 10h2.1v3H9.1zm3.4-1h2.1v4h-2.1zm3.4 1h2.1v3h-2.1z" fill="#fff" stroke="none"/><circle cx="9.8" cy="20" r="1.45"/><circle cx="18.3" cy="20" r="1.45"/></svg>
+              <svg class="end-shopping-cart-filled" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5h2.3l2.1 10.7c.2 1.1 1.1 1.8 2.2 1.8h8.5c1.1 0 2-.7 2.3-1.8L22 7H6"/><path d="M9.1 10h2.1v3H9.1zm3.4-1h2.1v4h-2.1zm3.4 1h2.1v3h-2.1z" fill="currentColor" stroke="none"/><circle cx="9.8" cy="20" r="1.45"/><circle cx="18.3" cy="20" r="1.45"/></svg>
               <svg class="end-shopping-arrow" viewBox="0 0 28 18"><path d="M1 9h22M16 2l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
               <svg class="end-shopping-cart-empty" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5h2.3l2.1 10.7c.2 1.1 1.1 1.8 2.2 1.8h8.5c1.1 0 2-.7 2.3-1.8L22 7H6"/><circle cx="9.8" cy="20" r="1.45"/><circle cx="18.3" cy="20" r="1.45"/></svg>
             </span>
@@ -297,6 +301,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.31" defer></script>
+    <script src="./app.js?v=0.4.32" defer></script>
   </body>
 </html>

@@ -30,6 +30,8 @@ h1 { font-size: 24px; }
 .node > .visual { width: 100%; height: 100%; margin: 0; box-sizing: border-box; pointer-events: none; }
 .node .handle { display: none; position: absolute; right: -6px; bottom: -6px; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 3px; background: #15877c; cursor: nwse-resize; }
 .node.selected .handle { display: block; }
+.font-size-label { position: absolute; right: 0; top: -15px; padding: 1px 4px; border-radius: 3px; background: #141414; color: #f4f4f4; font-size: 10px; line-height: 13px; pointer-events: none; z-index: 3; white-space: nowrap; }
+#font-details { line-height: 1.6; }
 .node h2 { display: flex; align-items: center; font-size: 22px; line-height: 24px; letter-spacing: -.04em; }
 .node .x { display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); color: var(--muted); }
 .x svg { width: 16px; height: 16px; }
@@ -49,7 +51,27 @@ h1 { font-size: 24px; }
 .node .info { display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); }
 .info svg { width: 20px; height: 20px; }
 #help-popover { position: absolute; top: 80px; left: 40px; right: 40px; z-index: 5; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); color: var(--muted); font-size: 13px; line-height: 1.6; }
-.node .name { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: white; font-size: 16px; }
+.node .name { display: flex; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: white; font-size: 16px; }
+.node .primary, .node .secondary { display: flex; align-items: center; justify-content: center; line-height: 1.3; text-align: center; padding-inline: 6px; }
+.node .management-link { text-align: left; line-height: 1.3; }
+#stage[data-menu="product-compare"] .node[data-id="dismiss"] .visual { display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.3; }
+#stage[data-menu="market-edit"] .node .management-link { font-size: 14px; }
+#stage[data-menu="category-products"] .node[data-id="category-context"] .context { font-size: 14px; }
+#stage[data-menu="category-products"] .node[data-id^="product-"] .context { font-size: 16px; }
+#stage[data-menu="products"] .node[data-id="count"] .context { font-size: 14px; }
+#stage[data-menu="products"] .node .product-outline-action,
+#stage[data-menu="product-compare"] .node[data-id="rename"] .visual,
+#stage[data-menu="product-compare"] .node[data-id="merge"] .visual,
+#stage[data-menu="product-compare"] .node[data-id="dismiss"] .visual,
+#stage[data-menu="product-compare"] .node[data-id="statistics"] .visual { font-size: 14px; }
+#stage[data-menu="markets"] .node .management-link,
+#stage[data-menu="categories"] .node .management-link,
+#stage[data-menu="category-edit"] .node .management-link,
+#stage[data-menu="market-order"] .node .management-link,
+#stage[data-menu="product-target"] .node .management-link,
+#stage[data-menu="product-merge"] .node .management-link,
+#stage[data-menu="market-order"] .node .category-order-row .order-name { font-size: 16px; }
+#stage[data-menu="product-merge"] .node[data-id="source"] .context { font-size: 22px; }
 .node .toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; background: transparent; color: #f4f4f4; border: 0; font-weight: 600; font-size: 14px; }
 .switch { display: block; position: relative; flex: none; width: 42px; height: 24px; border-radius: 20px; background: var(--accent); }
 .switch::after { content: ""; position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; border-radius: 50%; background: var(--accent-text); }
@@ -105,6 +127,7 @@ h1 { font-size: 24px; }
     <label for="theme">App-Farbschema</label><select id="theme"></select>
     <label><input id="grid" type="checkbox" style="width:auto"> Hilfsraster anzeigen</label>
     <label><input id="snap" type="checkbox" style="width:auto"> Auf 8-Pixel-Raster einrasten</label>
+    <label><input id="font-labels" type="checkbox" style="width:auto"> Schriftgrößen in der Vorschau anzeigen</label>
     <p class="hint">Beim Größenwechsel bleiben die Positionen absichtlich erhalten. So siehst du, wo Platz fehlt. Das endgültige responsive Verhalten wird später umgesetzt.</p>
     <label><input id="multi" type="checkbox" style="width:auto"> Mehrfachauswahl beim Anklicken</label>
     <div class="tools"><button id="select-all" class="secondary">Alle auswählen</button><button id="deselect" class="secondary">Auswahl aufheben</button></div>
@@ -118,6 +141,10 @@ h1 { font-size: 24px; }
     <p id="selection" class="hint">Bitte ein Element auswählen.</p>
     <fieldset id="inspector" disabled style="border:0;padding:0;margin:0">
       <label for="text">Text</label><textarea id="text"></textarea>
+      <label for="font-size">Schriftgröße (px)</label><input id="font-size" type="number" min="8" max="72" step="0.5" aria-describedby="font-details">
+      <p id="font-details" class="hint"></p>
+      <div class="tools"><button id="font-reset" class="secondary">Standard-Schriftgröße</button></div>
+      <p class="hint">Schriftänderungen gelten für alle ausgewählten Textelemente. Positionen und Feldgrößen bleiben erhalten; notwendige Umbrüche und Abstände stimmen wir anschließend ab.</p>
       <div class="pair"><div><label for="x">Links</label><input id="x" type="number"></div><div><label for="y">Oben</label><input id="y" type="number"></div><div><label for="w">Breite</label><input id="w" type="number" min="16"></div><div><label for="h">Höhe</label><input id="h" type="number" min="8"></div></div>
       <div class="tools"><button id="left" class="secondary">Linker Rand</button><button id="center" class="secondary">Zentrieren</button><button id="full" class="secondary">Inhaltsbreite</button><button id="open-menu" class="secondary" hidden>Menü öffnen</button><button id="delete" class="secondary danger-button">Element löschen</button></div>
     </fieldset>
@@ -324,6 +351,7 @@ const $ = id => document.getElementById(id), clone = value => JSON.parse(JSON.st
 const storageKey=menuId==="market-edit"?"einkaufszettel.market-layout-editor.v1":`einkaufszettel.${menuId}-layout-editor.v1`;
 let state={version:1,menu:menuId,width:430,height:844,theme:0,nodes:clone(initial)};
 document.title="Layout-Editor · "+menuLabel;
+document.querySelector("#stage").dataset.menu=menuId;
 document.querySelector("h1").textContent="Layout-Editor · "+menuLabel;
 $("stage").classList.toggle("bonus-editor",bonusEditor);
 $("stage").classList.toggle("selection-editor",selectingEditor);
@@ -332,6 +360,8 @@ $("stage").classList.toggle("merge-confirm-editor",menuId==="product-merge-confi
 $("stage").classList.toggle("product-target-editor",menuId==="product-target");
 $("stage").classList.toggle("product-delete-editor",menuId==="product-delete");
 let selected="title", selection=new Set(["title"]), undo=[], redo=[], drag=null;
+const fontSizes=new Map();
+const hasText=node=>!["line","frame","help","close","image"].includes(node.type);
  $("menu-view").value=menuId;
  function openMenu(nextMenu){
   try{
@@ -368,6 +398,7 @@ const tell = text => $("status").textContent=text;
 function snapshot(){undo.push(clone(state));if(undo.length>100)undo.shift();redo=[];}
 function current(){return state.nodes.find(node=>node.id===selected);}
 function render(){
+ fontSizes.clear();
  if(fixedActionsEditor){
   for(const node of state.nodes){
    if(node.id==="line-actions")node.y=state.height-76;
@@ -465,6 +496,20 @@ function render(){
   if(fixedFooter)box.classList.add("footer-node");
   box.addEventListener("pointerdown",event=>start(event,node.id,event.target===handle));
   (fixedFooter?$("stage"):content).append(box);
+  if(hasText(node)){
+   const textElement=node.type==="category"?visual.querySelector(".order-name"):visual;
+   const standard=parseFloat(getComputedStyle(textElement).fontSize);
+   fontSizes.set(node.id,standard);
+   if(node.fontSize!==undefined){
+    visual.style.fontSize=node.fontSize+"px";
+    if(textElement!==visual)textElement.style.fontSize=node.fontSize+"px";
+   }
+   if($("font-labels").checked){
+    const label=document.createElement("span");label.className="font-size-label";
+    label.textContent=(node.fontSize??standard)+" px"+(node.fontSize!==undefined?" *":"");
+    box.append(label);
+   }
+  }
  }
  $("elements").replaceChildren(...state.nodes.map(node=>new Option((node.deleted?"[entfernt] ":"")+node.text,node.id)));
  for(const option of $("elements").options)option.selected=selection.has(option.value);
@@ -475,6 +520,15 @@ function render(){
  $("selection").textContent=selection.size>1?`${selection.size} Elemente ausgewählt · Eigenschaften: ${selected}`:node?node.id+(node.deleted?" · entfernt":""):"Bitte auswählen";
  $("open-menu").hidden=!node||!!node.deleted||!menuForElement(node.id);
  for(const key of ["text","x","y","w","h"])$(key).value=node?node[key]:"";
+ const textNodes=chosen().filter(hasText);
+ const sizes=new Set(textNodes.map(item=>item.fontSize??fontSizes.get(item.id)));
+ $("font-size").disabled=!textNodes.length;
+ $("font-reset").disabled=!textNodes.length;
+ $("font-size").value=sizes.size===1?[...sizes][0]:"";
+ $("font-size").placeholder=sizes.size>1?"Unterschiedliche Größen":"";
+ $("font-details").textContent=node&&hasText(node)&&!node.deleted
+  ?`Standard im Editor: ${fontSizes.get(node.id)} px · Aktuell: ${node.fontSize??fontSizes.get(node.id)} px${node.fontSize!==undefined?" · geändert":""}${sizes.size>1?" · Auswahl enthält unterschiedliche Größen.":""}`
+  :"Für dieses Element gibt es keine bearbeitbare Textgröße.";
 }
 function start(event,id,resize){
  if(event.button!==0)return;event.preventDefault();
@@ -517,6 +571,13 @@ for(const key of ["text","x","y","w","h"])$(key).onchange=()=>{
  if(key!=="text"&&(!Number.isFinite(value)||value<((key==="w")?16:(key==="h")?8:0))){tell("Ungültige Größe oder Position.");render();return;}
  edit(()=>node[key]=value);
 };
+$("font-size").onchange=()=>{
+ const raw=$("font-size").value,value=Number(raw),nodes=chosen().filter(hasText);
+ if(!raw||!Number.isFinite(value)||value<8||value>72){tell("Bitte eine Schriftgröße zwischen 8 und 72 px eingeben.");render();return;}
+ if(nodes.length)edit(()=>nodes.forEach(node=>node.fontSize=value));
+};
+$("font-reset").onclick=()=>{const nodes=chosen().filter(hasText);if(nodes.length)edit(()=>nodes.forEach(node=>delete node.fontSize));};
+$("font-labels").onchange=render;
 $("elements").onchange=()=>{selection=new Set([...$("elements").selectedOptions].map(option=>option.value));selected=[...selection].pop();render();};
 $("select-all").onclick=()=>{selection=new Set(state.nodes.filter(node=>!node.deleted).map(node=>node.id));selected=[...selection][0];render();};
 $("deselect").onclick=()=>{selection.clear();selected=undefined;render();};
@@ -542,7 +603,7 @@ function validate(value){
  }
  if(!value||value.version!==1||value.menu!==menuId||!Number.isInteger(value.theme)||!themes[value.theme]||![320,360,390,430].includes(value.width)||!Number.isFinite(value.height)||value.height<300||value.height>2000||!Array.isArray(value.nodes)||value.nodes.length!==initial.length)throw Error("Ungültiger Editor-Entwurf.");
  const ids=new Set();
- for(const node of value.nodes){const original=initial.find(item=>item.id===node.id);if(!original||ids.has(node.id)||original.type!==node.type||typeof node.text!=="string"||node.text.length>2000||["x","y","w","h"].some(key=>!Number.isFinite(node[key])||node[key]<0||node[key]>10000)||node.w<16||node.h<8||(node.deleted!==undefined&&typeof node.deleted!=="boolean")||(original.type==="choice"&&typeof node.checked!=="boolean"))throw Error("Ungültige Elementdaten.");ids.add(node.id);}
+ for(const node of value.nodes){const original=initial.find(item=>item.id===node.id);if(!original||ids.has(node.id)||original.type!==node.type||typeof node.text!=="string"||node.text.length>2000||["x","y","w","h"].some(key=>!Number.isFinite(node[key])||node[key]<0||node[key]>10000)||node.w<16||node.h<8||(node.deleted!==undefined&&typeof node.deleted!=="boolean")||(original.type==="choice"&&typeof node.checked!=="boolean")||(node.fontSize!==undefined&&(!hasText(node)||!Number.isFinite(node.fontSize)||node.fontSize<8||node.fontSize>72)))throw Error("Ungültige Elementdaten.");ids.add(node.id);}
  return value;
 }
 $("save").onclick=()=>{try{localStorage.setItem(storageKey,JSON.stringify(state));tell("Entwurf in diesem Browser gespeichert. Für die Übergabe zusätzlich exportieren.");}catch(error){tell("Speichern fehlgeschlagen: "+error.message+" Bitte JSON exportieren.");}};

@@ -465,7 +465,7 @@ async function runTests() {
       ["cx", "cy", "r"].map(attribute => wheel.getAttribute(attribute)).join(",")
     ).join("|");
     assert(wheelGeometry(fullCart) === wheelGeometry(emptyCart), "Full and empty carts have different wheel positions");
-    assert(fullCart.querySelector('path[fill="#fff"][stroke="none"]'), "Variant 3 cart contents are missing");
+    assert(fullCart.querySelector('path[fill="currentColor"][stroke="none"]'), "Theme-aware variant 3 cart contents are missing");
   });
   modeToggle.click();
   assert(!doc.querySelector("#items .end-shopping-action"), "End-shopping action appeared in planning mode");
@@ -763,6 +763,18 @@ async function runTests() {
   api.reset();
   const order = state.categories.map(category => category.id);
   api.openCatalog("market-order", {...state.supermarkets[0], category_ids:order});
+  test("Category order uses the approved 16px labels with vertically aligned bordered controls", () => {
+    for (const name of doc.querySelectorAll(".category-order-row .order-name")) {
+      assert(win.getComputedStyle(name).fontSize === "16px", "Order label did not adopt approved size");
+      const box = name.getBoundingClientRect(), row = name.closest(".category-order-row").getBoundingClientRect();
+      assert(Math.abs(box.top + box.height / 2 - row.top - row.height / 2) < 1, "Order label not vertically centered");
+    }
+    assert(win.getComputedStyle(doc.querySelector(".category-selection-button")).fontSize === "16px", "Category selection must use 16px");
+    for (const button of doc.querySelectorAll(".category-order-row button.secondary")) {
+      const style = win.getComputedStyle(button);
+      assert(style.borderTopWidth === "1px" && style.borderTopStyle === "solid", "Order action has no standard border");
+    }
+  });
   const orderFooter = doc.querySelector("#catalog-fixed-actions");
   const orderContent = doc.querySelector("#catalog-content");
   assert(!orderFooter.hidden && [...orderFooter.querySelectorAll("button")].map(button => button.textContent).join("|") === "Abbrechen|Speichern", "Market-order actions are not in the fixed footer");

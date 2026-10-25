@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Design and brightness regression tests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Testoberfläche" style="width:390px;height:844px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script, preview] = await Promise.all([
+    fetch(base + "app.html").then(response => response.text()),
+    fetch(base + "app.js").then(response => response.text()),
+    fetch("color-schemes-preview.html").then(response => response.text()),
+  ]);
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document;
+  const storage = new Map(), errors = [], results = [];
+  let failStorage = false;
+  const api = win.Function("localStorage", "errors", script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+    showError = error => errors.push(error.message);
+    busy = false; entryId = "test";
+    availableLists = [{entry_id: "test", name: "Wocheneinkauf"}];
+    products = [{key: "butter", name: "Butter", usage: {test: {added: 20, weeks: {}}}}];
+    categories = [{id: "dairy", name: "Milchprodukte"}];
+    supermarkets = [{id: "market", name: "REWE", category_ids: ["dairy"]}];
+    currentItems = [
+      {uid: "one", summary: "Butter", status: "needs_action", metadata: {category_id: "dairy"}},
+      {uid: "two", summary: "Milch", status: "completed", metadata: {}}
+    ];
+    render();
+    return {applyDesign, initializeDesign, openCatalog, requestAppConfirmation, setMessage,
+      shopping() { leaveManagement(); planningMode = false; updateModeView(); render(); }};
+  `)({
+    getItem: key => storage.get(key) || null,
+    setItem: (key, value) => {
+      if (failStorage) throw Error("Test: Speicher gesperrt");
+      storage.set(key, value);
+    },
+  }, errors);
+  const assert = (condition, message) => { if (!condition) throw Error(message); };
+  const test = (name, action) => { action(); results.push("PASS " + name); };
+  const options = [...doc.querySelectorAll('#design-options input')];
+  const approved = JSON.parse(preview.match(/const palettes = (\[[\s\S]*?\n\]);/)[1]);
+  const select = theme => {
+    const input = options.find(option => option.value === theme);
+    input.checked = true;
+    input.dispatchEvent(new win.Event("change", {bubbles: true}));
+  };
+  const switchMode = mode => doc.querySelector(`#design-mode input[value="${mode}"]`).click();
+  const visible = () => options.filter(input => !input.parentElement.hidden);
+  const canvas = doc.createElement("canvas").getContext("2d");
+  const rgba = color => {
+    canvas.clearRect(0, 0, 1, 1);
+    canvas.fillStyle = color;
+    canvas.fillRect(0, 0, 1, 1);
+    return [...canvas.getImageData(0, 0, 1, 1).data];
+  };
+  const luminance = color => {
+    const rgb = rgba(color).slice(0, 3).map(value => value / 255)
+      .map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
+    return .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
+  };
+  const contrast = (a, b) => {
+    const x = luminance(a), y = luminance(b);
+    return (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
+  };
+  const background = element => {
+    for (let node = element; node; node = node.parentElement) {
+      const color = win.getComputedStyle(node).backgroundColor;
+      if (rgba(color)[3] === 255) return color;
+    }
+    throw Error("No opaque background for " + element.className);
+  };
+  const readable = selector => {
+    const nodes = doc.querySelectorAll(selector);
+    assert(nodes.length, "Missing contrast target: " + selector);
+    for (const node of nodes) {
+      const ratio = contrast(win.getComputedStyle(node).color, background(node));
+      assert(ratio >= 4.5, `${doc.body.dataset.theme}: ${selector} contrast ${ratio.toFixed(2)} < 4.5`);
+    }
+  };
+  test("All 32 themes are unique: 16 dark and 16 light", () => {
+    assert(options.length === 32 && new Set(options.map(input => input.value)).size === 32, "Wrong theme count");
+    assert(options.filter(input => input.dataset.mode === "light").length === 16, "Wrong light count");
+    api.initializeDesign();
+    assert(doc.body.dataset.theme === "mono" && doc.body.dataset.colorMode === "dark", "Existing default changed");
+    assert(visible().length === 16, "Dark list must contain 16 themes");
+  });
+  test("Existing stored theme is preserved without migration", () => {
+    storage.set("einkaufszettel.design", "botanical");
+    api.initializeDesign();
+    assert(doc.body.dataset.theme === "botanical", "Existing choice lost");
+  });
+  test("Brightness switches select, filter and remember each palette independently", () => {
+    doc.querySelector("#setup").open = true;
+    doc.querySelector("#menu-design").open = true;
+    switchMode("light");
+    assert(doc.body.dataset.theme === "porcelain-blue", "Wrong first light palette");
+    assert(visible().length === 16 && visible().every(input => input.dataset.mode === "light"), "Mixed light list");
+    select("sage-paper");
+    switchMode("dark");
+    assert(doc.body.dataset.theme === "botanical", "Previous dark choice lost");
+    select("deep-ocean");
+    switchMode("light");
+    assert(doc.body.dataset.theme === "sage-paper", "Previous light choice lost");
+    assert(doc.querySelector("#setup").open && doc.querySelector("#menu-design").open, "Design interaction closed menu");
+    assert(storage.get("einkaufszettel.design") === "sage-paper", "Active theme not persisted");
+    assert(storage.get("einkaufszettel.design.dark") === "deep-ocean", "Dark choice not persisted");
+    assert(storage.get("einkaufszettel.design.light") === "sage-paper", "Light choice not persisted");
+    api.applyDesign("mono");
+    api.initializeDesign();
+    assert(doc.body.dataset.theme === "sage-paper", "Reload did not restore light theme");
+    switchMode("dark");
+    assert(doc.body.dataset.theme === "deep-ocean", "Reload did not restore remembered dark choice");
+    doc.querySelector("#setup").open = false;
+  });
+  for (const option of options) {
+    select(option.value);
+    const light = option.dataset.mode === "light";
+    test(`${option.value}: selection, native controls and browser chrome follow brightness`, () => {
+      assert(option.checked && options.filter(input => input.checked).length === 1, "Invalid radio state");
+      assert(doc.querySelector("#design-name").textContent === option.parentElement.querySelector("span:not([aria-hidden])").textContent, "Wrong current name");
+      assert(win.getComputedStyle(doc.body).colorScheme === (light ? "light" : "dark"), "Wrong native control scheme");
+      assert(doc.querySelector('meta[name="theme-color"]').content === win.getComputedStyle(doc.body).getPropertyValue("--bg").trim(), "Wrong browser toolbar color");
+    });
+    if (option.dataset.mode) {
+      test(`${option.value}: every palette color matches the approved proposal`, () => {
+        const name = option.parentElement.querySelector("span:not([aria-hidden])").textContent;
+        const palette = approved.find(palette => palette[1] === name);
+        assert(palette && palette[2] === option.dataset.mode, "Approved palette missing");
+        const properties = ["bg", "surface", "surface2", "line", "text", "muted", "accent", "accent-text", "error", "success"];
+        const style = win.getComputedStyle(doc.body);
+        properties.forEach((property, index) => {
+          assert(style.getPropertyValue("--" + property).trim() === palette[index + 4], "Palette mismatch: " + property);
+        });
+        assert(win.getComputedStyle(option.parentElement.querySelector(".design-swatch")).backgroundColor ===
+          win.getComputedStyle(doc.querySelector(".primary")).backgroundColor, "Swatch differs from palette accent");
+      });
+      api.shopping();
+      test(`${option.value}: shopping and status text meet 4.5:1 contrast`, () => {
+        readable(".item:not(.completed) .item-name, .item-note, .end-shopping-action, .add-form input, #market-select");
+        if (light) readable(".item.completed .item-name");
+        const message = doc.querySelector("#message");
+        for (const status of ["success", "error", "info"]) {
+          api.setMessage(message, "Status", status);
+          readable("#message");
+        }
+        api.setMessage(message, "");
+      });
+      test(`${option.value}: article selection and category picker stay readable`, () => {
+        doc.querySelector("#open-common-items").click();
+        assert(doc.querySelector("#common-items-dialog").open, "Article selection did not open");
+        readable(".common-item-name, .common-item-frequency, .common-items-tab, #common-items-list-title");
+        doc.querySelector("#common-items-dialog").close();
+        doc.querySelector(".item:not(.completed) .item-name").click();
+        assert(doc.querySelector("#edit-item").open, "Article editor did not open");
+        doc.querySelector("#edit-category-trigger").click();
+        readable("#edit-summary, #edit-quantity, #edit-notes, #edit-category-trigger, #edit-category-search, .category-option");
+        doc.querySelector("#cancel-edit").click();
+      });
+      api.openCatalog("products");
+      test(`${option.value}: catalog actions, search and help stay readable`, () => {
+        readable("#catalog-title, .product-management-name, .product-management-usage, .product-outline-action, .danger-button, .product-search, #catalog-fixed-actions button");
+      });
+      api.openCatalog("product-edit", {key: "butter", name: "Butter"});
+      test(`${option.value}: form and confirmation stay readable`, () => {
+        readable("#product-name, #catalog-fixed-actions button");
+        api.requestAppConfirmation({title: "Artikel löschen?", productName: "Butter", description: "Statistik wird gelöscht.", onConfirm() {}});
+        readable("#app-confirm-title, #app-confirm-product, #app-confirm-description, #accept-app-confirm, #cancel-app-confirm");
+        doc.querySelector("#app-confirm").close();
+      });
+    }
+  }
+  for (const width of [320, 390, 430]) {
+    frame.style.width = width + "px";
+    api.shopping();
+    api.applyDesign("ivory-burgundy");
+    doc.querySelector("#setup").open = true;
+    doc.querySelector("#menu-design").open = true;
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    test(`Light design list scrolls inside the menu at ${width}px`, () => {
+      const menu = doc.querySelector(".setup-actions");
+      menu.scrollTop = menu.scrollHeight;
+      assert(menu.scrollTop > 0 && menu.scrollWidth <= menu.clientWidth, "Menu not scrollable or overflows");
+      assert(doc.documentElement.scrollWidth <= width, "Page overflows");
+      switchMode("dark");
+      assert(visible().length === 16, "Dark switch failed after scrolling");
+      switchMode("light");
+      assert(visible().length === 16, "Light switch failed after scrolling");
+    });
+    doc.querySelector("#setup").open = false;
+  }
+  test("Storage and invalid saved themes report errors explicitly", () => {
+    failStorage = true;
+    select("warm-linen");
+    assert(doc.body.dataset.theme === "warm-linen", "Storage error should not prevent visual change");
+    assert(doc.querySelector("#design-message").textContent.includes("Speicher gesperrt"), "Storage error hidden");
+    assert(errors.at(-1).includes("Speicher gesperrt"), "Global error missing");
+    failStorage = false;
+    storage.set("einkaufszettel.design", "unknown");
+    api.initializeDesign();
+    assert(errors.at(-1).includes("unbekannt"), "Unknown saved theme hidden");
+    select("sage-paper");
+    assert(!doc.querySelector("#design-message").textContent, "Error did not clear after valid selection");
+  });
+  document.querySelector("#results").textContent = results.join("\n");
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent += "\nFAIL " + error.stack;
+  throw error;
+});
+</script>
+</html>
