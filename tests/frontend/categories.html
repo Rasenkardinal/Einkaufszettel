@@ -747,7 +747,7 @@ async function runTests() {
     const menuTitle = doc.querySelector(".setup-menu-header h2");
     assert(menuTitle.textContent === "Einstellungen", "Settings menu title missing");
     assert(!menuTitle.parentElement.querySelector("p"), "Menu subtitle must be removed");
-    assert(syncStyles.includes(".setup-menu-header { padding: 14px 12px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb,var(--accent) 8%,var(--surface));"), "Menu header accent tint is missing");
+    assert(syncStyles.includes(".setup-menu-header { padding: 18px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb,var(--accent) 8%,var(--surface));"), "Menu header accent tint or approved padding is missing");
     const monoHeaderBackground = win.getComputedStyle(menuTitle.parentElement).backgroundColor;
     doc.body.dataset.theme = "botanical";
     assert(win.getComputedStyle(menuTitle.parentElement).backgroundColor !== monoHeaderBackground, "Menu header does not follow the selected theme accent");

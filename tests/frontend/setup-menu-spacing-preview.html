@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dreipunktmenü · 8 Designvorschläge</title>
+<link rel="stylesheet" href="../../custom_components/einkaufszettel/www/app.css">
+<style>
+body { padding: 24px; }
+h1 { font-size: 26px; }
+.intro { color: var(--muted); line-height: 1.6; max-width: 1000px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 20px 0; }
+.toolbar label { display: flex; gap: 10px; align-items: center; }
+select { background: var(--surface); color: #f4f4f4; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+.variants { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,390px),1fr)); gap: 28px; align-items: start; }
+.variant { min-width: 0; }
+.variant h2 { font-size: 18px; margin-bottom: 6px; }
+.metrics { min-height: 44px; margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.phone { height: 740px; width: 100%; max-width: 430px; position: relative; isolation: isolate; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--bg); }
+.shopping { padding: 24px 20px; }
+.shopping header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+.shopping h3 { font-size: 22px; margin: 0; }
+.shopping .entry { padding: 20px 0; border-bottom: 1px solid var(--line); }
+.shopping .entry small { display: block; margin: 8px 0 0 28px; color: var(--muted); }
+.shopping .input { background: var(--surface); border: 1px solid var(--line); padding: 16px; border-radius: 10px; margin-bottom: 28px; color: var(--muted); }
+.shade { position: absolute; inset: 0; background: rgb(0 0 0 / var(--dim)); z-index: 1; }
+.phone .setup-actions { top: 76px; right: 16px; width: calc(100% - 32px); max-width: 340px; max-height: calc(100% - 96px); z-index: 2; }
+.phone .setup-menu-header { padding: 18px 12px; }
+.phone .setup-group { padding: var(--group-space) 0; }
+.phone .setup-group-title { margin: 0 12px var(--heading-space); }
+.phone .setup-group > button, .phone .setup-section > summary { min-height: var(--row); padding: 12px; }
+.phone .setup-group > button + button, .phone .setup-section + .setup-section { margin-top: var(--row-gap); }
+.phone .setup-group + .setup-group { margin-top: var(--group-gap); }
+.phone .setup-submenu button, .phone .setup-submenu a { min-height: var(--row); }
+.phone .setup-offline-note { padding-block: 16px 8px; }
+.phone[data-separator="space"] .setup-group { border-bottom: 0; }
+.phone[data-separator="cards"] .setup-group { border: 1px solid var(--line); border-radius: 10px; padding-inline: 4px; margin-top: 12px; }
+.phone[data-separator="strong"] .setup-group:first-of-type { border-bottom-width: 2px; }
+.recommend { color: #35d885; }
+</style>
+<body>
+<h1>Dreipunktmenü · 8 Designvorschläge</h1>
+<p class="intro">Gleiche Menüstruktur und bestehende App-Farben. Variiert werden Zeilenhöhe, Zwischenräume, Gruppentrennung und die Abdunklung der Einkaufsliste. Untermenüs lassen sich aufklappen. Nur Vorschauen mit Beispieldaten, keine Änderungen an der App.</p>
+<div class="toolbar">
+  <label>Farbschema <select id="theme"><option value="mono">Mono</option><option value="botanical">Botanical</option><option value="midnight-plum">Midnight Plum</option><option value="market-journal">Market Journal</option><option value="fresh-signal">Fresh Signal</option><option value="tomato">Tomato</option><option value="lime-focus">Lime Focus</option><option value="indigo-pocket">Indigo Pocket</option></select></label>
+  <label><input type="checkbox" id="expanded"> Synchronisation in allen Vorschlägen öffnen</label>
+  <label><input type="checkbox" id="dimming" checked> Hintergrund abdunkeln</label>
+</div>
+<main class="variants"></main>
+<template id="preview">
+  <div class="phone">
+    <div class="shopping" aria-hidden="true">
+      <header><h3>Wocheneinkauf</h3><span>•••</span></header>
+      <div class="input">Was fehlt noch? <span style="float:right">＋</span></div>
+      <h3>Auf der Liste</h3>
+      <div class="entry">□ &nbsp; Milch<small>2 × 1 Liter</small></div>
+      <div class="entry">□ &nbsp; Butter</div>
+      <div class="entry">□ &nbsp; Äpfel<small>1 kg</small></div>
+      <div class="entry">□ &nbsp; Brot</div>
+      <div class="entry">☑ &nbsp; Kaffee</div>
+    </div>
+    <div class="shade"></div>
+    <div class="setup-actions" aria-label="Menüvorschau">
+      <header class="setup-menu-header"><h2>Einstellungen</h2></header>
+      <section class="setup-group">
+        <h3 class="setup-group-title">Verwalten</h3>
+        <button type="button">Supermärkte verwalten</button>
+        <button type="button">Produktkategorien verwalten</button>
+        <button type="button">Artikel verwalten</button>
+      </section>
+      <section class="setup-group">
+        <h3 class="setup-group-title">Einstellungen</h3>
+        <details class="setup-section sync"><summary>Synchronisation</summary><div class="setup-submenu"><button type="button">Listen verwalten</button><button type="button">Quellen abgleichen</button></div></details>
+        <details class="setup-section"><summary>Installation</summary><div class="setup-submenu"><button type="button">Mit HA verbinden</button><button type="button">App installieren</button><button type="button">Home Assistant öffnen</button></div></details>
+        <details class="setup-section"><summary>Design <span class="current-design">Mono</span></summary><div class="setup-submenu"><p>Farbschema über die Auswahl oberhalb aller Vorschauen wechseln.</p></div></details>
+      </section>
+      <div class="setup-offline-note"><span>App und Liste sind offline verfügbar</span><span>0.4.30</span></div>
+    </div>
+  </div>
+</template>
+<script>
+const variants=[
+ {name:"1 · Behutsam luftiger",row:48,gap:2,group:12,heading:8,between:8,dim:.35,separator:"line"},
+ {name:"2 · Ausgewogen",row:52,gap:4,group:16,heading:12,between:12,dim:.45,separator:"line"},
+ {name:"3 · Großzügige Zeilen",row:56,gap:4,group:16,heading:12,between:16,dim:.50,separator:"line"},
+ {name:"4 · Deutliche Gruppen",row:52,gap:4,group:20,heading:14,between:20,dim:.50,separator:"strong"},
+ {name:"5 · Ruhe durch Freiraum",row:52,gap:6,group:16,heading:12,between:28,dim:.55,separator:"space"},
+ {name:"6 · Gerahmte Gruppen",row:52,gap:4,group:16,heading:12,between:12,dim:.50,separator:"cards"},
+ {name:"7 · Maximal luftig",row:60,gap:6,group:24,heading:16,between:24,dim:.60,separator:"line"},
+ {name:"8 · Fokus und Balance",row:54,gap:4,group:18,heading:12,between:20,dim:.60,separator:"line"}
+];
+for(const v of variants){
+ const article=document.createElement("article");article.className="variant";
+ const title=document.createElement("h2");title.textContent=v.name;
+ const metrics=document.createElement("p");metrics.className="metrics";
+ metrics.textContent=`Zeilen ${v.row} px · Zeilenlücke ${v.gap} px · Gruppenabstand ${v.between} px · Gruppenpolster ${v.group} px · Abdunklung ${Math.round(v.dim*100)} %`;
+ const fragment=document.querySelector("#preview").content.cloneNode(true);
+ const phone=fragment.querySelector(".phone");phone.dataset.separator=v.separator;phone.dataset.dim=v.dim;
+ for(const [key,value] of Object.entries({"--row":v.row+"px","--row-gap":v.gap+"px","--group-space":v.group+"px","--heading-space":v.heading+"px","--group-gap":v.between+"px","--dim":v.dim}))phone.style.setProperty(key,value);
+ article.append(title,metrics,fragment);document.querySelector(".variants").append(article);
+}
+document.querySelector("#theme").onchange=event=>{
+ document.body.dataset.theme=event.target.value;
+ for(const label of document.querySelectorAll(".current-design"))label.textContent=event.target.selectedOptions[0].textContent;
+};
+document.querySelector("#expanded").onchange=event=>{
+ for(const details of document.querySelectorAll(".sync"))details.open=event.target.checked;
+};
+document.querySelector("#dimming").onchange=event=>{
+ for(const phone of document.querySelectorAll(".phone"))phone.style.setProperty("--dim",event.target.checked?phone.dataset.dim:0);
+};
+</script>
+</body>
+</html>

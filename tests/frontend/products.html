@@ -100,6 +100,45 @@ async function runTests() {
   `)(calls);
   const assert = (condition, message) => { if (!condition) throw Error(message); };
   function test(name, action) { action(); results.push("PASS " + name); }
+  for (const [width, height] of [[320, 568], [390, 740], [430, 844]]) {
+    frame.style.width = width + "px";
+    frame.style.height = height + "px";
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    test(`Setup variant 3 preserves spacing, backdrop and submenu behavior at ${width}px`, () => {
+      const setup = doc.querySelector("#setup"), trigger = setup.querySelector("summary");
+      trigger.click();
+      assert(setup.open, "Menu did not open");
+      const menu = setup.querySelector(".setup-actions"), backdrop = setup.querySelector(".setup-backdrop");
+      const b = backdrop.getBoundingClientRect();
+      assert(b.left === 0 && b.top === 0 && b.width === width && b.height === height, "Backdrop does not cover the viewport");
+      assert(win.getComputedStyle(backdrop).backgroundColor === "rgba(0, 0, 0, 0.5)", "Backdrop is not 50% black");
+      assert(doc.elementFromPoint(2, height - 2) === backdrop, "Backdrop does not block list interactions");
+      const groups = setup.querySelectorAll(".setup-group"), actions = groups[0].querySelectorAll("button");
+      for (const action of actions) assert(action.getBoundingClientRect().height === 56, "Row is not 56px");
+      assert(actions[1].getBoundingClientRect().top - actions[0].getBoundingClientRect().bottom === 4, "Row gap is not 4px");
+      assert(win.getComputedStyle(groups[0]).paddingTop === "16px" &&
+        win.getComputedStyle(groups[1]).marginTop === "16px", "Group spacing differs from variant 3");
+      const sync = doc.querySelector("#menu-sync");
+      sync.querySelector("summary").click();
+      assert(sync.open && setup.open, "Opening a submenu closed the popup");
+      sync.querySelector("summary").dispatchEvent(new win.KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}));
+      assert(!sync.open && setup.open, "Escape did not close the nested section first");
+      assert(menu.getBoundingClientRect().bottom <= height, "Popup extends below viewport");
+      sync.open = true;
+      menu.scrollTop = menu.scrollHeight;
+      assert(menu.scrollTop > 0, "Expanded menu should scroll internally");
+      backdrop.click();
+      assert(!setup.open && doc.activeElement === trigger, "Backdrop did not close menu and restore focus");
+      assert(backdrop.getClientRects().length === 0, "Backdrop remains visible after closing");
+      sync.open = false;
+      trigger.click();
+      trigger.dispatchEvent(new win.KeyboardEvent("keydown", {key: "Escape", bubbles: true}));
+      assert(!setup.open, "Escape did not close menu");
+    });
+  }
+  frame.style.width = "390px";
+  frame.style.height = "844px";
+  await new Promise(resolve => win.requestAnimationFrame(resolve));
   const row = api.productManagementRow(source, target);
   doc.querySelector(".app").replaceChildren(row);
   test("Comparison rename uses a dark button beside the saved name with decorative icons", () => {
@@ -161,7 +200,7 @@ async function runTests() {
     }
     const originalTheme = doc.body.dataset.theme;
     const reference = doc.createElement("button");
-    reference.className = "primary";
+    reference.className = "secondary";
     reference.style.border = "1px solid var(--line)";
     plain.append(reference);
     for (const theme of ["mono", "botanical", "midnight-plum", "market-journal", "fresh-signal", "tomato", "lime-focus", "indigo-pocket"]) {
@@ -171,8 +210,8 @@ async function runTests() {
         const style = win.getComputedStyle(button);
         assert(style.borderTopWidth === "1px" && style.borderTopStyle === "solid" &&
           style.borderTopColor === referenceStyle.borderTopColor, `Action border differs from app border in ${theme}`);
-        assert(style.backgroundColor === referenceStyle.backgroundColor, `Action must use the accent background in ${theme}`);
-        assert(style.color === referenceStyle.color, `Action must use accent text in ${theme}`);
+        assert(style.backgroundColor === referenceStyle.backgroundColor, `Action must use the dark standard background in ${theme}`);
+        assert(style.color === referenceStyle.color, `Action must use standard text in ${theme}`);
       }
     }
     doc.body.dataset.theme = originalTheme;
@@ -257,6 +296,26 @@ async function runTests() {
     assert(doc.activeElement.id === "cancel-app-confirm", "Safe initial focus missing");
     assert(!calls.some(call => call.save?.[0] === "delete_product"), "Deleted before confirmation");
     });
+    for (const width of [320, 390, 430]) {
+      frame.style.width = width + "px";
+      await new Promise(resolve => win.requestAnimationFrame(resolve));
+      test(`Delete confirmation info icon follows the header standard at ${width}px`, () => {
+        const title = doc.querySelector("#app-confirm-title").getBoundingClientRect();
+        const help = doc.querySelector("#app-confirm-help-trigger");
+        const icon = help.getBoundingClientRect();
+        assert(Math.abs(icon.left - title.right - 16) < 1, "Info icon must sit 16px after the title");
+        assert(Math.abs(icon.top + icon.height / 2 - title.top - title.height / 2) < 1, "Info icon must be vertically centered on title");
+        assert(icon.width === 34 && icon.height === 34, "Info icon must be 34px square");
+        assert(title.height >= 48, "Header must retain the standard 48px title height");
+        assert(dialog.scrollWidth === dialog.clientWidth, "Confirmation overflows horizontally");
+        help.click();
+        assert(!doc.querySelector("#app-confirm-help").hidden, "Delete help did not open");
+        help.click();
+        assert(doc.querySelector("#app-confirm-help").hidden, "Delete help did not close");
+      });
+    }
+    frame.style.width = "390px";
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
     doc.querySelector("#cancel-app-confirm").click();
     assert(!dialog.open && !calls.some(call => call.save?.[0] === "delete_product"), "Cancel did not protect the article");
     await new Promise(resolve => win.requestAnimationFrame(resolve));
@@ -286,6 +345,23 @@ async function runTests() {
     });
     used.remove();
   }
+  test("Article search sits above the list and filters without changing the catalog", () => {
+    const search = content.querySelector(".product-search");
+    const rows = [...content.querySelectorAll(".product-management-row")];
+    assert(search.type === "search" && search.getAttribute("aria-label") === "Artikel suchen", "Accessible search missing");
+    assert(search.getBoundingClientRect().bottom < rows[0].getBoundingClientRect().top, "Search must be above article list");
+    search.value = "ARTIKEL 05";
+    search.dispatchEvent(new win.Event("input", {bubbles: true}));
+    assert(rows.filter(row => !row.hidden).length === 1, "Case-insensitive search did not filter");
+    assert(content.querySelector(".product-list-summary").textContent === "1 Artikel", "Filtered count incorrect");
+    search.value = "Nicht vorhanden";
+    search.dispatchEvent(new win.Event("input", {bubbles: true}));
+    assert(rows.every(row => row.hidden), "No-match search still shows rows");
+    assert(content.querySelector(".product-list-summary").textContent === "0 Artikel", "Empty count incorrect");
+    search.value = "";
+    search.dispatchEvent(new win.Event("input", {bubbles: true}));
+    assert(rows.every(row => !row.hidden) && rows.length === 60, "Clearing search did not restore the unchanged catalog");
+  });
   test("Article add action uses the existing fixed footer on a long list", () => {
     assert(page.classList.contains("has-fixed-actions"), "Fixed-footer layout missing");
     assert(!footer.hidden && footer.children.length === 2, "Approved footer actions required");
