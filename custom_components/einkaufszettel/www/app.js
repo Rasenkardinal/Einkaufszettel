@@ -2498,7 +2498,7 @@ function updateSyncAnimation() {
   if (!active || reducedSyncMotion.matches) {
     window.cancelAnimationFrame(syncAnimationFrame);
     syncAnimationFrame = undefined;
-    if (active) drawSyncSpinner(.45);
+    drawSyncSpinner(.45);
     return;
   }
   if (syncAnimationFrame !== undefined) return;

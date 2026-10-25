@@ -164,7 +164,13 @@ async function runTests() {
     assert(firstArc.getTotalLength() > shortLength * 4, "Sync arcs must grow rather than only rotate");
     api.updateConnection("online");
     assert(!doc.querySelector(".sync-actions").classList.contains("syncing"), "Startup spinner not stopped after connection");
-    assert(win.getComputedStyle(spinner).display === "none", "Idle state must restore the original static sync icon");
+    assert(win.getComputedStyle(spinner).display === "block", "Idle state must keep the double-sync icon visible");
+    assert(doc.querySelectorAll("#sync > svg").length === 1, "Legacy single-arrow icon must be removed");
+    const idlePaths = [...spinner.querySelectorAll("path")].map(path => path.getAttribute("d"));
+    assert(idlePaths.every(Boolean), "Idle double-sync arcs and arrowheads must all be drawn");
+    api.setBusy(false);
+    assert([...spinner.querySelectorAll("path")].every((path, index) => path.getAttribute("d") === idlePaths[index]),
+      "Idle double-sync must keep a stable pose");
     assert(doc.querySelector(".sync-actions").dataset.status === "online", "Online state missing");
   });
   const row = api.productManagementRow(source, target);
