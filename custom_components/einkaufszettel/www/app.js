@@ -20,7 +20,6 @@ const elements = {
   closeItemPhoto: document.querySelector("#close-item-photo"),
   itemPhotoViewport: document.querySelector("#item-photo-viewport"),
   itemPhotoImage: document.querySelector("#item-photo-image"),
-  itemPhotoCaption: document.querySelector("#item-photo-caption"),
   marketFlyout: document.querySelector("#market-flyout"),
   marketName: document.querySelector("#market-name"),
   manageSupermarkets: document.querySelector("#manage-supermarkets"),
@@ -442,7 +441,6 @@ function openItemPhoto(item) {
   resetItemPhotoZoom();
   elements.itemPhotoImage.src = item.metadata.image;
   elements.itemPhotoImage.alt = `Foto von ${item.summary}`;
-  elements.itemPhotoCaption.textContent = `${item.summary} · Mit zwei Fingern zoomen, am Desktop Mausrad oder Doppelklick.`;
   elements.itemPhotoDialog.showModal();
 }
 

@@ -81,6 +81,9 @@ async function runTests() {
   const photoViewport = doc.querySelector("#item-photo-viewport");
   const photoImage = doc.querySelector("#item-photo-image");
   assert(photoDialog.open, "Tapping the photo icon did not open the image viewer");
+  assert(photoDialog.getAttribute("aria-label") === "Artikelbild", "Photo viewer dialog is not accessibly named");
+  assert(!photoDialog.querySelector("h1,h2,h3,p,figcaption"), "Photo viewer contains visible text");
+  assert(photoDialog.innerText.trim() === "", "Photo viewer displays text alongside the image and close icon");
   assert(photoImage.src === image && photoImage.alt === "Foto von Tomaten", "Image viewer did not show the selected item image");
   photoViewport.dispatchEvent(new win.WheelEvent("wheel", {
     bubbles: true, cancelable: true, deltaY: -100, clientX: 190, clientY: 220,

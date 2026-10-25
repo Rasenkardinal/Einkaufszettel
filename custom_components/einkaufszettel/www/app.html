@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#141414">
     <meta name="description" content="Dein Einkaufszettel – auch offline verfügbar.">
-    <meta name="app-version" content="0.4.43">
+    <meta name="app-version" content="0.4.44">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.43">
+    <link rel="stylesheet" href="./app.css?v=0.4.44">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -282,9 +282,8 @@
         <div class="dialog-actions"><button class="secondary" value="close" autofocus>Schließen</button></div>
       </form>
     </dialog>
-    <dialog id="item-photo-dialog" class="item-photo-dialog" aria-labelledby="item-photo-dialog-title">
+    <dialog id="item-photo-dialog" class="item-photo-dialog" aria-label="Artikelbild">
       <header class="item-photo-dialog-header">
-        <h2 id="item-photo-dialog-title">Artikelbild</h2>
         <button id="close-item-photo" class="item-photo-dialog-close" type="button" aria-label="Bild schließen">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
         </button>
@@ -292,7 +291,6 @@
       <div id="item-photo-viewport" class="item-photo-viewport">
         <img id="item-photo-image" class="item-photo-image" alt="">
       </div>
-      <p id="item-photo-caption" class="item-photo-caption"></p>
     </dialog>
     <dialog id="common-items-dialog" aria-labelledby="common-items-title">
       <header class="common-items-header">
@@ -325,6 +323,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.43" defer></script>
+    <script src="./app.js?v=0.4.44" defer></script>
   </body>
 </html>
