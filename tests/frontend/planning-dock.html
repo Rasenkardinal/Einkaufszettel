@@ -41,6 +41,7 @@ async function runTests() {
     test("Planning dock stays at the bottom with standard controls at " + width + "px", () => {
       const box = dock.getBoundingClientRect();
       assert(Math.abs(box.bottom - win.innerHeight) < 1, "Dock not at screen bottom");
+      assert(parseFloat(win.getComputedStyle(dock).paddingBottom) >= 28, "Display corners need at least 28px bottom padding");
       assert(box.width === Math.min(width,700), "Dock does not match app width");
       assert(Math.abs(box.left - app.getBoundingClientRect().left) < 1, "Dock not centered with app");
       assert(win.getComputedStyle(input).fontSize === "16px", "Input can trigger mobile auto-zoom");
@@ -51,11 +52,13 @@ async function runTests() {
     viewport.dispatchEvent(new win.Event("resize"));
     await pause();
     input.focus();
+    api.fitPlanningDock();
     input.value = "But";
     input.dispatchEvent(new win.Event("input", {bubbles:true}));
     test("Keyboard docks the bar and suggestions open upward at " + width + "px", () => {
       const box = dock.getBoundingClientRect(), list = suggestions.getBoundingClientRect();
       assert(Math.abs(box.bottom - 440) < 1, "Dock does not touch keyboard top");
+      assert(win.getComputedStyle(dock).paddingBottom === "12px", "Extra corner spacing must be removed above keyboard");
       assert(!suggestions.hidden && suggestions.children.length === 2, "Suggestions missing");
       assert(list.bottom <= box.top && list.top >= 0, "Suggestions are covered or offscreen");
       assert(doc.documentElement.scrollWidth <= width, "Horizontal overflow");
@@ -67,6 +70,10 @@ async function runTests() {
     });
     viewport.height = 740; viewport.offsetTop = 0;
     viewport.dispatchEvent(new win.Event("resize"));
+    test("Closing keyboard restores corner spacing at " + width + "px", () => {
+      assert(!dock.classList.contains("keyboard-open"), "Keyboard state not cleared");
+      assert(parseFloat(win.getComputedStyle(dock).paddingBottom) >= 28, "Corner padding not restored");
+    });
     api.planning(false);
     test("Shopping mode removes dock and reserved space at " + width + "px", () => {
       assert(!dock.getClientRects().length && !app.classList.contains("planning-mode"), "Shopping dock still present");

@@ -1864,19 +1864,31 @@ window.addEventListener("beforeunload", event => {
   if (catalogDirty || managingSupermarkets) { event.preventDefault(); event.returnValue = ""; }
 });
 
+let planningViewportWidth = window.innerWidth;
+let planningViewportHeight = window.innerHeight;
+
 function fitPlanningDock() {
   const app = document.querySelector("main.app");
   const viewport = window.visualViewport;
+  if (planningViewportWidth !== window.innerWidth) {
+    planningViewportWidth = window.innerWidth;
+    planningViewportHeight = window.innerHeight;
+  }
+  planningViewportHeight = Math.max(planningViewportHeight, window.innerHeight);
+  const visibleHeight = viewport ? viewport.height : window.innerHeight;
+  const keyboardOpen = planningViewportHeight - visibleHeight > 150 &&
+    (document.activeElement === elements.newItem || elements.addForm.classList.contains("keyboard-open"));
+  elements.addForm.classList.toggle("keyboard-open", keyboardOpen);
   const visibleBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
   const offset = Math.max(0, window.innerHeight - visibleBottom);
   elements.addForm.style.setProperty("--planning-dock-offset", `${offset}px`);
   const height = elements.addForm.getBoundingClientRect().height;
   if (height) app.style.setProperty("--planning-dock-height", `${height}px`);
-  const visibleHeight = viewport ? viewport.height : window.innerHeight;
   elements.addForm.style.setProperty("--planning-suggestion-height", `${Math.max(0, visibleHeight - height - 16)}px`);
 }
 
 window.addEventListener("resize", fitPlanningDock);
+elements.newItem.addEventListener("focus", fitPlanningDock);
 window.visualViewport?.addEventListener("resize", fitPlanningDock);
 window.visualViewport?.addEventListener("scroll", fitPlanningDock);
 new ResizeObserver(fitPlanningDock).observe(elements.addForm);

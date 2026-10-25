@@ -79,6 +79,12 @@ body { padding: 28px; margin: 0; }
 .phone.shopping .dock, .phone.shopping .keyboard { display: none; }
 .phone.shopping .list-area { margin-bottom: 0; padding-bottom: 20px; }
 .note { color: var(--muted); font-size: 13px; line-height: 1.8; margin-top: 24px; }
+.comparison .phone { border-radius: 36px; }
+.comparison .phone .dock { padding-bottom: 12px; }
+.comparison .phone.after:not(.keyboard-open) .dock { padding-bottom: 28px; }
+.comparison .phone .home-indicator { display: none; }
+.comparison .phone.keyboard-open .dock { padding-bottom: 12px; }
+.comparison .card-controls { display: none; }
 @media(max-width:480px) { body { padding: 16px; } .proposal { padding: 12px; } .app-header { padding-inline: 12px; } .heading { gap: 8px; } .heading h3 { font-size: 20px; } }
 </style>
 <body>
@@ -202,6 +208,34 @@ if (new URLSearchParams(location.search).get("variant") === "1") {
   cards[0].querySelector(".card-controls").hidden = true;
   document.querySelector(".grid").style.maxWidth = "430px";
   document.querySelector(".preview > h1").textContent = "Standard-Dock · Planungsmodus";
+}
+if (new URLSearchParams(location.search).get("compare") === "corners") {
+  document.body.classList.add("comparison");
+  document.querySelector(".controls").hidden = true;
+  document.querySelector(".preview > h1").textContent = "Standard-Dock · Vorher / Nachher";
+  document.querySelector(".intro").textContent = "Identische Geräte mit abgerundeten Displayecken. Ohne Tastatur sitzen Suchfeld und Plus nachher 16 px höher. Mit Tastatur bleiben beide Varianten gleich: kein zusätzlicher Abstand.";
+  const captions = [
+    ["Vorher · ohne Tastatur", "12 px Abstand unter den Bedienelementen. Die Leiste sitzt nahe an den runden Displayecken."],
+    ["Nachher · ohne Tastatur", "28 px statt 12 px: Suchfeld und Plus sitzen 16 px höher. Der Hintergrund reicht weiterhin bis zum Rand."],
+    ["Vorher · mit Tastatur", "12 px Innenabstand über der Tastatur. Das Dock schließt direkt an der Tastaturoberkante ab."],
+    ["Nachher · mit Tastatur", "Unverändert 12 px Innenabstand. Die zusätzlichen 16 px entfallen bei geöffneter Tastatur vollständig."]
+  ];
+  cards.forEach((card, index) => {
+    const phone = card.querySelector(".phone");
+    phone.className = "phone v1" + (index % 2 ? " after" : "");
+    card.querySelector("h2").textContent = captions[index][0];
+    card.querySelector(".description").textContent = captions[index][1];
+    phone.setAttribute("aria-label", captions[index][0]);
+    if (index >= 2) {
+      setKeyboard(card, true);
+      card.querySelector("input").value = "But";
+      suggestions(card);
+    }
+    card.querySelector(".state-label").textContent = index >= 2
+      ? "Tastatur offen · 12 px Innenabstand · kein Zusatzabstand"
+      : index === 0 ? "Unterer Abstand: 12 px" : "Unterer Abstand: 28 px · +16 px";
+  });
+  document.querySelector(".note").textContent = "Maßstäbliche Vorschau mit simulierten Displayecken und Tastaturen. Auf Geräten mit größerer Safe-Area kommt deren Sicherheitsabstand hinzu. Die Änderung ist bereits vorbereitet, aber noch nicht veröffentlicht.";
 }
 </script>
 </body>
