@@ -21,6 +21,7 @@ const elements = {
   manageSupermarkets: document.querySelector("#manage-supermarkets"),
   manageProducts: document.querySelector("#manage-products"),
   catalogPage: document.querySelector("#catalog-page"),
+  catalogClose: document.querySelector("#catalog-close"),
   catalogTitle: document.querySelector("#catalog-title"),
   catalogHelp: document.querySelector("#catalog-help"),
   catalogHelpTrigger: document.querySelector("#catalog-page .management-help-trigger"),
@@ -648,6 +649,7 @@ async function saveCatalog(command, payload, nextView) {
   elements.catalogContent.inert = true;
   elements.catalogFixedActions.inert = true;
   elements.catalogBack.disabled = true;
+  elements.catalogClose.disabled = true;
   elements.catalogMessage.textContent = "Wird gespeichert …";
   let saved = false;
   try {
@@ -678,6 +680,7 @@ async function saveCatalog(command, payload, nextView) {
     elements.catalogContent.inert = false;
     elements.catalogFixedActions.inert = false;
     elements.catalogBack.disabled = false;
+    elements.catalogClose.disabled = false;
     if (saved) {
       const message = elements.catalogMessage.textContent;
       loadMarketSelection();
@@ -1179,6 +1182,13 @@ function renderCatalogPage() {
   const hasFixedActions = ["products", "markets", "categories", "market-select", "market-order", "market-bonus-card"].includes(catalogView);
   elements.catalogPage.classList.toggle("has-fixed-actions", hasFixedActions);
   elements.catalogPage.classList.toggle("market-editor", catalogView === "market-edit");
+  const cleanMarketView = ["market-edit", "market-order", "market-select", "market-bonus-card"].includes(catalogView);
+  elements.catalogPage.classList.toggle("clean-market-view", cleanMarketView);
+  elements.catalogPage.classList.toggle("market-card-editor", catalogView === "market-bonus-card");
+  const close = elements.catalogClose;
+  close.hidden = !cleanMarketView;
+  close.disabled = managingSupermarkets;
+  close.onclick = () => elements.catalogBack.click();
   elements.catalogMessage.textContent = "";
   const isMarket = catalogView?.startsWith("market");
   const isList = catalogView === "markets" || catalogView === "categories" || catalogView === "products";
@@ -1295,8 +1305,8 @@ function renderCatalogPage() {
         catalogView = "market-order";
         renderCatalogPage();
       };
-      form.append(button("Produktkategorien für diesen Markt bearbeiten  ›", openMarketOrder, "management-link category-navigation"));
-      form.append(button("Bonuskarten oder APP-Codes einbinden  ›", () => {
+      form.append(button("Produktkategorien für diesen Markt bearbeiten", openMarketOrder, "management-link category-navigation"));
+      form.append(button("Bonuskarten oder APP-Codes einbinden", () => {
         if (catalogDirty) {
           requestDiscardChanges(() => openCatalog("market-bonus-card", supermarkets.find(m => m.id === catalogDraft.id)));
           return;
@@ -1373,7 +1383,19 @@ function renderCatalogPage() {
     });
     content.append(form);
   }
-  content.append(paragraph("Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.", "management-footer"));
+  if (!cleanMarketView) content.append(paragraph("Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.", "management-footer"));
+  if (cleanMarketView) {
+    for (const link of content.querySelectorAll(".category-navigation")) {
+      const label = document.createElement("span");
+      label.className = "market-link-label";
+      label.textContent = link.textContent;
+      const arrow = document.createElement("span");
+      arrow.className = "market-link-chevron";
+      arrow.textContent = "›";
+      arrow.setAttribute("aria-hidden", "true");
+      link.replaceChildren(label, arrow);
+    }
+  }
   elements.catalogHelpPopover.textContent = elements.catalogHelp.textContent;
   elements.catalogHelp.hidden = true;
   elements.catalogHelpTrigger.hidden = !elements.catalogHelp.textContent;
@@ -1398,8 +1420,9 @@ function renderMarketBonusCard() {
     elements.catalogMessage.textContent = "Der Supermarkt wurde inzwischen entfernt. Bitte die Übersicht neu öffnen.";
     return;
   }
-  elements.catalogTitle.textContent = "Bonuskarten oder APP-Codes einbinden";
+  elements.catalogTitle.textContent = "Bonuskarte / APP-Code";
   elements.catalogHelp.textContent = `${catalogDraft.name} · Ein Bild wird gemeinsam in Home Assistant gespeichert und ist auf allen Geräten verfügbar.`;
+  content.append(paragraph(catalogDraft.name, "market-context"));
   const form = document.createElement("form");
   form.className = "management-form bonus-card-form";
   const upload = document.createElement("input");
@@ -1418,20 +1441,20 @@ function renderMarketBonusCard() {
   preview.alt = `Bonuskarte oder APP-Code für ${catalogDraft.name}`;
   preview.hidden = !catalogDraft.bonus_card;
   if (catalogDraft.bonus_card) preview.src = catalogDraft.bonus_card;
-  const previewLabel = paragraph("Aktuell gespeichertes Bild", "management-help");
-  previewLabel.hidden = !catalogDraft.bonus_card;
   const status = paragraph("PNG, JPEG oder WebP · maximal 512 KiB nach Bildoptimierung.", "management-help");
   const choose = button("Bild aus Dateien auswählen", () => upload.click(), "primary full-width");
   const takePhoto = button("QR-Code fotografieren", () => camera.click(), "secondary full-width");
+  const removeSection = document.createElement("section");
+  removeSection.className = "bonus-card-remove-section";
   const remove = button("Bild entfernen", () => {
     delete catalogDraft.bonus_card;
     preview.removeAttribute("src");
     preview.hidden = true;
-    previewLabel.hidden = true;
     remove.hidden = true;
+    removeSection.hidden = true;
     catalogDirty = true;
     status.textContent = "Bild entfernt. Speichere, um die Änderung zu übernehmen.";
-  }, "secondary");
+  }, "secondary danger-button bonus-card-remove");
   remove.hidden = !catalogDraft.bonus_card;
   const processFile = async file => {
     if (!file) return;
@@ -1440,8 +1463,8 @@ function renderMarketBonusCard() {
       catalogDraft.bonus_card = image;
       preview.src = image;
       preview.hidden = false;
-      previewLabel.hidden = false;
       remove.hidden = false;
+      removeSection.hidden = false;
       catalogDirty = true;
       status.textContent = "Bild bereit. Speichere, um es auf allen Geräten verfügbar zu machen.";
       elements.catalogMessage.textContent = "";
@@ -1457,7 +1480,9 @@ function renderMarketBonusCard() {
       market_id: catalogDraft.id, bonus_card: catalogDraft.bonus_card || "",
     }, "market-edit"), "primary"),
   ];
-  form.append(upload, camera, choose, takePhoto, previewLabel, preview, status, remove);
+  removeSection.append(remove);
+  removeSection.hidden = remove.hidden;
+  form.append(upload, camera, choose, takePhoto, preview, status, removeSection);
   content.append(form);
   elements.catalogFixedActions.append(...actions);
   elements.catalogFixedActions.hidden = false;
@@ -1505,6 +1530,7 @@ function renderMarketCategories() {
   const selecting = catalogView === "market-select";
   elements.catalogTitle.textContent = selecting ? "Kategorien auswählen" : "Produktkategorien bearbeiten";
   elements.catalogHelp.textContent = `${catalogDraft.name} · ${selecting ? "Aus dem Kategoriespeicher wählen (A–Z)." : "Diese Reihenfolge gilt nur für diesen Markt."}`;
+  content.append(paragraph(catalogDraft.name, "market-context"));
   if (selecting) {
     const selected = new Set(catalogDraft.category_ids);
     for (const category of [...categories].sort((a, b) => nameOrder.compare(a.name, b.name))) {
@@ -1530,7 +1556,7 @@ function renderMarketCategories() {
     }
     if (!categories.length) content.append(paragraph("Noch keine Kategorien im Speicher. Bitte zuerst unter Produktkategorien verwalten anlegen."));
     elements.catalogFixedActions.append(
-      button("Zurück", () => leaveMarketCategorySelection(false)),
+      button("Abbrechen", () => leaveMarketCategorySelection(false)),
       button("Auswahl übernehmen", () => leaveMarketCategorySelection(true), "primary"),
     );
     elements.catalogFixedActions.hidden = false;
@@ -1555,7 +1581,7 @@ function renderMarketCategories() {
   categorySelectionIcon.innerHTML = '<rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 17.5h7M17.5 14v7"></path>';
   const categorySelectionLabel = document.createElement("span");
   categorySelectionLabel.className = "category-selection-label";
-  categorySelectionLabel.textContent = "Kategorienauswahl";
+  categorySelectionLabel.textContent = "Kategorien für diesen Markt";
   const categorySelectionArrow = document.createElement("span");
   categorySelectionArrow.className = "category-selection-arrow";
   categorySelectionArrow.setAttribute("aria-hidden", "true");
@@ -3570,7 +3596,13 @@ function commonItemsForCurrentList() {
     .map(item => canonicalProductKey(item.summary)));
   const ranked = products
     .filter(product => !open.has(product.key))
-    .map(product => ({ product, usage: productUsageForList(product, commonItemsListId) }))
+    .map(product => ({
+      product,
+      usage: productUsageForList(product, commonItemsListId),
+      totalUsage: productUsageCount(product) + pendingOperations.filter(operation =>
+        operation.type === "add_item" && canonicalProductKey(operation.summary) === product.key
+      ).length,
+    }))
     .filter(({ usage }) => commonItemsType !== "regular" || usage.weeks.size > 1);
   ranked.sort((a, b) => {
     if (commonItemsType === "recent") {
@@ -3584,7 +3616,7 @@ function commonItemsForCurrentList() {
         bWeeklyCount - aWeeklyCount || b.usage.lastAdded - a.usage.lastAdded ||
         nameOrder.compare(a.product.name, b.product.name);
     }
-    return b.usage.added - a.usage.added ||
+    return b.totalUsage - a.totalUsage ||
       b.usage.lastAdded - a.usage.lastAdded || nameOrder.compare(a.product.name, b.product.name);
   });
   return ranked;
@@ -3605,7 +3637,7 @@ function renderCommonItems() {
   const ranked = commonItemsForCurrentList();
   elements.commonItemsListCount.textContent = `${ranked.length} Artikel`;
   elements.commonItemsList.replaceChildren();
-  for (const { product, usage } of ranked) {
+  for (const { product, usage, totalUsage } of ranked) {
     const label = document.createElement("label");
     label.className = "common-item-option";
     const checkbox = document.createElement("input");
@@ -3623,7 +3655,7 @@ function renderCommonItems() {
     const frequency = document.createElement("span");
     frequency.className = "common-item-frequency";
     if (commonItemsType === "regular") frequency.textContent = `${usage.weeks.size} Wochen`;
-    else if (commonItemsType === "frequent" && usage.added) frequency.textContent = `${usage.added}×`;
+    else if (commonItemsType === "frequent" && totalUsage) frequency.textContent = `${totalUsage}×`;
     label.append(checkbox, name, frequency);
     elements.commonItemsList.append(label);
   }

@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layout-Editor · Supermarkt bearbeiten</title>
+<link rel="stylesheet" href="../../custom_components/einkaufszettel/www/app.css">
+<style>
+body { padding: 20px; }
+h1 { font-size: 24px; }
+.intro { color: var(--muted); max-width: 1000px; line-height: 1.6; font-size: 13px; }
+.workspace { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px; margin-top: 16px; }
+.panel { width: 300px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.panel h2 { font-size: 16px; margin: 0 0 16px; }
+.panel label { display: block; margin: 12px 0 6px; font-size: 12px; color: var(--muted); }
+.panel input, .panel textarea, .panel select { width: 100%; padding: 8px; background: var(--bg); color: #f4f4f4; border: 1px solid var(--line); border-radius: 6px; }
+.panel textarea { min-height: 70px; resize: vertical; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.tools button { font-size: 12px; padding-inline: 10px; }
+.stage-scroll { max-width: 100%; overflow: auto; padding: 4px 6px 18px; }
+#stage { position: relative; width: 390px; height: 740px; background: var(--bg); border: 1px solid var(--line); box-sizing: content-box; }
+#stage.grid { background-image: linear-gradient(#8881 1px,transparent 1px),linear-gradient(90deg,#8881 1px,transparent 1px); background-size: 8px 8px; }
+.order-content { position: absolute; inset: 0 0 76px; overflow: auto; }
+.order-footer { position: absolute; bottom: 0; left: 0; right: 0; height: 76px; background: var(--surface); pointer-events: none; }
+#stage .footer-node { z-index: 3; }
+.node { position: absolute; cursor: grab; touch-action: none; user-select: none; }
+.node.selected { outline: 2px solid #55e0d0; outline-offset: 2px; z-index: 2; }
+.node > .visual { width: 100%; height: 100%; margin: 0; box-sizing: border-box; pointer-events: none; }
+.node .handle { display: none; position: absolute; right: -6px; bottom: -6px; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 3px; background: #15877c; cursor: nwse-resize; }
+.node.selected .handle { display: block; }
+.node h2 { display: flex; align-items: center; font-size: 22px; line-height: 1.15; letter-spacing: -.04em; }
+.node .x { display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); color: var(--muted); }
+.x svg { width: 16px; height: 16px; }
+.node .management-link { display: flex; align-items: center; gap: 16px; padding: 10px 12px; min-height: 0; font-size: 13px; }
+.link-label { flex: 1; min-width: 0; }
+.link-chevron { flex: none; font-size: 22px; line-height: 1; }
+.node .category-order-row { padding: 4px; gap: 4px; }
+.node .category-order-row .move-grip { min-width: 28px; width: 28px; font-size: 24px; height: 44px; }
+.node .category-order-row .move-button { min-width: 32px; width: 32px; padding: 0; }
+.node .category-order-row .order-name { font-size: 13px; }
+.node .context { display: flex; align-items: center; color: var(--muted); font-size: 13px; }
+.bonus-editor .node .context { font-size: 17px; font-weight: 600; }
+.node .card-preview { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 14px; padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 13px; }
+.card-preview svg { width: 100%; height: 90px; background: #f4f4f4; padding: 12px; border-radius: 6px; }
+.node .info { display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--muted); }
+.info svg { width: 20px; height: 20px; }
+#help-popover { position: absolute; top: 80px; left: 40px; right: 40px; z-index: 5; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); color: var(--muted); font-size: 13px; line-height: 1.6; }
+.node .name { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: white; font-size: 16px; }
+.node .toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; background: transparent; color: #f4f4f4; border: 0; font-weight: 600; font-size: 14px; }
+.node[data-id="card"] .toggle { border-top: 1px solid var(--line); }
+.switch { display: block; position: relative; flex: none; width: 42px; height: 24px; border-radius: 20px; background: var(--accent); }
+.switch::after { content: ""; position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; border-radius: 50%; background: var(--accent-text); }
+.node .note { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.node .line { border-top: 1px solid var(--line); }
+#status { min-height: 22px; color: #9bd8b0; font-size: 13px; max-width: 1000px; }
+#elements { max-height: 250px; }
+.hint { color: var(--muted); font-size: 12px; line-height: 1.6; }
+#transfer { min-height: 100px; font-family: monospace; font-size: 11px; }
+</style>
+<body>
+<h1>Layout-Editor · Supermarkt bearbeiten</h1>
+<p class="intro">Element anklicken und verschieben. Am türkisfarbenen Eckgriff die Größe ändern. Texte, Positionen und Größen rechts bearbeiten. Löschen entfernt nur das ausgewählte Vorschau-Element. Doppelklick auf das Info-Icon zeigt die Hilfe. Kein Zugriff auf echte App-Daten.</p>
+<div class="tools">
+  <button id="undo" class="secondary">Rückgängig</button><button id="redo" class="secondary">Wiederherstellen</button>
+  <button id="save" class="primary">Entwurf speichern</button><button id="load" class="secondary">Gespeicherten Entwurf laden</button>
+  <button id="reset" class="secondary">Ausgangslayout</button>
+</div>
+<p id="status" role="status"></p>
+<div class="workspace">
+  <aside class="panel">
+    <h2>Vorschau</h2>
+    <label for="device">Smartphonegröße</label><select id="device"><option value="390,740">390 × 740</option><option value="360,640">360 × 640</option><option value="430,844">430 × 844</option><option value="320,568">320 × 568</option></select>
+    <label for="theme">App-Farbschema</label><select id="theme"></select>
+    <label><input id="grid" type="checkbox" style="width:auto"> Hilfsraster anzeigen</label>
+    <label><input id="snap" type="checkbox" style="width:auto"> Auf 8-Pixel-Raster einrasten</label>
+    <p class="hint">Beim Größenwechsel bleiben die Positionen absichtlich erhalten. So siehst du, wo Platz fehlt. Das endgültige responsive Verhalten wird später umgesetzt.</p>
+    <label><input id="multi" type="checkbox" style="width:auto"> Mehrfachauswahl beim Anklicken</label>
+    <div class="tools"><button id="select-all" class="secondary">Alle auswählen</button><button id="deselect" class="secondary">Auswahl aufheben</button></div>
+    <p class="hint">Strg-/Umschalt-Klick fügt Elemente hinzu oder entfernt sie aus der Auswahl. Esc oder ein Klick auf die freie Vorschaufläche hebt die Auswahl auf. Ausgewählte Elemente gemeinsam ziehen, mit Pfeiltasten bewegen oder löschen. Eckgriffe ändern weiterhin nur das jeweilige Element.</p>
+    <label for="elements">Alle Elemente (auch gelöschte)</label><select id="elements" size="12" multiple></select>
+    <div class="tools"><button id="restore" class="secondary">Element wieder einfügen</button></div>
+  </aside>
+  <div class="stage-scroll"><div id="stage" aria-label="Editierbare Smartphone-Vorschau"></div></div>
+  <aside class="panel">
+    <h2>Ausgewähltes Element</h2>
+    <p id="selection" class="hint">Bitte ein Element auswählen.</p>
+    <fieldset id="inspector" disabled style="border:0;padding:0;margin:0">
+      <label for="text">Text</label><textarea id="text"></textarea>
+      <div class="pair"><div><label for="x">Links</label><input id="x" type="number"></div><div><label for="y">Oben</label><input id="y" type="number"></div><div><label for="w">Breite</label><input id="w" type="number" min="16"></div><div><label for="h">Höhe</label><input id="h" type="number" min="8"></div></div>
+      <div class="tools"><button id="left" class="secondary">Linker Rand</button><button id="center" class="secondary">Zentrieren</button><button id="full" class="secondary">Inhaltsbreite</button><button id="delete" class="secondary danger-button">Element löschen</button></div>
+    </fieldset>
+    <p class="hint">Pfeiltasten: 1 Pixel · Umschalt + Pfeil: 8 Pixel. Entf: löschen. Strg/Z bzw. Strg/Umschalt/Z: rückgängig/wiederherstellen. Textfelder bleiben normal editierbar.</p>
+    <label for="transfer">Übergabe an mich / Sicherung</label><textarea id="transfer" placeholder="Export erscheint hier. Du kannst auch einen gespeicherten JSON-Entwurf einfügen."></textarea>
+    <div class="tools"><button id="export" class="secondary">Export anzeigen</button><button id="download" class="secondary">JSON herunterladen</button><button id="import" class="secondary">JSON importieren</button></div>
+    <p class="hint">Speichern bleibt in diesem Browser erhalten, sofern lokaler Speicher verfügbar ist. Für eine sichere Übergabe exportieren oder herunterladen. Danach „fertig“ sagen: Ich lese den Entwurf und richte die Elemente exakt aus.</p>
+  </aside>
+</div>
+<script>
+const orderEditor=new URLSearchParams(location.search).get("menu")==="market-order";
+const bonusEditor=new URLSearchParams(location.search).get("menu")==="market-bonus-card";
+const fixedActionsEditor=orderEditor||bonusEditor;
+const menuId=orderEditor?"market-order":bonusEditor?"market-bonus-card":"market-edit";
+const menuLabel=orderEditor?"Produktkategorien bearbeiten":bonusEditor?"Bonuskarte / APP-Code":"Supermarkt bearbeiten";
+const initial = bonusEditor ? [
+  {id:"title",type:"title",text:"Bonuskarte / APP-Code",x:40,y:24,w:258,h:48},
+  {id:"help",type:"help",text:"Hilfe zu Bonuskarten",x:310,y:31,w:34,h:34},
+  {id:"close",type:"close",text:"Schließen",x:356,y:31,w:34,h:34},
+  {id:"market",type:"context",text:"REWE",x:40,y:100,w:350,h:24},
+  {id:"choose-file",type:"primary",text:"Bild aus Dateien auswählen",x:40,y:144,w:350,h:56},
+  {id:"take-photo",type:"secondary",text:"QR-Code fotografieren",x:40,y:212,w:350,h:56},
+  {id:"card-preview",type:"image",text:"Aktuell gespeichertes Bild · Beispielkarte",x:40,y:300,w:350,h:180},
+  {id:"image-format",type:"note",text:"PNG, JPEG oder WebP · maximal 512 KiB nach Bildoptimierung.",x:40,y:492,w:350,h:40},
+  {id:"line-remove",type:"line",text:"Trennlinie Bild entfernen",x:40,y:564,w:350,h:8},
+  {id:"remove-image",type:"danger",text:"Bild entfernen",x:40,y:580,w:150,h:44},
+  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:768,w:350,h:8},
+  {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:784,w:114,h:44},
+  {id:"submit",type:"primary",text:"Speichern",x:276,y:784,w:114,h:44}
+] : orderEditor ? [
+  {id:"title",type:"title",text:"Produktkategorien bearbeiten",x:40,y:24,w:258,h:48},
+  {id:"help",type:"help",text:"Hilfe zur Kategorienreihenfolge",x:310,y:31,w:34,h:34},
+  {id:"close",type:"close",text:"Schließen",x:356,y:31,w:34,h:34},
+  {id:"market",type:"context",text:"REWE",x:40,y:100,w:350,h:24},
+  {id:"category-selection",type:"link",text:"Kategorien für diesen Markt",x:40,y:144,w:350,h:56},
+  {id:"category-fruit",type:"category",text:"1. Obst & Gemüse",x:40,y:232,w:350,h:56},
+  {id:"category-dairy",type:"category",text:"2. Milchprodukte",x:40,y:300,w:350,h:56},
+  {id:"category-bread",type:"category",text:"3. Backwaren",x:40,y:368,w:350,h:56},
+  {id:"category-none",type:"category",text:"4. Ohne Kategorie",x:40,y:436,w:350,h:56},
+  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:524,w:350,h:8},
+  {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:540,w:114,h:44},
+  {id:"submit",type:"primary",text:"Speichern",x:276,y:540,w:114,h:44}
+] : [
+  {id:"title",type:"title",text:"Supermarkt bearbeiten",x:40,y:24,w:258,h:48},
+  {id:"help",type:"help",text:"Hilfe zu Supermarkt bearbeiten",x:310,y:31,w:34,h:34},
+  {id:"close",type:"close",text:"Schließen",x:356,y:31,w:34,h:34},
+  {id:"name",type:"name",text:"REWE",x:40,y:120,w:350,h:48},
+  {id:"categories",type:"link",text:"Produktkategorien für diesen Markt bearbeiten",x:40,y:200,w:350,h:56},
+  {id:"bonus",type:"link",text:"Bonuskarten oder APP-Codes einbinden",x:40,y:268,w:350,h:56},
+  {id:"receipt",type:"toggle",text:"Pfandbon Hinweis",x:40,y:356,w:350,h:48},
+  {id:"card",type:"toggle",text:"Anzeige Bonuskarte",x:40,y:404,w:350,h:48},
+  {id:"line-delete",type:"line",text:"Trennlinie Löschen",x:40,y:491,w:350,h:8},
+  {id:"remove",type:"danger",text:"Löschen",x:40,y:512,w:106,h:44},
+  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:576,w:350,h:8},
+  {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:592,w:114,h:44},
+  {id:"submit",type:"primary",text:"Speichern",x:276,y:592,w:114,h:44},
+  {id:"note",type:"note",text:"Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.",x:40,y:660,w:350,h:44,deleted:true}
+];
+const themes = [
+ ["Mono",["#141414","#202020","#2b2b2b","#383838","#f5f5f5","#171717","#aaa"]],
+ ["Botanical",["#111813","#1b251e","#26362a","#304035","#a3e635","#17220d","#aab7ac"]],
+ ["Midnight Plum",["#15121c","#211b2b","#30243e","#3b3148","#c4a7ff","#20152f","#b9adc8"]],
+ ["Market Journal",["#1a1411","#271d18","#38281d","#49382e","#ffb454","#38200b","#c7b3a5"]],
+ ["Fresh Signal",["#0d171b","#13242a","#19343b","#24444c","#55e0d0","#06201d","#9db8ba"]],
+ ["Tomato",["#1b1315","#281c1f","#382327","#493137","#ff8977","#351512","#c2a7a6"]],
+ ["Lime Focus",["#0c0f0c","#171c16","#222b1e","#343e2d","#d4ff00","#161b00","#a9b197"]],
+ ["Indigo Pocket",["#101522","#192033","#222d49","#303b56","#83a7ff","#111b34","#aab5ca"]]
+];
+const $ = id => document.getElementById(id), clone = value => JSON.parse(JSON.stringify(value));
+const storageKey=menuId==="market-edit"?"einkaufszettel.market-layout-editor.v1":`einkaufszettel.${menuId}-layout-editor.v1`;
+let state={version:1,menu:menuId,width:430,height:844,theme:0,nodes:clone(initial)};
+document.title="Layout-Editor · "+menuLabel;
+document.querySelector("h1").textContent="Layout-Editor · "+menuLabel;
+$("stage").classList.toggle("bonus-editor",bonusEditor);
+let selected="title", selection=new Set(["title"]), undo=[], redo=[], drag=null;
+function chosen(){return state.nodes.filter(node=>selection.has(node.id)&&!node.deleted);}
+const tell = text => $("status").textContent=text;
+function snapshot(){undo.push(clone(state));if(undo.length>100)undo.shift();redo=[];}
+function current(){return state.nodes.find(node=>node.id===selected);}
+function render(){
+ if(fixedActionsEditor){
+  for(const node of state.nodes){
+   if(node.id==="line-actions")node.y=state.height-76;
+   if(node.id==="cancel"||node.id==="submit")node.y=state.height-16-node.h;
+  }
+ }
+ $("stage").style.width=state.width+"px";$("stage").style.height=state.height+"px";
+ ["bg","surface","surface2","line","accent","accent-text","muted"].forEach((key,i)=>$("stage").style.setProperty("--"+key,themes[state.theme][1][i]));
+ $("stage").replaceChildren();
+ let content=$("stage");
+ if(fixedActionsEditor){
+  content=document.createElement("div");content.className="order-content";
+  const footer=document.createElement("div");footer.className="order-footer";
+  $("stage").append(content,footer);
+ }
+ for(const node of state.nodes.filter(node=>!node.deleted)){
+  const box=document.createElement("div");box.className="node"+(selection.has(node.id)?" selected":"");box.dataset.id=node.id;
+  Object.assign(box.style,{left:node.x+"px",top:node.y+"px",width:node.w+"px",height:node.h+"px"});
+  let visual=document.createElement(node.type==="title"?"h2":node.type==="note"?"p":["name","line","context","category","image"].includes(node.type)?"div":"button");
+  if(visual.tagName==="BUTTON")visual.type="button";
+  visual.className="visual "+({title:"",close:"x",help:"info",name:"name",context:"context",image:"card-preview",category:"category-order-row",link:"management-link",toggle:"toggle",note:"note",line:"line",danger:"secondary danger-button",primary:"primary",secondary:"secondary"}[node.type]);
+  visual.textContent=node.text;
+  if(node.type==="close"){visual.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';visual.setAttribute("aria-label",node.text);}
+  if(node.type==="help"){visual.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .3c0 1.8-2.5 1.9-2.5 3.7"/><circle cx="12" cy="16.5" r=".9" fill="currentColor" stroke="none"/></svg>';visual.setAttribute("aria-label",node.text);box.ondblclick=()=>{const existing=$("help-popover");if(existing){existing.remove();return;}const help=document.createElement("div");help.id="help-popover";help.textContent="Name, Kategorienreihenfolge und Bonuskarte für diesen Supermarkt verwalten. Pfandbon Hinweis und Anzeige Bonuskarte steuern den Kassiervorgang. Änderungen werden erst mit Speichern für alle Nutzer übernommen.";help.onclick=()=>help.remove();$("stage").append(help);};}
+  if(node.type==="link"){visual.textContent="";const label=document.createElement("span");label.className="link-label";label.textContent=node.text.replace(/\s*›\s*$/,"");const chevron=document.createElement("span");chevron.className="link-chevron";chevron.textContent="›";chevron.setAttribute("aria-hidden","true");visual.append(label,chevron);}
+  if(node.type==="line")visual.textContent="";
+  if(node.type==="image"){
+   const code=document.createElementNS("http://www.w3.org/2000/svg","svg");
+   code.setAttribute("viewBox","0 0 280 80");code.setAttribute("aria-label","Dekorativer Beispielbarcode ohne echte Kartendaten");
+   code.innerHTML='<path stroke="#171717" stroke-width="5" d="M10 0v80m9-80v80m15-80v80m7-80v80m13-80v80m15-80v80m8-80v80m17-80v80m9-80v80m12-80v80m7-80v80m19-80v80m9-80v80m15-80v80m7-80v80m13-80v80m15-80v80m8-80v80m17-80v80m9-80v80m12-80v80m7-80v80"/>';
+   visual.append(code);
+  }
+  if(node.type==="category"){
+   visual.textContent="";
+   const grip=document.createElement("span");grip.className="move-grip";grip.textContent="⠿";
+   const name=document.createElement("span");name.className="order-name";name.textContent=node.text;
+   visual.append(grip,name);
+   for(const text of ["↑","↓",...(node.id==="category-none"?[""]:["×"])]){
+    const control=document.createElement("span");control.className="secondary move-button";control.textContent=text;control.style.cssText="display:grid;place-items:center;min-height:44px";visual.append(control);
+   }
+  }
+  if(node.type==="toggle"){const toggle=document.createElement("span");toggle.className="switch";visual.append(toggle);}
+  if(node.type==="help"&&orderEditor){
+   const showHelp=box.ondblclick;
+   box.ondblclick=()=>{
+    showHelp();
+    if($("help-popover"))$("help-popover").textContent="Kategorien für diesen Supermarkt auswählen und ihre Reihenfolge festlegen. Diese Reihenfolge gilt nur für diesen Markt. Ohne Kategorie bleibt als verschiebbare Gruppe erhalten. Erst Speichern übernimmt die Änderungen.";
+   };
+  }
+  if(node.type==="help"&&bonusEditor){
+   const showHelp=box.ondblclick;
+   box.ondblclick=()=>{
+    showHelp();
+    if($("help-popover"))$("help-popover").textContent="Bonuskarte oder APP-Code für diesen Supermarkt als Bild hinterlegen. Datei auswählen oder mit der Kamera fotografieren. Das Bild wird gemeinsam in Home Assistant gespeichert und steht auf allen Geräten bereit. Erst Speichern übernimmt Änderungen. Im Editor sind Bild und Aktionen nur Beispiele.";
+   };
+  }
+  const handle=document.createElement("span");handle.className="handle";box.append(visual,handle);
+  const fixedFooter=fixedActionsEditor&&["line-actions","cancel","submit"].includes(node.id);
+  if(fixedFooter)box.classList.add("footer-node");
+  box.addEventListener("pointerdown",event=>start(event,node.id,event.target===handle));
+  (fixedFooter?$("stage"):content).append(box);
+ }
+ $("elements").replaceChildren(...state.nodes.map(node=>new Option((node.deleted?"[entfernt] ":"")+node.text,node.id)));
+ for(const option of $("elements").options)option.selected=selection.has(option.value);
+ $("theme").value=String(state.theme);
+ $("device").value=state.width+","+state.height;
+ $("undo").disabled=!undo.length;$("redo").disabled=!redo.length;
+ const node=current();$("inspector").disabled=!node||!!node.deleted;
+ $("selection").textContent=selection.size>1?`${selection.size} Elemente ausgewählt · Eigenschaften: ${selected}`:node?node.id+(node.deleted?" · entfernt":""):"Bitte auswählen";
+ for(const key of ["text","x","y","w","h"])$(key).value=node?node[key]:"";
+}
+function start(event,id,resize){
+ if(event.button!==0)return;event.preventDefault();
+ if(id==="help"&&event.detail===2){
+  const box=$("stage").querySelector('[data-id="help"]');
+  box.ondblclick();
+  return;
+ }
+ if(!resize&&(event.ctrlKey||event.metaKey||event.shiftKey||$("multi").checked)){
+  if(selection.has(id))selection.delete(id);else selection.add(id);
+  selected=selection.has(id)?id:[...selection].pop();render();return;
+ }
+ if(!selection.has(id))selection=new Set([id]);
+ selected=id;render();
+ const node=current();drag={id,resize,startX:event.clientX,startY:event.clientY,original:clone(node),originals:clone(chosen()),before:clone(state)};
+ const box=$("stage").querySelector(`[data-id="${id}"]`);box.setPointerCapture(event.pointerId);
+ box.onpointermove=move;box.onpointerup=finish;box.onpointercancel=cancel;
+}
+function move(event){
+ if(!drag)return;const node=current(),dx=event.clientX-drag.startX,dy=event.clientY-drag.startY;
+ const round=value=>$("snap").checked?Math.round(value/8)*8:Math.round(value);
+ if(drag.resize){node.w=Math.max(16,round(drag.original.w+dx));node.h=Math.max(8,round(drag.original.h+dy));}
+ else{
+  const originals=drag.originals;
+  const offsetX=Math.max(-Math.min(...originals.map(n=>n.x)),Math.min(state.width-16-Math.max(...originals.map(n=>n.x)),round(drag.original.x+dx)-drag.original.x));
+  const offsetY=Math.max(-Math.min(...originals.map(n=>n.y)),Math.min(state.height-8-Math.max(...originals.map(n=>n.y)),round(drag.original.y+dy)-drag.original.y));
+  for(const original of originals){const item=state.nodes.find(n=>n.id===original.id);item.x=original.x+offsetX;item.y=original.y+offsetY;
+   const box=$("stage").querySelector(`[data-id="${item.id}"]`);box.style.left=item.x+"px";box.style.top=item.y+"px";
+  }
+ }
+ const box=$("stage").querySelector(`[data-id="${node.id}"]`);
+ Object.assign(box.style,{left:node.x+"px",top:node.y+"px",width:node.w+"px",height:node.h+"px"});
+}
+function finish(){if(!drag)return;if(JSON.stringify(state)!==JSON.stringify(drag.before)){undo.push(drag.before);redo=[];}drag=null;render();}
+function cancel(){if(!drag)return;state=drag.before;drag=null;render();}
+function edit(action){snapshot();action();render();}
+for(const key of ["text","x","y","w","h"])$(key).onchange=()=>{
+ const node=current();if(!node||node.deleted)return;
+ const value=key==="text"?$(key).value:Number($(key).value);
+ if(key!=="text"&&(!Number.isFinite(value)||value<((key==="w")?16:(key==="h")?8:0))){tell("Ungültige Größe oder Position.");render();return;}
+ edit(()=>node[key]=value);
+};
+$("elements").onchange=()=>{selection=new Set([...$("elements").selectedOptions].map(option=>option.value));selected=[...selection].pop();render();};
+$("select-all").onclick=()=>{selection=new Set(state.nodes.filter(node=>!node.deleted).map(node=>node.id));selected=[...selection][0];render();};
+$("deselect").onclick=()=>{selection.clear();selected=undefined;render();};
+$("stage").addEventListener("pointerdown",event=>{
+ if((event.target===$("stage")||event.target.classList.contains("order-content"))&&event.button===0){if(drag)cancel();$("deselect").click();}
+});
+$("delete").onclick=()=>{if(chosen().length)edit(()=>chosen().forEach(node=>node.deleted=true));};
+$("restore").onclick=()=>{if(selection.size)edit(()=>state.nodes.filter(node=>selection.has(node.id)).forEach(node=>node.deleted=false));};
+$("left").onclick=()=>edit(()=>current().x=20);
+$("center").onclick=()=>edit(()=>current().x=Math.max(0,Math.round((state.width-current().w)/2)));
+$("full").onclick=()=>edit(()=>{current().x=20;current().w=state.width-40;});
+$("undo").onclick=()=>{if(!undo.length)return;redo.push(clone(state));state=undo.pop();render();};
+$("redo").onclick=()=>{if(!redo.length)return;undo.push(clone(state));state=redo.pop();render();};
+$("device").onchange=()=>{const [w,h]=$("device").value.split(",").map(Number);edit(()=>{state.width=w;state.height=h;});};
+themes.forEach(([name],i)=>$("theme").add(new Option(name,i)));
+$("theme").onchange=()=>edit(()=>state.theme=Number($("theme").value));
+$("grid").onchange=()=>$("stage").classList.toggle("grid",$("grid").checked);
+function validate(value){
+ if(menuId==="market-edit"&&value&&value.version===1&&value.menu==="market-edit"&&Array.isArray(value.nodes)&&value.nodes.length===initial.length-1&&!value.nodes.some(node=>node.id==="help"))value={...value,nodes:[...value.nodes,clone(initial.find(node=>node.id==="help"))]};
+ if(!value||value.version!==1||value.menu!==menuId||!Number.isInteger(value.theme)||!themes[value.theme]||![320,360,390,430].includes(value.width)||!Number.isFinite(value.height)||value.height<300||value.height>2000||!Array.isArray(value.nodes)||value.nodes.length!==initial.length)throw Error("Ungültiger Editor-Entwurf.");
+ const ids=new Set();
+ for(const node of value.nodes){const original=initial.find(item=>item.id===node.id);if(!original||ids.has(node.id)||original.type!==node.type||typeof node.text!=="string"||node.text.length>2000||["x","y","w","h"].some(key=>!Number.isFinite(node[key])||node[key]<0||node[key]>10000)||node.w<16||node.h<8||(node.deleted!==undefined&&typeof node.deleted!=="boolean"))throw Error("Ungültige Elementdaten.");ids.add(node.id);}
+ return value;
+}
+$("save").onclick=()=>{try{localStorage.setItem(storageKey,JSON.stringify(state));tell("Entwurf in diesem Browser gespeichert. Für die Übergabe zusätzlich exportieren.");}catch(error){tell("Speichern fehlgeschlagen: "+error.message+" Bitte JSON exportieren.");}};
+$("load").onclick=()=>{try{const saved=localStorage.getItem(storageKey);if(!saved)throw Error("Kein gespeicherter Entwurf vorhanden.");const value=validate(JSON.parse(saved));edit(()=>state=value);tell("Gespeicherten Entwurf geladen.");}catch(error){tell("Laden fehlgeschlagen: "+error.message);}};
+$("reset").onclick=()=>edit(()=>{state.nodes=clone(initial);state.width=430;state.height=844;});
+$("export").onclick=()=>{$("transfer").value=JSON.stringify(state,null,2);tell("Export bereit. JSON herunterladen oder kopieren. Ich kann den aktuellen Entwurf auch direkt aus dieser geöffneten Seite lesen.");};
+$("download").onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:"application/json"}));const a=document.createElement("a");a.href=url;a.download=menuId+"-layout.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);tell("JSON-Download angefordert.");};
+$("import").onclick=()=>{try{const value=validate(JSON.parse($("transfer").value));edit(()=>state=value);tell("Entwurf importiert.");}catch(error){tell("Import fehlgeschlagen: "+error.message);}};
+document.addEventListener("keydown",event=>{
+ if(event.key==="Escape"){
+  event.preventDefault();
+  if(drag)cancel();
+  $("deselect").click();
+  tell("Auswahl aufgehoben.");
+  return;
+ }
+ if(event.target.closest("input,textarea,select"))return;
+ if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="z"){event.preventDefault();$(event.shiftKey?"redo":"undo").click();return;}
+ const node=current();if(!node||node.deleted)return;
+ if(event.key==="Delete"){event.preventDefault();$("delete").click();}
+ const shifts={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
+ if(shifts[event.key]){event.preventDefault();const [x,y]=shifts[event.key],step=event.shiftKey?8:1,items=chosen();
+ const dx=Math.max(-Math.min(...items.map(n=>n.x)),x*step),dy=Math.max(-Math.min(...items.map(n=>n.y)),y*step);
+ edit(()=>items.forEach(item=>{item.x+=dx;item.y+=dy;}));}
+}, true);
+render();
+tell("Bereit. Ausgangslayout mit kompakter Titelzeile und zentriertem X. Noch keine Änderungen an der App.");
+</script>
+</body>
+</html>

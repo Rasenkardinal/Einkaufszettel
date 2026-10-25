@@ -496,7 +496,7 @@ async function runTests() {
     doc.querySelector(".category-navigation").click();
     assert(doc.querySelector("#catalog-title").textContent === "Produktkategorien bearbeiten", "Wrong destination");
     const categorySelection = doc.querySelector(".category-selection-button");
-    assert(categorySelection.textContent === "Kategorienauswahl", "Category-selection button label is incorrect");
+    assert(categorySelection.textContent === "Kategorien für diesen Markt", "Category-selection button label is incorrect");
     assert(categorySelection.querySelector("svg[aria-hidden='true']") && categorySelection.querySelector(".category-selection-arrow[aria-hidden='true']"), "Category-selection button icon or arrow missing");
     assert(syncStyles.includes(".category-selection-button") && syncStyles.includes("color-mix(in srgb,var(--accent) 60%,var(--line))"), "Category-selection button does not use the theme accent outline");
     assert(doc.querySelectorAll(".move-grip").length === 3, "Uncategorized sorting row missing");
@@ -554,7 +554,7 @@ async function runTests() {
     assert(api.state().catalogDraft.category_ids.join() === "b,,z", "Could not set an intermediate uncategorized position");
     doc.querySelector("#catalog-content > .category-selection-button").click();
     const fixedActions = doc.querySelector("#catalog-fixed-actions");
-    assert(!fixedActions.hidden && [...fixedActions.querySelectorAll("button")].map(button => button.textContent).join("|") === "Zurück|Auswahl übernehmen", "Category selection actions are not fixed in the footer");
+    assert(!fixedActions.hidden && [...fixedActions.querySelectorAll("button")].map(button => button.textContent).join("|") === "Abbrechen|Auswahl übernehmen", "Category selection actions are not fixed in the footer");
     const choices = [...doc.querySelectorAll(".category-choice")];
     assert(choices.map(c=>c.textContent).join() === "Äpfel,Backwaren,Zwiebeln", "Selection not A-Z");
     choices[0].querySelector("input").click();
@@ -593,7 +593,7 @@ async function runTests() {
   [...doc.querySelectorAll(".category-navigation")].find(button =>
     button.textContent.includes("Bonuskarten oder APP-Codes")).click();
   test("Bonus-card setup offers file selection and camera capture", () => {
-    assert(doc.querySelector("#catalog-title").textContent === "Bonuskarten oder APP-Codes einbinden", "Bonus-card page missing");
+    assert(doc.querySelector("#catalog-title").textContent === "Bonuskarte / APP-Code", "Bonus-card page missing");
     assert(doc.querySelector('input[type="file"][accept="image/png,image/jpeg,image/webp"]'), "Upload input missing");
     assert(doc.querySelector('input[type="file"][capture="environment"]'), "Camera input missing");
     assert(!doc.querySelector(".bonus-card-preview").hidden, "Saved image preview missing");
@@ -840,15 +840,15 @@ async function runTests() {
     frame.style.width = width + "px";
     frame.style.height = height + "px";
     await pause(0);
-    assert(doc.documentElement.scrollHeight <= win.innerHeight, `Market editor needs vertical scrolling at ${width}x${height}`);
+    if (height >= 740) assert(doc.documentElement.scrollHeight <= win.innerHeight, `Market editor needs vertical scrolling at ${width}x${height}`);
     assert(doc.documentElement.scrollWidth <= win.innerWidth, "Market editor overflows horizontally");
-    assert(doc.querySelector("#catalog-content .page-actions").getBoundingClientRect().bottom <= win.innerHeight, "Market save actions are outside the viewport");
+    if (height >= 740) assert(doc.querySelector("#catalog-content .page-actions").getBoundingClientRect().bottom <= win.innerHeight, "Market save actions are outside the viewport");
     for (const control of doc.querySelectorAll("#catalog-content .category-navigation, #catalog-content .market-checkout-option, #catalog-content .page-actions button")) {
       assert(control.getBoundingClientRect().height >= 44, "Compact market editor shrank a touch target");
     }
   }
   frame.style.width = "390px"; frame.style.height = "1000px";
-  results.push("PASS Market editor fits smartphone heights without scrolling and retains touch-sized controls");
+  results.push("PASS Market editor follows roomy reference spacing, fits larger phones and retains touch-sized controls");
   const receiptSwitch = doc.querySelector("#market-deposit_receipt_hint");
   const cardSwitch = doc.querySelector("#market-show_bonus_card");
   assert(receiptSwitch.checked && cardSwitch.checked, "Legacy markets must keep both options enabled");
@@ -899,6 +899,91 @@ async function runTests() {
   assert(!cashierReminder.open && endShoppingDialog.open, "Missing card opened an empty reminder");
   endShoppingDialog.close();
   results.push("PASS All checkout option combinations work independently; absent cards never open an empty reminder");
+  if (doc.querySelector("#discard-changes").open) {
+    doc.querySelector('#discard-changes [value="discard"]').click();
+    await pause(50);
+  }
+  state.categories = Array.from({length: 35}, (_, i) => ({
+    id: `mobile-${i}`, name: i === 0 ? "Eine sehr lange Produktkategorie mit mehreren Worten" : `Kategorie ${i + 1}`,
+  }));
+  state.supermarkets = [{
+    id: "m", name: "REWE", category_ids: state.categories.map(category => category.id),
+    bonus_card: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/LQAAAABJRU5ErkJggg==",
+  }];
+  api.reset();
+  for (const [width, height] of [[320,568], [390,740], [430,844]]) {
+    frame.style.width = `${width}px`;
+    frame.style.height = `${height}px`;
+    api.openCatalog("market-edit", state.supermarkets[0]);
+    await pause(0);
+    const close = doc.querySelector("#catalog-close");
+    const title = doc.querySelector("#catalog-title");
+    const help = doc.querySelector("#catalog-page .management-help-trigger");
+    const input = doc.querySelector("#catalog-name");
+    const rect = element => element.getBoundingClientRect();
+    const near = (a, b) => Math.abs(a - b) <= 1;
+    assert(!close.hidden && win.getComputedStyle(doc.querySelector("#catalog-page .management-header")).display === "none", "New market header still shows back navigation");
+    assert(near(rect(close).right, rect(input).right), "Close is not aligned with the form's right edge");
+    assert(near(rect(close).top + rect(close).height / 2, rect(title).top + rect(title).height / 2), "Close and title are not vertically centered");
+    assert(near(rect(close.querySelector("svg")).left + 8, rect(close).left + 17), "Close SVG is not centered");
+    assert(near(rect(help).top, rect(close).top), "Help and close are not aligned");
+    help.click();
+    assert(!doc.querySelector("#catalog-help-popover").hidden, "New header lost working help");
+    help.click();
+    const links = [...doc.querySelectorAll(".category-navigation")];
+    assert(links.every(link => link.querySelector(".market-link-label") && link.querySelector(".market-link-chevron[aria-hidden='true']")), "Navigation chevrons are still part of the label");
+    assert(near(rect(links[1]).top - rect(links[0]).bottom, 12), "Navigation group gap differs from reference");
+    if (width === 430) {
+      assert(near(rect(input).left, 40) && near(rect(input).top, 120), "Reference form position differs");
+      assert(near(rect(links[0]).top, 200), "Reference navigation spacing differs");
+      assert(near(rect(doc.querySelector(".page-actions")).top, 576), "Reference administration separator differs");
+    }
+    links[0].click();
+    await pause(0);
+    assert(doc.querySelector("#catalog-page").classList.contains("has-fixed-actions"), `Category navigation failed: ${doc.querySelector("#catalog-title").textContent}`);
+    for (const view of ["market-order", "market-select", "market-bonus-card"]) {
+      if (view === "market-select") doc.querySelector(".category-selection-button").click();
+      if (view === "market-bonus-card") api.openCatalog(view, state.supermarkets[0]);
+      const page = doc.querySelector("#catalog-page");
+      const content = doc.querySelector("#catalog-content");
+      const footer = doc.querySelector("#catalog-fixed-actions");
+      const footerTop = rect(footer).top;
+      const visibleBottom = rect(content).bottom;
+      const lastContent = [...content.children].findLast(child =>
+        !child.hidden && !child.classList.contains("visually-hidden"));
+      content.scrollTop = content.scrollHeight;
+      await new Promise(resolve => win.requestAnimationFrame(() => win.requestAnimationFrame(resolve)));
+      assert(near(rect(footer).top, footerTop), `${view} footer moves when scrolling`);
+      assert(rect(content).bottom <= rect(footer).top + 1, `${view} footer covers content`);
+      assert(rect(lastContent).bottom <= visibleBottom + 1, `${view} final visible content cannot be reached`);
+      assert(rect(footer).bottom <= win.innerHeight + 1, `${view} footer leaves viewport`);
+      assert(page.scrollWidth <= page.clientWidth && content.scrollWidth <= content.clientWidth, `${view} overflows horizontally at ${width}px`);
+      assert(near(rect(footer).right, rect(doc.querySelector("#catalog-close")).right), `${view} footer edge is misaligned`);
+      if (view === "market-bonus-card") {
+        assert(win.getComputedStyle(doc.querySelector(".market-context")).fontSize === "17px", "Bonus market name is not enlarged");
+        assert(doc.querySelector(".bonus-card-remove").classList.contains("danger-button"), "Remove image lost deletion styling");
+        assert(near(rect(doc.querySelector(".bonus-card-preview")).height, 180), "Bonus preview differs from approved reference height");
+        if (width === 430) {
+          content.scrollTop = 0;
+          assert(near(rect(doc.querySelector(".bonus-card-preview")).top, 300), "Bonus preview spacing differs from reference");
+          assert(near(rect(doc.querySelector(".bonus-card-remove-section")).top, 564), "Bonus deletion separator differs from reference");
+        }
+      }
+    }
+    doc.querySelector("#catalog-close").click();
+    assert(doc.querySelector("#catalog-title").textContent === "Supermarkt bearbeiten", "Close does not return to the parent");
+    const currentInput = doc.querySelector("#catalog-name");
+    currentInput.value = "Geändert";
+    currentInput.dispatchEvent(new win.Event("input", {bubbles:true}));
+    doc.querySelector("#catalog-close").click();
+    assert(doc.querySelector("#discard-changes").open, "Close bypasses dirty draft confirmation");
+    doc.querySelector('#discard-changes [value="discard"]').click();
+    await pause(50);
+  }
+  results.push("PASS Approved market headers, reference geometry, grouped spacing, help, close and dirty guards match at 320/390/430px");
+  results.push("PASS Long category lists, selection and bonus-card content scroll independently of aligned fixed footers at smartphone sizes");
+  frame.style.width = "430px"; frame.style.height = "844px";
+  api.openCatalog("market-edit", state.supermarkets[0]);
   document.querySelector("#results").textContent = results.join("\n");
 }
 runTests().catch(error => {

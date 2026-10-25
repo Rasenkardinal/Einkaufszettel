@@ -352,6 +352,51 @@ dialog h2, dialog p { margin: 0; }
   .market-editor .management-footer { margin: 12px 0 0; }
 }
 .category-choice { display: flex; gap: 12px; align-items: center; padding: 16px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.clean-market-view { padding: 24px clamp(20px, 9.3vw, 40px) 24px; }
+.clean-market-view > .management-header { display: none; }
+.clean-market-view .management-title-row { gap: 12px; min-height: 48px; margin-bottom: 28px; }
+.clean-market-view .management-title-row h1 { font-size: 22px; line-height: 24px; }
+.clean-market-view .management-title-row h1:focus { outline: none; }
+.clean-market-view .management-help-trigger, .catalog-close { width: 34px; height: 34px; flex: none; }
+.catalog-close { display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); color: var(--muted); }
+.catalog-close svg { width: 16px; height: 16px; }
+.clean-market-view .management-help-trigger, .catalog-close { position: relative; }
+.clean-market-view .management-help-trigger::after, .catalog-close::after { content: ""; position: absolute; inset: -5px; }
+.clean-market-view.market-editor .management-title-row { margin-bottom: 48px; }
+.clean-market-view .message:empty { display: none; }
+.clean-market-view .market-context { margin: 0 0 20px; min-height: 24px; color: var(--muted); font-size: 13px; line-height: 24px; }
+.clean-market-view.market-card-editor .market-context { font-size: 17px; font-weight: 600; }
+.clean-market-view.market-editor .management-form { gap: 12px; }
+.clean-market-view.market-editor #catalog-name { min-height: 48px; padding: 10px 12px; }
+.clean-market-view.market-editor .category-navigation { min-height: 56px; margin-top: 0; padding: 10px 12px; font-size: 13px; }
+.clean-market-view.market-editor #catalog-name + .category-navigation { margin-top: 20px; }
+.market-link-label { min-width: 0; flex: 1; }
+.clean-market-view .category-navigation { display: flex; align-items: center; gap: 16px; }
+.market-link-chevron { flex: none; font-size: 22px; line-height: 1; }
+.clean-market-view.market-editor .market-checkout-options { margin-top: 20px; }
+.clean-market-view.market-editor .market-checkout-option { min-height: 48px; padding: 8px 0; }
+.clean-market-view.market-editor .danger-section { margin-top: 27px; padding-top: 20px; }
+.clean-market-view.market-editor .page-actions { margin-top: 8px; padding-top: 16px; gap: 12px; }
+.clean-market-view .page-actions button, .clean-market-view .management-fixed-actions button { min-width: 114px; min-height: 44px; }
+.clean-market-view.has-fixed-actions { padding-bottom: 0; }
+.clean-market-view .management-fixed-actions { width: 100%; margin: 0; padding: 16px 0 max(16px, env(safe-area-inset-bottom)); gap: 12px; background: transparent; box-shadow: none; }
+.clean-market-view .category-selection-button { min-height: 56px; }
+.clean-market-view .category-order { margin: 32px 0 0; gap: 12px; }
+.clean-market-view .category-order-row { min-height: 56px; padding: 4px; gap: 4px; }
+.clean-market-view .category-order-row .move-grip { min-width: 48px; width: 48px; height: 48px; font-size: 24px; }
+.clean-market-view .category-order-row .move-button { min-width: 44px; width: 44px; min-height: 44px; padding: 0; }
+.clean-market-view .category-order-row .order-name { font-size: 13px; }
+.clean-market-view .bonus-card-form { gap: 12px; }
+.clean-market-view .bonus-card-form > .full-width { min-height: 56px; text-align: center; }
+.clean-market-view .bonus-card-form .bonus-card-preview { height: 180px; max-height: 180px; margin-top: 20px; }
+.clean-market-view .bonus-card-form .management-help { min-height: 40px; margin: 0; font-size: 11px; }
+.clean-market-view .bonus-card-remove-section { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; }
+.clean-market-view .bonus-card-form .bonus-card-remove { min-height: 44px; }
+@media (max-width: 380px) {
+  .clean-market-view { padding-inline: 20px; }
+  .clean-market-view .management-title-row { gap: 10px; }
+  .clean-market-view .management-title-row h1 { font-size: 20px; }
+}
 .category-choice input { width: 20px; height: 20px; accent-color: var(--accent); }
 .category-order { display: grid; gap: 8px; list-style: none; padding: 0; margin: 24px 0; }
 .category-order-row { display: flex; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }

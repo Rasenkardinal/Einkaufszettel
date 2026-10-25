@@ -39,6 +39,20 @@ async function runTests() {
       },
       queue:()=>readQueue(null),
       state:()=>({items:currentItems,products}),
+      correctUsage:(key,count)=>{
+        const product=products.find(product=>product.key===key);
+        product.usage_adjustment=(product.usage_adjustment||0)+count-productUsageCount(product);
+        cacheCatalog();
+        renderCommonItems();
+      },
+      reloadCatalog:()=>{loadCachedSupermarkets();renderCommonItems();},
+      pendingRanking:()=>{
+        const original=pendingOperations;
+        pendingOperations=[{type:"add_item",entry_id:"b",summary:"Brot 1",created_at:1000}];
+        const ranked=commonItemsForCurrentList().map(({product,totalUsage})=>({key:product.key,totalUsage}));
+        pendingOperations=original;
+        return ranked;
+      },
       switchList:()=>{entryId="b";currentItems=[];pendingOperations=[];render();},
       reload:async()=>{products=[];loadCachedSupermarkets();await loadSelectedList();},
       failNext:()=>{storeRequest=async()=>{throw Error("Test: Speicher voll");};},
@@ -73,7 +87,28 @@ async function runTests() {
     results.push("PASS Article selection is fullscreen without help text; long lists scroll independently of header and actions on mobile and desktop");
     assert(!commonItemsDialog.textContent.includes("Art der Liste"), "Unwanted list-type heading is visible");
     assert([...commonItemsDialog.querySelectorAll('[role="tab"]')].map(tab=>tab.textContent).join("|")==="Häufigste|Kürzlich|Regelmäßig","List types are missing or reordered");
-    assert([...doc.querySelectorAll("#common-items-list .common-item-name")].slice(0,3).map(item=>item.textContent).join("|")==="Butter|Bananen|Bier","Most-frequent ranking is wrong");
+    const frequentNames = () => [...doc.querySelectorAll("#common-items-list .common-item-name")].map(item=>item.textContent);
+    assert(frequentNames().slice(0,3).join("|")==="Bananen|Butter|Bier","Most-frequent ranking must use overall totals");
+    api.correctUsage("brot 0", 20);
+    assert(frequentNames()[0]==="Brot 0", "Manually increased unused article is not first");
+    assert(doc.querySelector("#common-items-list .common-item-frequency").textContent==="20×", "Corrected count not displayed");
+    api.reloadCatalog();
+    assert(frequentNames()[0]==="Brot 0", "Offline catalog reload lost corrected ranking");
+    api.correctUsage("brot 0", 0);
+    api.correctUsage("butter", 0);
+    assert(frequentNames().slice(0,2).join("|")==="Bananen|Bier", "Lowered count did not change ranking");
+    commonItemsDialog.querySelector('[data-common-items-type="regular"]').click();
+    assert(frequentNames().join()==="Butter","Correction changed weekly ranking");
+    commonItemsDialog.querySelector('[data-common-items-type="recent"]').click();
+    assert(frequentNames()[0]==="Bananen","Correction changed recency ranking");
+    api.correctUsage("butter", 6);
+    commonItemsDialog.querySelector('[data-common-items-type="frequent"]').click();
+    api.correctUsage("brot 1", 12);
+    const pendingRanking = api.pendingRanking();
+    assert(pendingRanking[0].key === "brot 1" && pendingRanking[0].totalUsage === 13,
+      "Pending addition must count once on top of corrected overall total, including another list");
+    api.correctUsage("brot 1", 0);
+    results.push("PASS Frequent articles use corrected overall totals, including unused articles and offline reload; recent and regular stay unchanged");
     commonItemsDialog.querySelector('[data-common-items-type="recent"]').click();
     assert(doc.querySelector("#common-items-list .common-item-name").textContent==="Bananen","Recent ranking is wrong");
     commonItemsDialog.querySelector('[data-common-items-type="regular"]').click();

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alle Ansichten · Cleaner Kopf mit Schließen</title>
+<link rel="stylesheet" href="../../custom_components/einkaufszettel/www/app.css">
+<style>
+  body { padding: 24px 16px; }
+  .intro, .gallery { max-width: 1640px; margin: auto; }
+  .intro h1 { font-size: 27px; margin-bottom: 12px; }
+  .intro p { max-width: 1000px; line-height: 1.6; color: var(--muted); }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 20px 0; }
+  .toolbar select { min-height: 44px; padding: 8px; background: var(--surface); color: #f4f4f4; border: 1px solid var(--line); border-radius: 8px; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,360px),1fr)); gap: 28px 20px; }
+  .example { min-width: 0; }
+  .caption { font-size: 13px; color: #aaa; min-height: 34px; margin: 0 0 10px; line-height: 1.5; }
+  .screen { height: 640px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); color: #f4f4f4; }
+  .clean-header { display: flex; align-items: center; gap: 12px; padding: 16px; flex: none; }
+  .clean-header h2 { font-size: 20px; line-height: 1.2; letter-spacing: -.025em; margin: 0; flex: 1; min-width: 0; }
+  .close { display: grid; place-items: center; width: 34px; height: 34px; flex: none; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); color: var(--muted); font-size: 20px; }
+  .close-target { display: grid; place-items: center; width: 44px; height: 44px; flex: none; margin: -5px; }
+  .body { flex: 1; min-height: 0; overflow: auto; padding: 0 16px 16px; }
+  .body > :first-child { margin-top: 0; }
+  .body p { font-size: 13px; line-height: 1.6; }
+  .body .muted, .context { color: var(--muted); font-size: 12px; }
+  .body .management-list { margin-top: 0; }
+  .body .management-form { gap: 12px; }
+  .body .page-actions { margin-top: 12px; }
+  .body .danger-section { margin-top: 12px; padding-top: 12px; }
+  .body .market-checkout-option { min-height: 48px; }
+  .body .category-navigation { margin-top: 0; font-size: 13px; min-height: 48px; }
+  .body .management-link { font-size: 13px; }
+  .footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--surface); flex: none; }
+  .footer button { min-width: 0; font-size: 12px; padding: 0 12px; }
+  .fill { width: 100%; }
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .stats-grid button { font-size: 11px; padding: 0 4px; }
+  .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 16px 0 8px; }
+  .menu-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; width: 100%; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 10px 0; background: transparent; color: #f4f4f4; text-align: left; font-size: 13px; }
+  .screen input:not([type=checkbox]):not([type=radio]), .screen select { min-height: 44px; width: 100%; background: var(--surface); color: #f4f4f4; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .screen label { font-size: 12px; }
+  .screen input[type=checkbox], .screen input[type=radio] { accent-color: var(--accent); }
+  .screen .category-choice { padding: 12px; }
+  .card-placeholder { display: grid; place-items: center; height: 140px; margin: 12px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); color: var(--accent); font-size: 40px; }
+  .preview-notice { color: var(--muted); font-size: 11px; line-height: 1.5; padding-top: 12px; }
+  .dismissed { display: none; }
+  .closed-note { display: none; padding: 24px; border: 1px dashed #555; color: #aaa; }
+  .example.is-closed .screen { display: none; }
+  .example.is-closed .closed-note { display: block; }
+  .example.is-closed .closed-note button { margin-top: 12px; }
+  #status { min-height: 24px; color: #aaa; font-size: 12px; }
+</style>
+<body>
+<header class="intro">
+  <h1>Alle Ansichten · ein kompakter Kopf</h1>
+  <p>Designvorschau mit Originalfarben und App-Komponenten: ein Titel und ein Schließsymbol oben rechts. Keine Zurückpfeile, keine zusätzliche Marken-Kopfzeile, keine doppelten Seitentitel. Die Artikel-Auswahl über Plus ist die Referenz. Sämtliche Ansichten sind hier zur Prüfung einzeln dargestellt – auch Untermenüs, Auswahlfenster und Sicherheitsdialoge.</p>
+  <p>Das X schließt in dieser Vorschau die jeweilige Ansicht. Für die spätere Umsetzung: Unteransichten zur übergeordneten Ansicht schließen, oberste Menüs zur Einkaufsliste; ungespeicherte Änderungen weiterhin absichern. Keine Änderung der echten App oder ihrer Daten. Sicherheits- und Berechtigungshinweise bleiben erhalten.</p>
+  <div class="toolbar"><label for="theme">Farbschema</label><select id="theme"></select><label for="group">Ansichten</label><select id="group"><option value="">Alle</option><option>Menüs</option><option>Artikel</option><option>Supermärkte</option><option>Kategorien</option><option>Listen & Sync</option><option>Dialoge</option></select><button class="secondary" id="reset">Alle wieder öffnen</button></div>
+  <p id="count"></p><p id="status" role="status"></p>
+</header>
+<main class="gallery"></main>
+<script>
+const button = (text, style = "primary") => `<button type="button" class="${style}">${text}</button>`;
+const link = text => `<button type="button" class="management-link">${text} ›</button>`;
+const menu = texts => texts.map(text => `<button type="button" class="menu-row">${text}<span>›</span></button>`).join("");
+const field = (label,value,type="text") => `<label>${label}<input aria-label="${label}" type="${type}" value="${value}"></label>`;
+const actions = (save="Speichern") => button("Abbrechen","secondary")+button(save);
+const note = text => `<p class="muted">${text}</p>`;
+const check = (text,selected=true) => `<label class="category-choice"><input type="checkbox"${selected?" checked":""}>${text}</label>`;
+const product = (name,uses) => `<article class="product-management-row"><span class="product-management-name">${name}<span class="product-management-usage">${uses} Verwendungen</span></span><div class="stats-grid">${button("Umbenennen ›")}${button("Zusammenführen ›")}${button("Statistik ›")}${button("Löschen","secondary danger-button")}</div></article>`;
+const marketForm = value => `<div class="management-form">${field("Supermarktname",value)}${value ? link("Produktkategorien bearbeiten")+link("Bonuskarte / APP-Code") : ""}<div>${check("Pfandbon Hinweis")}${check("Anzeige Bonuskarte")}</div>${value ? '<div class="danger-section">'+button("Löschen","secondary danger-button")+'</div>':""}</div>`;
+const order = ["Obst & Gemüse","Milchprodukte","Backwaren","Ohne Kategorie"].map((text,i)=>`<li class="category-order-row"><span class="move-grip" aria-hidden="true">⠿</span><span class="order-name">${text}</span><button class="secondary move-button">↑</button><button class="secondary move-button">↓</button></li>`).join("");
+const categories = ["Backwaren","Milchprodukte","Obst & Gemüse"];
+const frequent = ["Butter","Milch","Bananen","Brot","Eier","Kaffee"].map((name,i)=>`<label class="common-item-option"><input type="checkbox"><span class="common-item-name">${name}</span><span class="common-item-frequency">${20-i*2}×</span></label>`).join("");
+const tabs = `<div class="common-items-tabs">${["Häufigste","Kürzlich","Regelmäßig"].map((text,i)=>`<button class="common-items-tab" aria-selected="${i===0}">${text}</button>`).join("")}</div>`;
+const screens = [
+  ["Menüs","Einstellungen",menu(["Supermärkte verwalten","Produktkategorien verwalten","Artikel verwalten","Synchronisation","Installation","Design"]),"","Eine Überschrift statt zusätzlicher Einstellungs-Gruppenüberschrift."],
+  ["Menüs","Synchronisation",menu(["Listen verwalten","Quellen abgleichen"]),"","Als eigene Unteransicht, ohne übergeordneten Titel zu wiederholen."],
+  ["Menüs","Installation",menu(["Mit HA verbinden","App installieren","Home Assistant öffnen"]),"","Schließen statt Zurück zur Liste."],
+  ["Menüs","Design",["Mono","Botanical","Midnight Plum","Market Journal","Fresh Signal","Tomato","Lime Focus","Indigo Pocket"].map((name,i)=>`<label class="category-choice"><input type="radio" name="color" ${i===0?"checked":""}>${name}</label>`).join(""),"","Kein zusätzlicher Hinweis „Farbschema auswählen“."],
+  ["Artikel","Artikel hinzufügen",tabs+frequent,button("Abbrechen","secondary")+button("Auf die Liste"),"Plus-Auswahl als Referenz. Keine zweite Überschrift „Häufigste Artikel“."],
+  ["Artikel","Artikel verwalten",'<input aria-label="Artikel suchen" placeholder="Artikel suchen">'+note("2 Artikel · A–Z")+product("Butter",20)+product("Milch",18),button("Artikel hinzufügen"),"Vier Aktionen pro Artikel; Löschen bleibt rot."],
+  ["Artikel","Artikel hinzufügen",'<div class="management-form">'+field("Artikelname","")+"</div>",actions(),"Katalog: nur Name und feste Aktionen, keine zweite Kopfzeile."],
+  ["Artikel","Artikel umbenennen",'<div class="management-form">'+field("Artikelname","Butter")+"</div>",actions(),"Titel und Feld reichen; Zusatzhilfe bleibt optional."],
+  ["Artikel","Artikel zusammenführen",note("Butter")+field("Zielartikel suchen","Buter")+link("Buter")+note("20 Verwendungen werden übernommen. Bestehende Listen und Statistiken bleiben erhalten."),actions("Zusammenführen …"),"Quellartikel als Kontext statt doppeltem Seitentitel."],
+  ["Artikel","Zielartikel auswählen",'<input aria-label="Zielartikel suchen" placeholder="Artikel suchen">'+menu(["Buter","Butter mild","Butter ungesalzen"]),"","Separater Blick auf die bisherige Zielartikel-Auswahl."],
+  ["Artikel","Statistik bearbeiten",'<div class="management-form">'+field("Butter · Verwendungen insgesamt","20","number")+"</div>"+note("Gesamtzahl über alle Listen. Wochenstatistik bleibt unverändert; neue Verwendungen zählen weiter."),actions(),"Wichtige Auswirkung bleibt sichtbar, keine redundante Überschrift."],
+  ["Artikel","Artikel bearbeiten",'<div class="management-form">'+field("Artikelname","Butter")+link("Produktkategorie: Milchprodukte")+field("Menge","2 × 250 g")+field("Zusatzinformation","ungesalzen")+"</div>",actions(),"Artikeldetails aus der Einkaufsliste."],
+  ["Artikel","Produktkategorie auswählen",'<input aria-label="Kategorie suchen" placeholder="Kategorie suchen">'+menu(["Ohne Kategorie",...categories]),"","Die bisherige Kategorieauswahl im Artikel-Dialog mit X."],
+  ["Supermärkte","Supermärkte",'<div class="management-list">'+["REWE","ALDI","Wochenmarkt"].map(link).join("")+"</div>",button("Supermarkt hinzufügen"),"Keine zusätzliche Marken- oder Verwaltungsüberschrift."],
+  ["Supermärkte","Supermarkt bearbeiten",marketForm("REWE"),actions(),"Kompakter Kopf, Name und beide Optionen bleiben erhalten."],
+  ["Supermärkte","Supermarkt hinzufügen",marketForm(""),actions(),"Gleiche Kopfzeile wie beim Bearbeiten."],
+  ["Supermärkte","Produktkategorien",note("REWE")+link("Kategorienauswahl")+'<ol class="category-order">'+order+"</ol>",actions(),"Marktname nur als kleiner Kontext; Sortierung bleibt erhalten."],
+  ["Supermärkte","Kategorien auswählen",note("REWE")+categories.map(text=>check(text)).join(""),actions("Auswahl übernehmen"),"„Zurück“ entfällt; Abbrechen und Übernehmen bleiben."],
+  ["Supermärkte","Bonuskarte / APP-Code",note("REWE")+button("Bild aus Dateien auswählen","primary full-width")+button("QR-Code fotografieren","secondary full-width")+'<div class="card-placeholder" aria-label="Beispielkartenbild">▥ ▥ ▥</div>'+button("Bild entfernen","secondary danger-button")+note("PNG, JPEG oder WebP · maximal 512 KiB nach Bildoptimierung."),actions(),"Ein kurzer Titel statt langem Titel plus Rücksprungtitel."],
+  ["Kategorien","Produktkategorien",'<div class="management-list">'+categories.map(link).join("")+"</div>",button("Kategorie hinzufügen"),"Verwaltung ohne zusätzliche Kopfzeile."],
+  ["Kategorien","Kategorie bearbeiten",'<div class="management-form">'+field("Kategoriename","Milchprodukte")+link("Zugeordnete Produkte")+'<div class="danger-section">'+button("Löschen","secondary danger-button")+"</div></div>",actions(),"Nur die fachliche Überschrift bleibt."],
+  ["Kategorien","Kategorie hinzufügen",'<div class="management-form">'+field("Kategoriename","")+"</div>",actions(),"Gleicher Aufbau wie die anderen Formulare."],
+  ["Kategorien","Zugeordnete Produkte",note("Milchprodukte")+menu(["Butter","Milch","Joghurt"])+note("Entfernen löst nur die Kategoriezuordnung; der Artikel bleibt erhalten."),"","Kategorie als Kontext, keine zusätzliche Markenleiste."],
+  ["Listen & Sync","Listen verwalten",'<div class="management-form">'+field("Listenname","Wocheneinkauf")+check("In der App anzeigen")+note("Quelle: todo.wocheneinkauf")+button("Speichern")+"</div><hr>"+'<div class="management-form">'+field("Listenname","Drogerie")+check("In der App anzeigen")+button("Speichern")+"</div>","","Listenname, Sichtbarkeit und Speicheraktion bleiben erhalten."],
+  ["Listen & Sync","Einkaufsliste auswählen",menu(["Wocheneinkauf ✓","Drogerie","Baumarkt"]),"","Auch die Listenauswahl erhält ein eigenes X."],
+  ["Listen & Sync","Supermarkt auswählen",menu(["Ohne Supermarkt","REWE ✓","ALDI","Wochenmarkt"]),"","Auch die Marktauswahl erhält ein eigenes X."],
+  ["Listen & Sync","Sync-Status",'<p style="color:var(--accent)">● Online · Alles gespeichert</p>'+note("App und verbundene Listen sind abgeglichen.")+menu(["Jetzt synchronisieren","Sync-Konflikte auflösen"]),"","Statusflyout mit kompaktem Kopf und X."],
+  ["Listen & Sync","Quellen abgleichen",note("Wocheneinkauf · Butter")+note("Dieser Artikel ist in der App gespeichert. Es ist noch unklar, welcher Eintrag in der verbundenen Liste dazugehört.")+'<select aria-label="Quellartikel"><option>Quellartikel auswählen</option><option>Butter – offen</option></select>'+menu(["Quellartikel zuordnen","Bewusst erneut anlegen","Nur lokal behalten"])+note("Erneutes Anlegen kann Duplikate erzeugen."),"","Wichtige Sync-Erklärungen bleiben trotz reduziertem Kopf."],
+  ["Dialoge","Artikel löschen?",'<p>Butter</p><p>Statistik für diesen Artikel wird ebenfalls gelöscht! Bisher 20 Verwendungen.</p><p>Der Artikel wird auch aus „Wocheneinkauf“ entfernt.</p>',button("Abbrechen","secondary")+button("Löschen","secondary danger-button"),"X bricht ab, niemals eine Löschung auslösen."],
+  ["Dialoge","Supermarkt löschen?",'<p>„REWE“ endgültig für alle Nutzer aus der Marktauswahl entfernen?</p>'+note("Einkaufslisten bleiben erhalten."),button("Abbrechen","secondary")+button("Löschen","secondary danger-button"),"Sicherheitsdialog mit demselben Schließsymbol."],
+  ["Dialoge","Kategorie löschen?",'<p>„Milchprodukte“ endgültig für alle Nutzer löschen?</p>'+note("Die Kategorie und ihre Marktzuordnungen werden entfernt. Artikel bleiben erhalten und erscheinen ohne Kategorie."),button("Abbrechen","secondary")+button("Löschen","secondary danger-button"),"Warnung bleibt vollständig erhalten."],
+  ["Dialoge","Artikel zusammenführen?",'<p>„Buter“ wird in „Butter“ zusammengeführt.</p>'+note("Verwendungen werden übernommen; bestehende Listen und Statistiken bleiben erhalten."),actions("Zusammenführen"),"X entspricht Abbrechen."],
+  ["Dialoge","Änderungen verwerfen?",'<p>Deine Änderungen wurden noch nicht gespeichert.</p>'+note("Weiter bearbeiten oder die Änderungen verwerfen?"),button("Weiter bearbeiten","secondary")+button("Verwerfen"),"X bedeutet weiter bearbeiten – kein stilles Verwerfen."],
+  ["Dialoge","Einkauf beenden?",'<p>Dies löscht alle abgehakten Artikel aus der Liste!</p>',button("Abbrechen","secondary")+button("OK"),"Keine wiederholte Überschrift über dem Dialog."],
+  ["Dialoge","Pfandbon nicht vergessen!",'<p>Denk vor dem Bezahlen an deinen Pfandbon.</p><div class="card-placeholder">▥ ▥ ▥</div>'+note("Bonuskarte / APP-Code · REWE"),button("OK"),"Kassiererinnerung mit Karte und gemeinsamem X."],
+  ["Dialoge","Pfandbon nicht vergessen!",'<p>Denk vor dem Bezahlen an deinen Pfandbon.</p>',button("OK"),"Kassiererinnerung ohne Karte."],
+  ["Dialoge","Bonuskarte / APP-Code",'<div class="card-placeholder" style="height:240px">▥ ▥ ▥</div>'+note("REWE"),"","Manuelle Kartenanzeige und Checkout ohne Pfandbon: ein Titel, ein X."],
+  ["Dialoge","App installieren",'<p>Öffne das Browser-Menü und wähle „Zum Startbildschirm hinzufügen“.</p>'+note("Danach kannst du den Einkaufszettel direkt starten."),button("Verstanden"),"Installationshilfe mit kurzem Titel und Schließsymbol."],
+  ["Dialoge","Kategoriezuordnung entfernen?",'<p>Butter aus der Kategorie „Milchprodukte“ entfernen?</p>'+note("Der Artikel und seine Einträge auf Einkaufslisten bleiben erhalten."),actions("Entfernen"),"Auch generische App-Bestätigungen verwenden denselben Kopf."],
+  ["Dialoge","Erneut in Quelle anlegen?",'<p>„Butter“ wirklich erneut in der Quelle anlegen?</p>'+note("Falls der erste Versuch bereits erfolgreich war, kann ein Duplikat entstehen."),actions("Erneut anlegen"),"Bisherige Sync-Sicherheitsrückfrage im gemeinsamen Dialogstil."],
+  ["Dialoge","Quellartikel zuordnen?",'<p>Den ausgewählten Eintrag mit „Butter“ verbinden?</p>'+note("Name und Erledigt-Status aus der App werden übernommen; Notizen und Kategorie bleiben erhalten."),actions("Zuordnen"),"Zuordnungsbestätigung mit einheitlichem X."]
+];
+const themes = [
+  ["Mono",["#141414","#202020","#2b2b2b","#383838","#f5f5f5","#171717","#aaa"]],
+  ["Botanical",["#111813","#1b251e","#26362a","#304035","#a3e635","#17220d","#aab7ac"]],
+  ["Midnight Plum",["#15121c","#211b2b","#30243e","#3b3148","#c4a7ff","#20152f","#b9adc8"]],
+  ["Market Journal",["#1a1411","#271d18","#38281d","#49382e","#ffb454","#38200b","#c7b3a5"]],
+  ["Fresh Signal",["#0d171b","#13242a","#19343b","#24444c","#55e0d0","#06201d","#9db8ba"]],
+  ["Tomato",["#1b1315","#281c1f","#382327","#493137","#ff8977","#351512","#c2a7a6"]],
+  ["Lime Focus",["#0c0f0c","#171c16","#222b1e","#343e2d","#d4ff00","#161b00","#a9b197"]],
+  ["Indigo Pocket",["#101522","#192033","#222d49","#303b56","#83a7ff","#111b34","#aab5ca"]]
+];
+const theme = document.querySelector("#theme");
+themes.forEach(([name],i)=>theme.add(new Option(name,i)));
+screens.forEach(([group,title,body,footer,description],index)=>{
+  const example=document.createElement("section");
+  example.className="example";
+  example.dataset.group=group;
+  example.innerHTML=`<p class="caption">${String(index+1).padStart(2,"0")} · ${group}<br>${description}</p><section class="screen" aria-label="${title}"><header class="clean-header"><h2>${title}</h2><span class="close-target"><button type="button" class="close" aria-label="${title} schließen">×</button></span></header><div class="body">${body}</div>${footer?`<footer class="footer">${footer}</footer>`:""}</section><div class="closed-note">Vorschau geschlossen. Echte App und Daten bleiben unverändert.<br><button class="secondary reopen">Wieder öffnen</button></div>`;
+  example.querySelector(".close").onclick=()=>example.classList.add("is-closed");
+  example.querySelector(".reopen").onclick=()=>example.classList.remove("is-closed");
+  example.querySelectorAll(".body button,.footer button").forEach(control=>control.onclick=()=>{
+    document.querySelector("#status").textContent=`${title}: „${control.textContent}“ ist nur ein Designbeispiel, keine echte Aktion.`;
+  });
+  document.querySelector(".gallery").append(example);
+});
+theme.onchange=()=>document.querySelectorAll(".screen").forEach(screen=>{
+  ["bg","surface","surface2","line","accent","accent-text","muted"].forEach((key,i)=>screen.style.setProperty(`--${key}`,themes[Number(theme.value)][1][i]));
+});
+function filter(){
+  const group=document.querySelector("#group").value;
+  let count=0;
+  document.querySelectorAll(".example").forEach(example=>{example.hidden=!!group&&example.dataset.group!==group;if(!example.hidden)count++;});
+  document.querySelector("#count").textContent=`${count} von ${screens.length} Ansichten · Smartphone-Vorschau · Inhalte separat scrollbar`;
+}
+document.querySelector("#group").onchange=filter;
+document.querySelector("#reset").onclick=()=>document.querySelectorAll(".is-closed").forEach(example=>example.classList.remove("is-closed"));
+filter();
+</script>
+</body>
+</html>
