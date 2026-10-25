@@ -530,6 +530,8 @@ dialog h2, dialog p { margin: 0; }
 .clean-market-view[data-view="products"] .product-management-buttons { gap: 12px; }
 .clean-market-view[data-view="products"] .product-management-name { font-size: 13px; }
 .clean-market-view[data-view="products"] .product-management-buttons button { min-height: 48px; font-size: 14px; }
+.clean-market-view[data-view="products"] .product-management-buttons .product-outline-action { font-size: 13px; }
+.clean-market-view[data-view="products"] .product-management-buttons .product-merge-action { font-size: 12.5px; }
 .clean-market-view[data-view="products"] .product-management-buttons .danger-button { font-size: 16px; }
 .product-management-buttons .navigation-label { min-width: 0; overflow-wrap: anywhere; }
 .product-comparison .product-rename, .product-comparison .product-management-actions button,
@@ -588,9 +590,9 @@ dialog h2, dialog p { margin: 0; }
 .clean-market-view .category-choice { min-height: 56px; padding: 12px 16px; }
 .clean-market-view .category-order { margin: 32px 0 0; gap: 12px; }
 .clean-market-view .category-order-row { min-height: 56px; padding: 4px; gap: 4px; }
-.clean-market-view .category-order-row .move-grip { min-width: 48px; width: 48px; height: 48px; font-size: 24px; }
+.clean-market-view .category-order-row .move-grip { min-width: 48px; width: 48px; height: 48px; font-size: 32px; }
 .clean-market-view .category-order-row .move-button { min-width: 44px; width: 44px; min-height: 44px; padding: 0; }
-.clean-market-view .category-order-row .order-name { font-size: 16px; }
+.clean-market-view .category-order-row .order-name { font-size: 14px; }
 .clean-market-view .bonus-card-form { gap: 12px; }
 .clean-market-view .bonus-card-form > .full-width { min-height: 56px; text-align: center; }
 .clean-market-view .bonus-card-form .bonus-card-preview { height: 180px; max-height: 180px; margin-top: 20px; }

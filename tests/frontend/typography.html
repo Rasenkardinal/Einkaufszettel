@@ -46,14 +46,14 @@ async function runTests() {
   const groups = {
     markets: {".management-link":16},
     "market-edit": {"#catalog-name":16, ".category-navigation":14, ".market-checkout-option":14, ".danger-button":16},
-    "market-order": {".market-context":13, ".category-selection-button":16, ".order-name":16},
+    "market-order": {".market-context":13, ".category-selection-button":16, ".order-name":14, ".move-grip":32},
     "market-select": {".category-choice":16},
     "market-bonus-card": {".market-context":17, ".full-width":16, ".management-help":11, ".bonus-card-remove":16},
     categories: {".management-link":16},
     "category-edit": {"#catalog-name":16, ".category-navigation":16, ".danger-button":16},
     "category-products": {".market-context":14, ".category-product-row > span":16, ".category-product-row button":16},
     products: {".product-search":16, ".product-list-summary":14, ".product-management-row:not(.product-comparison) .product-management-name":13,
-      ".product-outline-action":14, ".product-management-buttons .danger-button":16},
+      ".product-outline-action:not(.product-merge-action)":13, ".product-merge-action":12.5, ".product-management-buttons .danger-button":16},
     "product-edit": {"#product-name":16},
     "product-statistics": {"label":13, "#product-usage-count":16},
     "product-merge": {".market-context":22, "#product-merge-trigger":16, ".product-merge-preview":11},
@@ -84,6 +84,13 @@ async function runTests() {
       size("#catalog-title",22,page);
       size("#catalog-fixed-actions button, .page-actions button",16,page);
       for (const [selector, px] of Object.entries(expected)) size(selector,px,content);
+      if (view === "market-order") {
+        for (const grip of content.querySelectorAll(".move-grip")) {
+          const box = grip.getBoundingClientRect(), row = grip.closest(".category-order-row").getBoundingClientRect();
+          assert(box.width === 48 && box.height === 48, "Category grip touch target must remain 48px");
+          assert(Math.abs(box.left + box.width / 2 - row.left - 29) <= 1, "Category grip must match the right-shifted editor position");
+        }
+      }
       for (const button of page.querySelectorAll(".primary, .secondary")) {
         if (button.getClientRects().length) centered(button);
       }

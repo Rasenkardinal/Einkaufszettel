@@ -763,9 +763,9 @@ async function runTests() {
   api.reset();
   const order = state.categories.map(category => category.id);
   api.openCatalog("market-order", {...state.supermarkets[0], category_ids:order});
-  test("Category order uses the approved 16px labels with vertically aligned bordered controls", () => {
+  test("Category order uses the approved 14px labels with vertically aligned bordered controls", () => {
     for (const name of doc.querySelectorAll(".category-order-row .order-name")) {
-      assert(win.getComputedStyle(name).fontSize === "16px", "Order label did not adopt approved size");
+      assert(win.getComputedStyle(name).fontSize === "14px", "Order label did not adopt approved size");
       const box = name.getBoundingClientRect(), row = name.closest(".category-order-row").getBoundingClientRect();
       assert(Math.abs(box.top + box.height / 2 - row.top - row.height / 2) < 1, "Order label not vertically centered");
     }

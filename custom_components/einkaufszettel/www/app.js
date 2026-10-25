@@ -870,7 +870,7 @@ function productManagementRow(product, suggestion) {
   if (!suggestion) {
     const primaryActions = document.createElement("div");
     primaryActions.className = "product-management-buttons";
-    const mergeButton = navigationButton("Zusammenführen", () => openCatalog("product-merge", product), "secondary product-outline-action");
+    const mergeButton = navigationButton("Zusammenführen", () => openCatalog("product-merge", product), "secondary product-outline-action product-merge-action");
     primaryActions.append(renameButton, mergeButton, statisticsButton, deleteButton);
     row.append(primaryActions);
   }
