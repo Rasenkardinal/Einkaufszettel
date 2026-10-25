@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eingabefeld · Exakter Kontrastvergleich</title>
+<style>
+body { margin: 0; padding: 28px; background: #141414; color: #f4f4f4; font: 14px system-ui,sans-serif; }
+main { max-width: 960px; margin: auto; }
+h1 { font-size: 25px; margin: 0 0 12px; }
+p { color: #aaa; line-height: 1.7; }
+.comparison { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 24px; }
+article { flex: 1; min-width: 0; max-width: 430px; }
+h2 { font-size: 18px; }
+iframe { display: block; width: 100%; height: 650px; box-sizing: border-box; border: 1px solid #444; border-radius: 30px; background: #141414; }
+.swatch { display: inline-block; width: 15px; height: 15px; border: 1px solid #666; vertical-align: middle; margin-right: 8px; }
+#status { font-size: 12px; }
+@media(max-width:650px) { body { padding:16px; } article { flex-basis:100%; } }
+</style>
+<main>
+  <h1>„Was fehlt noch?“ · Dunkleres Eingabefeld</h1>
+  <p>Exakter Vergleich mit dem HTML und CSS der App 0.4.39 im Mono-Design. Nur der Hintergrund des Eingabefelds ändert sich. Dockfläche, Plus, Schrift, Rahmen und Abstände bleiben identisch.</p>
+  <div class="comparison">
+    <article><h2>Aktuell · #202020</h2><p><span class="swatch" style="background:#202020"></span>Eingabefeld wie in der veröffentlichten App</p><iframe id="before" title="Aktueller Eingabehintergrund"></iframe></article>
+    <article><h2>Vorschlag · #141414</h2><p><span class="swatch" style="background:#141414"></span>Etwas dunkler auf unverändertem Dock #2a2a2a</p><iframe id="after" title="Dunklerer Eingabehintergrund"></iframe></article>
+  </div>
+  <p id="status" role="status">Vorschau wird geladen …</p>
+  <p>Nur Visualisierung – noch keine Änderung an der App.</p>
+</main>
+<script>
+async function render() {
+  const base = new URL("../../custom_components/einkaufszettel/www/",location.href);
+  const response = await fetch(new URL("app.html",base),{cache:"no-store"});
+  if (!response.ok) throw Error("App-Oberfläche konnte nicht geladen werden: " + response.status);
+  const markup = (await response.text()).replace(/<script src="[^"]+" defer><\/script>/,"")
+    .replace("<head>",`<head><base href="${base}">`);
+  await Promise.all(["before","after"].map(async id=>{
+    const frame = document.querySelector("#"+id);
+    const loaded = new Promise(resolve=>frame.onload=resolve);
+    frame.srcdoc = markup;
+    await loaded;
+    const doc = frame.contentDocument;
+    doc.body.dataset.theme = "mono";
+    doc.querySelector("main.app").classList.add("planning-mode");
+    doc.querySelector(".sync-actions").classList.remove("syncing");
+    doc.querySelector("#list-name").textContent = "Wocheneinkauf";
+    doc.querySelector("#list-select").disabled = false;
+    doc.querySelector("#market-name").textContent = "REWE";
+    const list = doc.querySelector("#items");
+    for (const [name,detail] of [["Milch","2 × 1 l"],["Brot","Vollkorn"],["Äpfel","1 kg"],["Kaffee","500 g"]]) {
+      const item = doc.createElement("li");
+      item.className = "item";
+      const check = doc.createElement("input"); check.type="checkbox"; check.setAttribute("aria-label",name+" erledigt");
+      const text = doc.createElement("span"); text.textContent=name;
+      const note = doc.createElement("small"); note.textContent=detail;
+      item.append(check,text,note); list.append(item);
+    }
+    doc.querySelector("#new-item").style.backgroundColor = id === "before" ? "#202020" : "#141414";
+  }));
+  document.querySelector("#status").textContent = "Original-App-CSS geladen · links #202020 · rechts #141414 · Dock in beiden Ansichten #2a2a2a.";
+}
+render().catch(error=>{document.querySelector("#status").textContent="Fehler: "+error.message;});
+</script>
+</html>

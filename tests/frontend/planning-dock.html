@@ -42,6 +42,7 @@ async function runTests() {
       const box = dock.getBoundingClientRect();
       assert(Math.abs(box.bottom - win.innerHeight) < 1, "Dock not at screen bottom");
       assert(win.getComputedStyle(dock).backgroundColor === "rgb(42, 42, 42)", "Dock must match approved contrast proposal 2");
+      assert(win.getComputedStyle(input).backgroundColor === "rgb(20, 20, 20)", "Input must match approved #141414");
       assert(win.getComputedStyle(dock).borderTopColor === "rgb(89, 89, 89)", "Dock divider must match proposal 2");
       assert(parseFloat(win.getComputedStyle(dock).paddingBottom) >= 28, "Display corners need at least 28px bottom padding");
       assert(box.width === Math.min(width,700), "Dock does not match app width");
