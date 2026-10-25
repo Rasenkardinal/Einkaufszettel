@@ -135,6 +135,8 @@ let startupConnecting = false;
 let startupConnectionTimer;
 let startupConnectionMessage = "";
 let syncAnimationFrame;
+let syncAnimationStarted = 0;
+let syncAnimationFinishAt;
 const reducedSyncMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 reducedSyncMotion.addEventListener("change", updateSyncAnimation);
 let heartbeatTimer;
@@ -2494,17 +2496,35 @@ function drawSyncSpinner(seconds) {
 
 function updateSyncAnimation() {
   const active = startupConnecting || !!syncPromise || !!listRefreshPromise;
-  elements.syncActions.classList.toggle("syncing", active);
-  if (!active || reducedSyncMotion.matches) {
+  if (reducedSyncMotion.matches || (!active && syncAnimationFrame === undefined)) {
     window.cancelAnimationFrame(syncAnimationFrame);
     syncAnimationFrame = undefined;
-    drawSyncSpinner(.45);
+    syncAnimationFinishAt = undefined;
+    elements.syncActions.classList.toggle("syncing", active);
+    drawSyncSpinner(.9);
     return;
   }
+  elements.syncActions.classList.add("syncing");
+  if (!active) {
+    if (syncAnimationFinishAt === undefined) {
+      const elapsed = (performance.now() - syncAnimationStarted) / 1000 + .3;
+      syncAnimationFinishAt = .9 + Math.max(0, Math.ceil((elapsed - .9) / 1.8)) * 1.8;
+    }
+    return;
+  }
+  syncAnimationFinishAt = undefined;
   if (syncAnimationFrame !== undefined) return;
-  const started = performance.now();
+  syncAnimationStarted = performance.now();
   const animate = timestamp => {
-    drawSyncSpinner((timestamp - started) / 1000 + .3);
+    const elapsed = (timestamp - syncAnimationStarted) / 1000 + .3;
+    if (syncAnimationFinishAt !== undefined && elapsed >= syncAnimationFinishAt) {
+      syncAnimationFrame = undefined;
+      syncAnimationFinishAt = undefined;
+      elements.syncActions.classList.remove("syncing");
+      drawSyncSpinner(.9);
+      return;
+    }
+    drawSyncSpinner(elapsed);
     syncAnimationFrame = window.requestAnimationFrame(animate);
   };
   drawSyncSpinner(.3);

@@ -163,9 +163,16 @@ async function runTests() {
     api.drawSyncSpinner(.9);
     assert(firstArc.getTotalLength() > shortLength * 4, "Sync arcs must grow rather than only rotate");
     api.updateConnection("online");
-    assert(!doc.querySelector(".sync-actions").classList.contains("syncing"), "Startup spinner not stopped after connection");
+    assert(doc.querySelector(".sync-actions").classList.contains("syncing") || win.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      "Early success must not interrupt the animation");
     assert(win.getComputedStyle(spinner).display === "block", "Idle state must keep the double-sync icon visible");
     assert(doc.querySelectorAll("#sync > svg").length === 1, "Legacy single-arrow icon must be removed");
+  });
+  await new Promise(resolve => win.setTimeout(resolve, 1900));
+  test("Sync animation finishes at fully developed arrows and keeps a stable final frame", () => {
+    const spinner = doc.querySelector(".sync-spinner");
+    assert(!doc.querySelector(".sync-actions").classList.contains("syncing"), "Animation did not finish after success");
+    assert(Math.abs(spinner.querySelector("path").getTotalLength() - 16.8) < .1, "Final arrows must use the full 2.1-radian arcs");
     const idlePaths = [...spinner.querySelectorAll("path")].map(path => path.getAttribute("d"));
     assert(idlePaths.every(Boolean), "Idle double-sync arcs and arrowheads must all be drawn");
     api.setBusy(false);
