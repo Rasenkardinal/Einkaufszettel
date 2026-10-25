@@ -25,6 +25,25 @@ def sample():
     }
 
 
+@pytest.mark.parametrize("keys", [None, {}, [""], ["Artikel"], ["a", "a"], [123]])
+def test_invalid_deleted_product_keys_rejected(keys):
+    with pytest.raises(ValueError, match="Löschvermerke"):
+        catalog.validate_catalog({"deleted_product_keys": keys})
+
+
+def test_deleted_product_can_be_explicitly_created_again():
+    data = {
+        "products": [{"key": "artikel", "name": "Artikel", "category_id": None}],
+        "product_events": {"old-event": "artikel"},
+    }
+    deleted = catalog.change_catalog(data, "delete_product", {"product_key": "artikel"})
+    assert deleted["deleted_product_keys"] == ["artikel"]
+    assert deleted["product_events"] == data["product_events"]
+    recreated = catalog.change_catalog(deleted, "create_product", {"name": "Artikel"})
+    assert recreated["products"][0]["name"] == "Artikel"
+    catalog.validate_catalog(recreated)
+
+
 @pytest.mark.parametrize("count", [0, 1, 100, 2147483647])
 def test_correct_overall_statistics_without_changing_history(count):
     data = sample()
@@ -453,7 +472,8 @@ def test_delete_product_removes_usage_and_references():
     result = catalog.change_catalog(data, "delete_product", {"product_key": "milch"})
     assert result["products"] == []
     assert result["product_aliases"] == {}
-    assert result["product_events"] == {}
+    assert result["product_events"] == {"event": "milch"}
+    assert set(result["deleted_product_keys"]) == {"milch", "milhc"}
     assert data["products"][0]["usage"]["list-a"]["added"] == 1
 
 

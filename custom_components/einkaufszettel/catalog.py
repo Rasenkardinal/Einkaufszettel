@@ -123,6 +123,16 @@ def validate_catalog(data: dict[str, Any]) -> dict[str, Any]:
     if len({product["key"] for product in products}) != len(products):
         raise ValueError("Doppelte Produkte im Katalog.")
     product_keys = {product["key"] for product in products}
+    deleted_keys = data.get("deleted_product_keys", [])
+    if (
+        not isinstance(deleted_keys, list)
+        or any(
+            not isinstance(key, str) or not key or product_key(key) != key
+            for key in deleted_keys
+        )
+        or len(set(deleted_keys)) != len(deleted_keys)
+    ):
+        raise ValueError("Ungültige Produkt-Löschvermerke.")
     dismissed_suggestions = data.get("dismissed_product_suggestions", [])
     if not isinstance(dismissed_suggestions, list):
         raise ValueError("Ungültige bestätigte Artikelsuchvorschläge.")
@@ -276,15 +286,17 @@ def change_catalog(
                             result["product_events"][receipt] = new_key
             elif action == "delete_product":
                 products.remove(product)
+                deleted_keys = result.setdefault("deleted_product_keys", [])
+                for key in [
+                    source_key,
+                    *(a for a, t in aliases.items() if t == source_key),
+                ]:
+                    if key not in deleted_keys:
+                        deleted_keys.append(key)
                 result["product_aliases"] = {
                     alias: target
                     for alias, target in aliases.items()
                     if alias != source_key and target != source_key
-                }
-                result["product_events"] = {
-                    receipt: target
-                    for receipt, target in result.get("product_events", {}).items()
-                    if target != source_key
                 }
             else:
                 target_key = msg["target_key"]

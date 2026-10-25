@@ -24,6 +24,7 @@ async def apply_product_rules(
         categories = {category["id"] for category in catalog.get("categories", [])}
         products = {product["key"]: product for product in catalog.get("products", [])}
         aliases = catalog.get("product_aliases", {})
+        deleted_keys = set(catalog.get("deleted_product_keys", []))
 
         def canonical_item(item):
             key = aliases.get(product_key(item.summary))
@@ -38,6 +39,8 @@ async def apply_product_rules(
         for item in [*seed, *items]:
             category = item.metadata.get("category_id")
             key = product_key(item.summary)
+            if key in deleted_keys and key not in products:
+                continue
             if (
                 key not in products
                 or (

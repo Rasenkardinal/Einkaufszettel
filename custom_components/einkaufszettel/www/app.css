@@ -361,9 +361,56 @@ dialog h2, dialog p { margin: 0; }
 .clean-market-view[data-view="market-order"] .management-title-row h1 { max-width: 181px; }
 .clean-market-view[data-view="market-select"] .management-title-row h1 { max-width: 212px; }
 .clean-market-view[data-view="market-bonus-card"] .management-title-row h1 { max-width: 226px; }
+.clean-market-view[data-view="categories"] .management-title-row h1 { max-width: 181px; }
+.clean-market-view[data-view="category-edit"] .management-title-row h1 { max-width: 7.637em; }
+.clean-market-view[data-view="category-products"] .management-title-row h1 { max-width: 5.637em; }
+.clean-market-view[data-view="products"] .management-title-row h1 { max-width: 164px; }
+.clean-market-view[data-view="product-edit"] .management-title-row h1 { max-width: 197px; }
+.clean-market-view[data-view="product-statistics"] .management-title-row h1 { max-width: 184px; }
+.clean-market-view[data-view="product-merge"] .management-title-row h1 { max-width: 7.637em; }
+.clean-market-view .management-title-row h1 { display: flex; align-items: center; min-height: 48px; }
 .clean-market-view[data-view="market-order"] .management-title-row { margin-bottom: 12px; }
 .clean-market-view[data-view="markets"] .management-list { margin-top: 0; gap: 12px; }
 .clean-market-view[data-view="markets"] .management-link { min-height: 56px; padding: 10px 12px; font-size: 13px; }
+.clean-market-view[data-view="categories"] .management-list { margin-top: 0; gap: 12px; }
+.clean-market-view[data-view="categories"] .management-link { min-height: 56px; padding: 10px 12px; font-size: 13px; }
+.clean-market-view[data-view="category-edit"] #catalog-name,
+.clean-market-view[data-view="product-edit"] #product-name,
+.clean-market-view[data-view="product-statistics"] #product-usage-count { min-height: 48px; padding: 10px 12px; font-size: 16px; }
+.clean-market-view[data-view="category-edit"] .category-navigation { margin-top: 20px; min-height: 56px; padding: 10px 12px; font-size: 13px; }
+.clean-market-view[data-view="category-edit"] .danger-section { margin-top: 20px; padding-top: 23px; }
+.clean-market-view[data-view="category-edit"] .danger-button { min-width: 114px; }
+.clean-market-view[data-view="category-products"] .market-context { margin-bottom: 16px; }
+.clean-market-view[data-view="category-products"] .management-list { margin: 0; gap: 12px; }
+.clean-market-view[data-view="category-products"] .category-product-row { min-height: 56px; margin: 0; padding: 6px 16px; }
+.clean-market-view[data-view="category-products"] .category-product-row button { min-width: 114px; }
+.clean-market-view[data-view="products"] .product-search { min-height: 48px; font-size: 16px; }
+.clean-market-view[data-view="products"] .product-list-summary { min-height: 24px; margin: 12px 0; font-size: 13px; }
+.clean-market-view[data-view="products"] .section-label { margin: 0 0 12px; }
+.clean-market-view[data-view="products"] .product-management-row { margin: 0 0 12px; }
+.clean-market-view[data-view="products"] .product-management-buttons { gap: 12px; }
+.clean-market-view[data-view="products"] .product-management-buttons button { min-height: 48px; font-size: 13px; }
+.product-management-buttons .navigation-label { min-width: 0; overflow-wrap: anywhere; }
+.product-comparison .product-rename, .product-comparison .product-management-actions button,
+.product-comparison .product-similar-actions button { background: var(--surface); color: #f4f4f4; border: 1px solid var(--line); min-height: 44px; }
+.product-comparison .product-management-actions .danger-button { background: transparent; color: #ffb4a8; border-color: #754940; }
+.clean-market-view[data-view="product-statistics"] label { min-height: 24px; line-height: 24px; font-size: 13px; }
+.clean-market-view[data-view="product-merge"] .market-context { margin-bottom: 20px; }
+.clean-market-view[data-view="product-merge"] .category-picker-trigger { min-height: 56px; }
+.clean-market-view[data-view="product-merge"] .product-merge-preview { margin: 20px 0 0; font-size: 13px; }
+.confirmation-product { font-size: 32px; line-height: 1.25; overflow-wrap: anywhere; }
+.confirmation-header { display: flex; align-items: center; gap: 16px; }
+.confirmation-header h2 { min-width: 0; }
+.product-confirmation .confirmation-header, #product-merge-confirm .confirmation-header { padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
+.product-confirmation .confirmation-header h2, #product-merge-confirm .confirmation-header h2 { font-size: 22px; line-height: 24px; }
+.product-confirmation .confirmation-header h2 { max-width: 142px; }
+#product-merge-confirm .confirmation-header h2 { max-width: 171px; }
+.confirmation-header .management-help-trigger { width: 34px; height: 34px; }
+#app-confirm.product-confirmation #app-confirm-description,
+#product-merge-description { font-size: 16px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+#app-confirm.product-confirmation .dialog-actions, #product-merge-confirm .dialog-actions { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); gap: 12px; }
+#app-confirm.product-confirmation .dialog-actions button, #product-merge-confirm .dialog-actions button { flex: none; width: 114px; min-height: 44px; padding-inline: 6px; }
+#app-confirm.product-confirmation #accept-app-confirm { background: transparent; }
 .clean-market-view .management-title-row h1:focus { outline: none; }
 .clean-market-view .management-help-trigger, .catalog-close { width: 34px; height: 34px; flex: none; }
 .catalog-close { display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); color: var(--muted); }
@@ -403,6 +450,7 @@ dialog h2, dialog p { margin: 0; }
   .clean-market-view { padding-inline: 20px; }
   .clean-market-view .management-title-row { gap: 10px; }
   .clean-market-view .management-title-row h1 { font-size: 20px; }
+  .clean-market-view[data-view="products"] .product-management-buttons button { font-size: 11px; padding-inline: 6px; gap: 6px; }
 }
 .category-choice input { width: 20px; height: 20px; accent-color: var(--accent); }
 .category-order { display: grid; gap: 8px; list-style: none; padding: 0; margin: 24px 0; }

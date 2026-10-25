@@ -1029,7 +1029,8 @@ async def test_product_catalog_crud_preserves_and_merges_usage(integration, admi
     )
     assert connection.send_result.call_args.args[0] == 3
     assert persisted["products"] == []
-    assert persisted["product_events"] == {}
+    assert persisted["product_events"] == {"event-a": "milch"}
+    assert set(persisted["deleted_product_keys"]) == {"milch", "milhc"}
     assert persisted["product_aliases"] == {}
     await env.websocket.websocket_create_product(
         env.hass,
@@ -2409,6 +2410,64 @@ async def test_product_catalog_save_failure_does_not_acknowledge_assignment(
         )
     assert "assign" not in ctx.data.sync["receipts"]
     assert not ctx.data.items[0].metadata
+
+
+async def test_deleted_catalog_products_stay_deleted_after_restart_and_sync(
+    integration,
+):
+    env = integration
+    await env.package.async_setup_entry(env.hass, env.entry)
+    store = env.stores["einkaufszettel.supermarkets"]
+    catalog = {
+        "products": [{"key": "artikel", "name": "Artikel", "category_id": None}],
+        "product_aliases": {"test eins": "artikel"},
+        "product_events": {"old-add": "artikel"},
+    }
+    store.async_load.side_effect = lambda: deepcopy(catalog)
+
+    async def save(value):
+        nonlocal catalog
+        catalog = deepcopy(value)
+
+    store.async_save.side_effect = save
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    await env.websocket.websocket_delete_product(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/delete_product",
+            "product_key": "artikel",
+        },
+    )
+    connection.send_error.assert_not_called()
+    assert catalog["products"] == []
+    protocol = importlib.import_module(f"{env.package.__name__}.sync")
+    rules = importlib.import_module(f"{env.package.__name__}.products")
+    state = protocol.new_sync_state()
+    stale = env.model.ShoppingItem("old", "Artikel")
+    alias = env.model.ShoppingItem("old-alias", "Test eins")
+    state["deleted"] = {item.uid: item.to_dict() for item in (stale, alias)}
+    env.store.async_load.return_value = {"items": [], "sync": state}
+    for _ in range(2):
+        await env.package.async_setup_entry(env.hass, env.entry)
+        assert catalog["products"] == []
+        assert env.entry.runtime_data.sync["deleted"] == state["deleted"]
+    await rules.apply_product_rules(
+        env.hass,
+        [stale, alias],
+        events=[("old-add", "Artikel")],
+        list_id="test",
+    )
+    assert catalog["products"] == []
+    await rules.apply_product_rules(
+        env.hass,
+        [stale],
+        events=[("new-add", "Artikel")],
+        list_id="test",
+    )
+    assert len(catalog["products"]) == 1
+    assert catalog["products"][0]["usage"]["test"]["added"] == 1
 
 
 async def test_migration_seeds_completed_and_deleted_items_but_respects_removal_markers(

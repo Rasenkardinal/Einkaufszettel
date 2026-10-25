@@ -74,6 +74,19 @@ async function runTests() {
         busy = false;
         openCatalog("product-statistics", product);
       },
+      setupView(view, creating = false) {
+        openCatalog = originalOpenCatalog;
+        renderCatalogPage = originalRenderCatalogPage;
+        busy = false;
+        catalogDirty = false;
+        products = [
+          {key: "buter", name: "Buter", usage: {}},
+          {key: "butter", name: "Butter", usage: {}}
+        ];
+        categories = [{id: "dairy", name: "Milchprodukte"}];
+        openCatalog(view, view.startsWith("category") ? categories[0]
+          : creating ? {key: "", name: ""} : products[0]);
+      },
       setupCategoryDelete() {
         openCatalog = originalOpenCatalog;
         renderCatalogPage = originalRenderCatalogPage;
@@ -89,10 +102,10 @@ async function runTests() {
   function test(name, action) { action(); results.push("PASS " + name); }
   const row = api.productManagementRow(source, target);
   doc.querySelector(".app").replaceChildren(row);
-  test("Rename is a light button beside the saved name with decorative icons", () => {
+  test("Comparison rename uses a dark button beside the saved name with decorative icons", () => {
     const rename = row.querySelector(".product-management-heading .product-rename");
     assert(row.querySelector(".product-management-usage").textContent === "32 Verwendungen", "Usage count changed");
-    assert(rename.classList.contains("primary"), "Primary style missing");
+    assert(rename.classList.contains("secondary") && !rename.classList.contains("primary"), "Comparison must use the secondary style");
     assert(rename.getAttribute("aria-label") === "Eier umbenennen", "Accessible name missing");
     assert(rename.querySelectorAll('[aria-hidden="true"]').length === 2, "Pencil or arrow missing");
     assert(win.getComputedStyle(rename).minHeight === "44px", "Touch target too small");
@@ -108,6 +121,20 @@ async function runTests() {
     actions.lastElementChild.click();
     assert(calls.at(-1).view === "product-merge", "Merge action changed");
     assert(api.draft().target_key === "bier", "Suggested target not selected");
+    assert(!row.querySelector(".primary"), "Comparison must not contain bright primary actions");
+    const originalTheme = doc.body.dataset.theme;
+    const reference = doc.createElement("span");
+    reference.style.background = "var(--surface)";
+    row.append(reference);
+    for (const theme of ["mono", "botanical", "midnight-plum", "market-journal", "fresh-signal", "tomato", "lime-focus", "indigo-pocket"]) {
+      doc.body.dataset.theme = theme;
+      for (const button of row.querySelectorAll("button:not(.danger-button)")) {
+        assert(win.getComputedStyle(button).backgroundColor === win.getComputedStyle(reference).backgroundColor,
+          "Comparison action must use the dark surface in " + theme);
+      }
+    }
+    doc.body.dataset.theme = originalTheme;
+    reference.remove();
   });
   test("Kein Fehler keeps its persistent pair dismissal", () => {
     row.querySelector(".product-similar-dismiss").click();
@@ -184,7 +211,7 @@ async function runTests() {
     input.form.requestSubmit();
     const [command, payload] = calls.at(-1).save;
     assert(command === "set_product_statistics" && payload.count === 0 && payload.product_key === "eier", "Statistics save payload incorrect");
-    doc.querySelector("#catalog-content .page-actions button").click();
+    doc.querySelector("#catalog-fixed-actions button").click();
     doc.querySelector('#discard-changes button[value="discard"]').click();
   });
   api.setupCatalog();
@@ -221,6 +248,8 @@ async function runTests() {
     const dialog = doc.querySelector("#app-confirm");
     test("Used product confirmation warns about statistics and named lists", () => {
     assert(dialog.open, "App confirmation dialog did not open");
+    assert(win.getComputedStyle(doc.querySelector("#app-confirm-product")).fontSize === "32px", "Delete article name must use 32px");
+    assert(win.getComputedStyle(doc.querySelector("#app-confirm-description")).fontSize === "16px", "Delete info must use 16px");
     assert(doc.querySelector("#app-confirm-title").textContent === "Artikel löschen?", "Wrong dialog title");
     const description = doc.querySelector("#app-confirm-description").textContent;
     assert(description.includes("Statistik für diesen Artikel wird ebenfalls gelöscht! Bisher 32 Verwendungen"), "Statistics warning missing");
@@ -259,8 +288,8 @@ async function runTests() {
   }
   test("Article add action uses the existing fixed footer on a long list", () => {
     assert(page.classList.contains("has-fixed-actions"), "Fixed-footer layout missing");
-    assert(!footer.hidden && footer.children.length === 1, "Single footer action required");
-    assert(footer.textContent.includes("Artikel hinzufügen"), "Add action missing");
+    assert(!footer.hidden && footer.children.length === 2, "Approved footer actions required");
+    assert(footer.querySelector(".primary").textContent === "Hinzufügen", "Add action missing");
     assert(footerPosition.bottom <= win.innerHeight + 1, "Footer below viewport");
     assert(Math.abs(footerPosition.bottom - win.innerHeight) <= 1, "Footer must sit at bottom");
     assert(content.scrollHeight > content.clientHeight, "List must scroll internally");
@@ -273,9 +302,10 @@ async function runTests() {
   content.scrollTop = 1200;
   const savedPosition = content.scrollTop;
   content.querySelector(".product-management-row:nth-of-type(8) .product-outline-action").click();
-  test("Editing leaves fixed list layout and keeps normal form actions", () => {
+  test("Editing keeps approved fixed form actions", () => {
     assert(api.view() === "product-edit", "Edit view not opened");
-    assert(!page.classList.contains("has-fixed-actions") && footer.hidden, "List footer leaked into edit form");
+    assert(page.classList.contains("has-fixed-actions") && !footer.hidden, "Fixed form footer missing");
+    assert(footer.querySelector('[type="submit"]').form === doc.querySelector("#catalog-content form"), "Fixed submit lost its form association");
   });
   doc.querySelector("#catalog-back").click();
   await new Promise(resolve => win.requestAnimationFrame(() => win.requestAnimationFrame(resolve)));
@@ -284,7 +314,7 @@ async function runTests() {
     assert(Math.abs(content.scrollTop - savedPosition) < 1, "Article list scroll position lost");
     assert(!footer.hidden && Math.abs(footer.getBoundingClientRect().top - footerPosition.top) < 1, "Footer not restored");
   });
-  footer.querySelector("button").click();
+  footer.querySelector(".primary").click();
   test("Fixed add button opens an empty new-article form", () => {
     assert(api.view() === "product-edit", "Add button did not open edit view");
     assert(doc.querySelector("#product-name").value === "", "New article must start empty");
@@ -296,9 +326,9 @@ async function runTests() {
     for (const length of [0, 60]) {
       api.setupManagementList(view, length);
       test(view + " keeps the add action fixed with " + length + " records", () => {
-        const label = view === "markets" ? "Hinzufügen" : "Kategorie hinzufügen";
+        const label = "Hinzufügen";
         assert(page.classList.contains("has-fixed-actions"), "Fixed layout missing");
-        assert(!footer.hidden && footer.children.length === (view === "markets" ? 2 : 1) && footer.textContent.includes(label), "Wrong footer action");
+        assert(!footer.hidden && footer.children.length === 2 && footer.textContent.includes(label), "Wrong footer action");
         if (view === "markets") {
           const cancel = footer.querySelector(".secondary"), add = footer.querySelector(".primary");
           assert(cancel.textContent === "Abbrechen" && add.textContent === "Hinzufügen", "Approved market actions missing");
@@ -321,7 +351,8 @@ async function runTests() {
         assert(doc.querySelector("#catalog-name").getBoundingClientRect().top -
           page.querySelector(".management-title-row").getBoundingClientRect().bottom >= (view === "markets" ? 12 : 16),
           "Edit field too close to heading");
-        assert(footer.hidden && !page.classList.contains("has-fixed-actions"), "List footer leaked into add form");
+        assert(view === "markets" ? footer.hidden && !page.classList.contains("has-fixed-actions")
+          : !footer.hidden && page.classList.contains("has-fixed-actions"), "Wrong add-form footer layout");
         doc.querySelector("#catalog-back").click();
         assert(api.view() === view && !footer.hidden, "List footer not restored");
       });
@@ -349,6 +380,10 @@ async function runTests() {
       doc.querySelector(".product-merge-preview").textContent.includes("Bier"), "Merge preview not updated");
     doc.querySelector("#catalog-content form").requestSubmit();
     assert(doc.querySelector("#product-merge-confirm").open, "Existing merge safety confirmation was lost");
+    assert(doc.querySelector("#product-merge-names").textContent === "Eier → Bier", "Merge names missing");
+    assert(win.getComputedStyle(doc.querySelector("#product-merge-names")).fontSize === "32px", "Merge names must use 32px");
+    assert(win.getComputedStyle(doc.querySelector("#product-merge-description")).fontSize === "16px", "Merge info must use 16px");
+    doc.querySelector("#cancel-product-merge").click();
   });
   api.setupCategoryDelete();
   test("Catalog delete page keeps only a short action and opens themed safety confirmation", () => {
@@ -361,9 +396,56 @@ async function runTests() {
     assert(doc.querySelector("#app-confirm").open, "Catalog safety confirmation missing");
     assert(doc.querySelector("#app-confirm-title").textContent === "Kategorie löschen?", "Wrong safety title");
     assert(doc.querySelector("#app-confirm-description").textContent.includes("Backwaren"), "Safety details missing");
+    assert(doc.querySelector("#app-confirm-product").hidden && doc.querySelector("#app-confirm-help-trigger").hidden,
+      "Product-specific confirmation content leaked into category deletion");
     doc.querySelector("#accept-app-confirm").click();
     assert(calls.at(-1).save[0] === "delete_category", "Category was not deleted after approval");
   });
+  for (const width of [320, 390, 430]) {
+    frame.style.width = width + "px";
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    for (const view of ["categories", "category-edit", "category-products", "products", "product-edit", "product-statistics", "product-merge"]) {
+      api.setupView(view);
+      test(`${view} uses the approved compact header and fixed actions at ${width}px`, () => {
+        const title = doc.querySelector("#catalog-title"), help = page.querySelector(".management-help-trigger");
+        const t = title.getBoundingClientRect(), h = help.getBoundingClientRect();
+        const range = doc.createRange();
+        range.selectNodeContents(title);
+        const right = Math.max(...[...range.getClientRects()].map(rect => rect.right));
+        assert(Math.abs(h.top + h.height / 2 - t.top - t.height / 2) < 1, "Help icon not centered beside the title");
+        const expectedGap = width < 380 ? 10 : 16;
+        assert(h.left - right >= expectedGap - 1 && h.left - right <= expectedGap + 2, "Help icon too far from visible title");
+        assert(h.width === 34 && h.height === 34, "Help icon dimensions differ from design");
+        assert(!doc.querySelector("#catalog-close").hidden, "Close action missing");
+        assert(!footer.hidden && Math.abs(footer.getBoundingClientRect().bottom - win.innerHeight) < 1, "Footer not fixed");
+        for (const button of footer.querySelectorAll("button")) {
+          assert(Math.abs(button.getBoundingClientRect().width - 114) < 1, "Footer control width differs from design");
+        }
+        assert(doc.documentElement.scrollWidth <= width, "Page overflows horizontally");
+        for (const action of content.querySelectorAll(".product-management-buttons button")) {
+          assert(action.scrollWidth <= action.clientWidth, "Article action content overflows its button");
+        }
+      });
+    }
+    doc.querySelector("#product-merge-trigger").click();
+    doc.querySelector("#product-merge-options [role=option]").click();
+    footer.querySelector('[type="submit"]').click();
+    test(`Merge confirmation retains safe focus, readable text and help at ${width}px`, () => {
+      const dialog = doc.querySelector("#product-merge-confirm");
+      assert(dialog.open && doc.activeElement.id === "cancel-product-merge", "Safe initial focus missing");
+      const help = doc.querySelector("#product-merge-help-trigger");
+      help.click();
+      assert(!doc.querySelector("#product-merge-help").hidden, "Confirmation help missing");
+      doc.dispatchEvent(new win.KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}));
+      assert(dialog.open && doc.querySelector("#product-merge-help").hidden, "Escape should close help first");
+      assert(dialog.scrollWidth <= dialog.clientWidth, "Confirmation overflows horizontally");
+      const names = doc.querySelector("#product-merge-names"), info = doc.querySelector("#product-merge-description");
+      assert(win.getComputedStyle(names).fontSize === "32px" && win.getComputedStyle(info).fontSize === "16px",
+        "Confirmation typography differs from design");
+      doc.querySelector("#cancel-product-merge").click();
+    });
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+  }
   document.querySelector("#results").textContent = results.join("\n");
 }
 runTests().catch(error => {

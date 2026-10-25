@@ -873,7 +873,7 @@ async function runTests() {
   assert(doc.documentElement.scrollWidth<=doc.documentElement.clientWidth, "Product page mobile overflow");
   results.push("PASS Confirmed removal only clears category, retains item/details and persists removal across offline reload");
   doc.querySelector("#catalog-back").click();
-  assert(doc.querySelector("#catalog-title").textContent==="Kategorie bearbeiten", "Product page back did not return to category editor");
+  assert(doc.querySelector("#catalog-title").textContent==="Produktkategorie bearbeiten", "Product page back did not return to category editor");
   results.push("PASS Product page returns to category editor");
   const statisticsProduct = state.products[0];
   api.openCatalog("product-statistics", statisticsProduct);
@@ -892,7 +892,7 @@ async function runTests() {
   api.loadCachedSupermarkets();
   api.openCatalog("product-statistics", api.state().products.find(p => p.key === statisticsProduct.key));
   assert(doc.querySelector("#product-usage-count").value === "5", "Offline cache lost corrected count");
-  doc.querySelector("#catalog-content .page-actions button").click();
+  doc.querySelector("#catalog-fixed-actions button").click();
   results.push("PASS Statistics save preserves failed drafts and errors, persists the corrected total and restores it offline");
   state.supermarkets = [{
     id: "m", name: "Markt", category_ids: [],

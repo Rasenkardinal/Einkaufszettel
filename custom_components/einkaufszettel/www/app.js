@@ -478,11 +478,18 @@ function navigationButton(text, action, className) {
   return element;
 }
 
-function requestAppConfirmation({ title, description, confirmLabel = "Löschen", onConfirm }) {
+function requestAppConfirmation({ title, description, confirmLabel = "Löschen", productName, onConfirm }) {
   elements.appConfirmTitle.textContent = title;
   elements.appConfirmDescription.textContent = description;
   elements.acceptAppConfirm.textContent = confirmLabel;
   elements.appConfirm.classList.toggle("danger-confirmation", confirmLabel === "Löschen");
+  elements.appConfirm.classList.toggle("product-confirmation", !!productName);
+  const help = document.querySelector("#app-confirm-help-trigger");
+  help.hidden = !productName;
+  setHelpPopover(help, document.querySelector("#app-confirm-help"), false);
+  const name = document.querySelector("#app-confirm-product");
+  name.textContent = productName || "";
+  name.hidden = !productName;
   pendingAppConfirmation = onConfirm;
   elements.appConfirm.showModal();
 }
@@ -502,25 +509,22 @@ function setHelpPopover(trigger, popover, open) {
   popover.hidden = !open;
 }
 
-for (const [trigger, popover] of [
+const helpPopovers = [
   [elements.catalogHelpTrigger, elements.catalogHelpPopover],
   [elements.listManagementHelpTrigger, elements.listManagementHelpPopover],
-]) {
+  [document.querySelector("#app-confirm-help-trigger"), document.querySelector("#app-confirm-help")],
+  [document.querySelector("#product-merge-help-trigger"), document.querySelector("#product-merge-help")],
+];
+for (const [trigger, popover] of helpPopovers) {
   trigger.addEventListener("click", () => {
     const opening = trigger.getAttribute("aria-expanded") !== "true";
-    for (const [otherTrigger, otherPopover] of [
-      [elements.catalogHelpTrigger, elements.catalogHelpPopover],
-      [elements.listManagementHelpTrigger, elements.listManagementHelpPopover],
-    ]) setHelpPopover(otherTrigger, otherPopover, false);
+    for (const [otherTrigger, otherPopover] of helpPopovers) setHelpPopover(otherTrigger, otherPopover, false);
     setHelpPopover(trigger, popover, opening);
   });
 }
 elements.listManagementHelpPopover.textContent = elements.listManagementHelp.textContent;
 document.addEventListener("pointerdown", event => {
-  for (const [trigger, popover] of [
-    [elements.catalogHelpTrigger, elements.catalogHelpPopover],
-    [elements.listManagementHelpTrigger, elements.listManagementHelpPopover],
-  ]) {
+  for (const [trigger, popover] of helpPopovers) {
     if (trigger.getAttribute("aria-expanded") === "true" &&
       !trigger.contains(event.target) && !popover.contains(event.target)) {
       setHelpPopover(trigger, popover, false);
@@ -529,13 +533,11 @@ document.addEventListener("pointerdown", event => {
 });
 document.addEventListener("keydown", event => {
   if (event.key !== "Escape") return;
-  for (const [trigger, popover] of [
-    [elements.catalogHelpTrigger, elements.catalogHelpPopover],
-    [elements.listManagementHelpTrigger, elements.listManagementHelpPopover],
-  ]) {
+  for (const [trigger, popover] of helpPopovers) {
     if (trigger.getAttribute("aria-expanded") === "true") {
       setHelpPopover(trigger, popover, false);
       trigger.focus();
+      event.preventDefault();
     }
   }
 });
@@ -776,7 +778,7 @@ async function openProductDelete(product) {
       throw new Error("Die betroffenen Einkaufslisten konnten nicht geprüft werden. Bitte erneut laden.");
     }
     const count = productUsageCount(info.product);
-    const lines = [`„${info.product.name}“ endgültig löschen?`];
+    const lines = [];
     if (count) lines.push(`Statistik für diesen Artikel wird ebenfalls gelöscht! Bisher ${count} ${count === 1 ? "Verwendung" : "Verwendungen"}.`);
     if (info.lists.length) lines.push(
       `Der Artikel wird auch aus ${info.lists.length === 1 ? "der Liste" : "den Listen"} ${info.lists.map(list => `„${list.name}“`).join(", ")} entfernt.`,
@@ -785,6 +787,7 @@ async function openProductDelete(product) {
     lines.push("Diese Aktion kann nicht rückgängig gemacht werden.");
     requestAppConfirmation({
       title: "Artikel löschen?",
+      productName: info.product.name,
       description: lines.join("\n\n"),
       onConfirm: () => saveCatalog("delete_product", {
         product_key: product.key, confirmed_lists: info.lists,
@@ -797,7 +800,7 @@ async function openProductDelete(product) {
 
 function productManagementRow(product, suggestion) {
   const row = document.createElement("article");
-  row.className = "product-management-row";
+  row.className = "product-management-row" + (suggestion ? " product-comparison" : "");
   row.dataset.productName = product.name.toLocaleLowerCase("de");
   const heading = document.createElement("div");
   heading.className = "product-management-heading";
@@ -809,16 +812,19 @@ function productManagementRow(product, suggestion) {
   const count = productUsageCount(product);
   usage.textContent = `${count} ${count === 1 ? "Verwendung" : "Verwendungen"}`;
   name.append(usage);
-  const renameButton = button("Umbenennen", () => openCatalog("product-edit", product),
-    suggestion ? "primary product-rename" : "secondary product-outline-action");
+  const renameButton = suggestion
+    ? button("Umbenennen", () => openCatalog("product-edit", product), "secondary product-rename")
+    : navigationButton("Umbenennen", () => openCatalog("product-edit", product), "secondary product-outline-action");
   renameButton.setAttribute("aria-label", `${product.name} umbenennen`);
   const renameIcon = document.createElement("span");
   renameIcon.className = "product-rename-icon";
   renameIcon.textContent = "✎";
   renameIcon.setAttribute("aria-hidden", "true");
   const renameArrow = chevron();
-  renameButton.prepend(renameIcon);
-  renameButton.append(renameArrow);
+  if (suggestion) {
+    renameButton.prepend(renameIcon);
+    renameButton.append(renameArrow);
+  }
   heading.append(name);
   if (suggestion) heading.append(renameButton);
   row.append(heading);
@@ -850,22 +856,21 @@ function productManagementRow(product, suggestion) {
       openCatalog("product-merge", product);
       catalogDraft.target_key = suggestion.key;
       renderCatalogPage();
-    }, "primary"));
+    }, "secondary"));
     suggestionBox.append(target, suggestionActions);
     suggestionBox.append(paragraph("„Kein Fehler“ blendet diesen Vergleich dauerhaft aus.", "product-merge-help"));
     row.append(suggestionBox);
   }
   const actions = document.createElement("div");
   actions.className = "product-management-actions";
-  const statisticsButton = navigationButton("Statistik", () => openCatalog("product-statistics", product), "secondary product-outline-action");
+  const statisticsButton = navigationButton("Statistik", () => openCatalog("product-statistics", product),
+    suggestion ? "secondary" : "secondary product-outline-action");
   const deleteButton = button("Löschen", () => openProductDelete(product), "secondary danger-button");
   deleteButton.title = "Artikel, Statistik und Einträge auf den bestätigten Listen löschen.";
   if (!suggestion) {
     const primaryActions = document.createElement("div");
     primaryActions.className = "product-management-buttons";
-    const mergeButton = button("Zusammenführen", () => openCatalog("product-merge", product), "secondary product-outline-action");
-    const mergeArrow = chevron();
-    mergeButton.append(mergeArrow);
+    const mergeButton = navigationButton("Zusammenführen", () => openCatalog("product-merge", product), "secondary product-outline-action");
     primaryActions.append(renameButton, mergeButton, statisticsButton, deleteButton);
     row.append(primaryActions);
   }
@@ -923,7 +928,8 @@ function renderProductManagement() {
   });
   updateCount();
   elements.catalogFixedActions.append(
-    button("＋ Artikel hinzufügen", () => openCatalog("product-edit", { key: "", name: "" }), "primary"),
+    button("Abbrechen", leaveManagement),
+    button("Hinzufügen", () => openCatalog("product-edit", { key: "", name: "" }), "primary"),
   );
   elements.catalogFixedActions.hidden = false;
 }
@@ -959,7 +965,8 @@ function renderProductStatistics() {
   const save = button("Speichern", () => {}, "primary");
   save.type = "submit";
   actions.append(button("Abbrechen", () => openCatalog("products")), save);
-  form.append(label, input, actions);
+  form.append(label, input);
+  appendCatalogFormActions(form, actions);
   form.addEventListener("submit", event => {
     event.preventDefault();
     const count = input.valueAsNumber;
@@ -1005,7 +1012,8 @@ function renderProductEdit() {
   const save = button("Speichern", () => {}, "primary");
   save.type = "submit";
   actions.append(button("Abbrechen", () => openCatalog("products")), save);
-  form.append(label, input, actions);
+  form.append(label, input);
+  appendCatalogFormActions(form, actions);
   form.addEventListener("submit", event => {
     event.preventDefault();
     const name = input.value.trim();
@@ -1037,6 +1045,7 @@ function renderProductMerge() {
   label.id = "product-merge-label";
   label.htmlFor = "product-merge-trigger";
   label.textContent = "Behalten als";
+  label.className = "visually-hidden";
   const picker = document.createElement("div");
   picker.className = "category-picker";
   const selectedTarget = products.find(item => item.key === catalogDraft.target_key && item.key !== source.key);
@@ -1173,7 +1182,7 @@ function renderProductMerge() {
   updatePreview();
   const actions = document.createElement("div");
   actions.className = "page-actions";
-  const submit = button("Zusammenführen …", () => {}, "primary");
+  const submit = button("Weiter …", () => {}, "primary");
   submit.type = "submit";
   actions.append(button("Abbrechen", () => openCatalog("products")), submit);
   form.addEventListener("submit", event => {
@@ -1185,16 +1194,28 @@ function renderProductMerge() {
       return;
     }
     pendingProductMerge = { product_key: source.key, target_key: target.key };
+    document.querySelector("#product-merge-names").textContent = `${source.name} → ${target.name}`;
     elements.productMergeDescription.textContent =
-      `„${source.name}“ wird in „${target.name}“ zusammengeführt. ${productUsageCount(source)} Verwendungen werden übernommen; bestehende Listen und Statistiken bleiben erhalten.`;
+      `${productUsageCount(source)} + ${productUsageCount(target)} = ${productUsageCount(source) + productUsageCount(target)} Verwendungen. Wochenstatistiken werden zusammengeführt. Bestehende Einkaufslisten verwenden anschließend ${target.name}.`;
+    setHelpPopover(document.querySelector("#product-merge-help-trigger"), document.querySelector("#product-merge-help"), false);
     elements.productMergeConfirm.showModal();
   });
-  form.append(label, picker, preview, actions);
+  form.append(paragraph(source.name, "market-context"), label, picker, preview);
+  appendCatalogFormActions(form, actions);
   elements.catalogContent.append(form);
 }
 
 let cancelCategoryDrag;
 let marketSelectionSnapshot;
+
+function appendCatalogFormActions(form, actions) {
+  form.id = "catalog-editor-form";
+  for (const control of actions.querySelectorAll('button[type="submit"]')) {
+    control.setAttribute("form", form.id);
+  }
+  elements.catalogFixedActions.append(...actions.children);
+  elements.catalogFixedActions.hidden = false;
+}
 
 function renderCatalogPage() {
   cancelCategoryDrag?.();
@@ -1202,15 +1223,14 @@ function renderCatalogPage() {
   content.replaceChildren();
   elements.catalogFixedActions.replaceChildren();
   elements.catalogFixedActions.hidden = true;
-  const hasFixedActions = ["products", "markets", "categories", "market-select", "market-order", "market-bonus-card"].includes(catalogView);
+  const hasFixedActions = catalogView !== "market-edit";
   elements.catalogPage.classList.toggle("has-fixed-actions", hasFixedActions);
   elements.catalogPage.classList.toggle("market-editor", catalogView === "market-edit");
-  const cleanMarketView = ["markets", "market-edit", "market-order", "market-select", "market-bonus-card"].includes(catalogView);
-  elements.catalogPage.classList.toggle("clean-market-view", cleanMarketView);
+  elements.catalogPage.classList.add("clean-market-view");
   elements.catalogPage.dataset.view = catalogView;
   elements.catalogPage.classList.toggle("market-card-editor", catalogView === "market-bonus-card");
   const close = elements.catalogClose;
-  close.hidden = !cleanMarketView;
+  close.hidden = false;
   close.disabled = managingSupermarkets;
   close.onclick = () => elements.catalogBack.click();
   setMessage(elements.catalogMessage, "");
@@ -1246,8 +1266,8 @@ function renderCatalogPage() {
   } else if (isList) {
     elements.catalogTitle.textContent = isMarket ? "Supermärkte" : "Produktkategorien";
     elements.catalogFixedActions.append(
-      ...(isMarket ? [button("Abbrechen", leaveManagement)] : []),
-      button(isMarket ? "Hinzufügen" : `＋ ${noun} hinzufügen`, () => openCatalog(isMarket ? "market-edit" : "category-edit"), "primary")
+      button("Abbrechen", leaveManagement),
+      button("Hinzufügen", () => openCatalog(isMarket ? "market-edit" : "category-edit"), "primary")
     );
     elements.catalogFixedActions.hidden = false;
     const records = [...(isMarket ? supermarkets : categories)].sort((a, b) => nameOrder.compare(a.name, b.name));
@@ -1283,14 +1303,19 @@ function renderCatalogPage() {
       row.append(name, remove);
       list.append(row);
     }
-    content.append(list);
+    content.append(paragraph(catalogDraft.name, "market-context"), list);
+    elements.catalogFixedActions.append(button("Zurück", () => openCatalog("category-edit", catalogDraft)));
+    elements.catalogFixedActions.hidden = false;
     if (!assigned.length) content.append(paragraph("Dieser Kategorie sind noch keine Produkte zugeordnet."));
   } else if (catalogView === "market-order" || catalogView === "market-select") {
     renderMarketCategories();
   } else if (catalogView === "market-bonus-card") {
     renderMarketBonusCard();
   } else {
-    elements.catalogTitle.textContent = `${noun} ${catalogDraft.id ? "bearbeiten" : "hinzufügen"}`;
+    elements.catalogTitle.textContent = `${isMarket ? noun : "Produktkategorie"} ${catalogDraft.id ? "bearbeiten" : "hinzufügen"}`;
+    if (!isMarket) {
+      elements.catalogHelp.textContent = "Kategoriename bearbeiten und zugeordnete Produkte verwalten. Speichern übernimmt den Namen für alle Nutzer. Löschen entfernt die Kategorie; die Produkte bleiben erhalten.";
+    }
     const form = document.createElement("form");
     form.className = "management-form";
     const label = document.createElement("label");
@@ -1387,7 +1412,8 @@ function renderCatalogPage() {
     save.type = "submit";
     save.className = "primary";
     actions.append(button("Abbrechen", () => openCatalog(isMarket ? "markets" : "categories")), save);
-    form.append(actions);
+    if (isMarket) form.append(actions);
+    else appendCatalogFormActions(form, actions);
     form.addEventListener("submit", event => {
       event.preventDefault();
       if (!input.value.trim()) {
@@ -1408,7 +1434,6 @@ function renderCatalogPage() {
     });
     content.append(form);
   }
-  if (!cleanMarketView) content.append(paragraph("Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.", "management-footer"));
   elements.catalogHelpPopover.textContent = elements.catalogHelp.textContent;
   elements.catalogHelp.hidden = true;
   elements.catalogHelpTrigger.hidden = !elements.catalogHelp.textContent;

@@ -30,7 +30,7 @@ h1 { font-size: 24px; }
 .node > .visual { width: 100%; height: 100%; margin: 0; box-sizing: border-box; pointer-events: none; }
 .node .handle { display: none; position: absolute; right: -6px; bottom: -6px; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 3px; background: #15877c; cursor: nwse-resize; }
 .node.selected .handle { display: block; }
-.node h2 { display: flex; align-items: center; font-size: 22px; line-height: 1.15; letter-spacing: -.04em; }
+.node h2 { display: flex; align-items: center; font-size: 22px; line-height: 24px; letter-spacing: -.04em; }
 .node .x { display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); color: var(--muted); }
 .x svg { width: 16px; height: 16px; }
 .node .management-link { display: flex; align-items: center; gap: 16px; padding: 10px 12px; min-height: 0; font-size: 13px; }
@@ -54,7 +54,15 @@ h1 { font-size: 24px; }
 .switch { display: block; position: relative; flex: none; width: 42px; height: 24px; border-radius: 20px; background: var(--accent); }
 .switch::after { content: ""; position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; border-radius: 50%; background: var(--accent-text); }
 .node .note { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.merge-confirm-editor .node[data-id="summary"] .note { font-size: 16px; line-height: 1.6; }
+.merge-confirm-editor .node[data-id="source"] .context { font-size: 32px; line-height: 1.25; }
+.product-delete-editor .node .note { font-size: 16px; line-height: 1.6; }
+.product-delete-editor .node[data-id="product-name"] .context { font-size: 32px; line-height: 1.25; }
+.product-target-editor .node[data-id="search"] .visual { display: flex; align-items: center; gap: 16px; }
 .selection-editor .node[data-id="submit"] .visual { display: flex; align-items: center; justify-content: center; padding-inline: 6px; }
+.product-editor .node[data-id="submit"] .visual { display: flex; align-items: center; justify-content: center; padding-inline: 6px; }
+.node .product-frame { border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); }
+.product-editor .node .product-outline-action { background: var(--accent); color: var(--accent-text); border: 1px solid var(--line); }
 .node .line { border-top: 1px solid var(--line); }
 #status { min-height: 22px; color: #9bd8b0; font-size: 13px; max-width: 1000px; }
 #elements { max-height: 250px; }
@@ -72,6 +80,18 @@ h1 { font-size: 24px; }
     <option value="market-order">Produktkategorien bearbeiten</option>
     <option value="market-select">Kategorien auswählen</option>
     <option value="market-bonus-card">Bonuskarte / APP-Code</option>
+    <option value="categories">Produktkategorien</option>
+    <option value="category-edit">Produktkategorie bearbeiten</option>
+    <option value="category-products">Zugeordnete Produkte</option>
+    <option value="products">Artikel verwalten</option>
+    <option value="product-add">Artikel hinzufügen</option>
+    <option value="product-edit">Artikel umbenennen</option>
+    <option value="product-statistics">Statistik bearbeiten</option>
+    <option value="product-merge">Artikel zusammenführen</option>
+    <option value="product-merge-confirm">Zusammenführen bestätigen</option>
+    <option value="product-target">Zielartikel auswählen</option>
+    <option value="product-delete">Artikel löschen</option>
+    <option value="product-compare">Schreibweisen vergleichen</option>
   </select>
   <button id="undo" class="secondary">Rückgängig</button><button id="redo" class="secondary">Wiederherstellen</button>
   <button id="save" class="primary">Entwurf speichern</button><button id="load" class="secondary">Gespeicherten Entwurf laden</button>
@@ -112,10 +132,107 @@ const orderEditor=new URLSearchParams(location.search).get("menu")==="market-ord
 const bonusEditor=new URLSearchParams(location.search).get("menu")==="market-bonus-card";
 const marketsEditor=new URLSearchParams(location.search).get("menu")==="markets";
 const selectingEditor=new URLSearchParams(location.search).get("menu")==="market-select";
-const fixedActionsEditor=orderEditor||selectingEditor||bonusEditor||marketsEditor;
-const menuId=marketsEditor?"markets":orderEditor?"market-order":selectingEditor?"market-select":bonusEditor?"market-bonus-card":"market-edit";
-const menuLabel=marketsEditor?"Supermärkte":orderEditor?"Produktkategorien bearbeiten":selectingEditor?"Kategorien auswählen":bonusEditor?"Bonuskarte / APP-Code":"Supermarkt bearbeiten";
-const initial = marketsEditor ? [
+const categoryMenu=new URLSearchParams(location.search).get("menu");
+const categoryEditor=["categories","category-edit","category-products"].includes(categoryMenu);
+const productLabels={"products":"Artikel verwalten","product-add":"Artikel hinzufügen","product-edit":"Artikel umbenennen","product-statistics":"Statistik bearbeiten","product-merge":"Artikel zusammenführen","product-merge-confirm":"Zusammenführen bestätigen","product-target":"Zielartikel auswählen","product-delete":"Artikel löschen","product-compare":"Schreibweisen vergleichen"};
+const productEditor=Object.hasOwn(productLabels,categoryMenu);
+const fixedActionsEditor=orderEditor||selectingEditor||bonusEditor||marketsEditor||categoryEditor||productEditor;
+const menuId=productEditor||categoryEditor?categoryMenu:marketsEditor?"markets":orderEditor?"market-order":selectingEditor?"market-select":bonusEditor?"market-bonus-card":"market-edit";
+const menuLabel=productEditor?productLabels[menuId]:categoryEditor?({"categories":"Produktkategorien","category-edit":"Produktkategorie bearbeiten","category-products":"Zugeordnete Produkte"}[menuId]):marketsEditor?"Supermärkte":orderEditor?"Produktkategorien bearbeiten":selectingEditor?"Kategorien auswählen":bonusEditor?"Bonuskarte / APP-Code":"Supermarkt bearbeiten";
+const productHelp={
+  products:"Artikel und Suchvorschläge für alle Listen verwalten. Umbenennen und Zusammenführen übernehmen die Statistik. Löschen entfernt auch Statistik und Einträge auf den bestätigten Listen.",
+  "product-add":"Einen Artikel für den gemeinsamen Artikelspeicher und Suchvorschläge anlegen. Er wird noch keiner Einkaufsliste hinzugefügt.",
+  "product-edit":"Der neue Name wird auch in bestehenden Listen und Statistiken übernommen. Erst Speichern übernimmt die Änderung.",
+  "product-statistics":"Gesamtzahl über alle Einkaufslisten. Wochenstatistik und listenbezogene Häufigkeiten bleiben unverändert. Neue Verwendungen zählen weiter.",
+  "product-merge":"Wähle den Artikelnamen, der künftig in Listen, Statistik und Suchvorschlägen verwendet wird. Verwendungen und Wochenstatistiken werden übernommen.",
+  "product-merge-confirm":"Die Zusammenführung wird für alle Nutzer gespeichert. Der Zielname ersetzt den bisherigen Namen; Statistik und bestehende Listen werden übernommen. Abbrechen ändert nichts.",
+  "product-target":"Zielartikel alphabetisch suchen und auswählen. Die Auswahl kehrt zur Vorschau der Zusammenführung zurück.",
+  "product-delete":"Löschen entfernt den Artikel samt Statistik und Einträgen auf den bestätigten Listen für alle Nutzer. Abbrechen ändert nichts.",
+  "product-compare":"Ähnliche Schreibweisen prüfen. Umbenennen korrigiert den Namen, Zusammenführen übernimmt die Statistik. Kein Fehler blendet diesen Vergleich dauerhaft aus."
+};
+function productNode(id,type,text,y,w=350,x=40,h=48){return {id,type,text,x,y,w,h};}
+function productPreview(){
+ const n=productNode;
+ if(menuId==="products")return [
+  n("search","name","Artikel suchen …",120),
+  n("count","context","2 Artikel · A–Z",180,350,40,24),
+  ...["Butter","Milch"].flatMap((name,i)=>[
+   n("product-frame-"+i,"frame","Artikelgruppe "+name,216+i*180,350,40,168),
+   n("product-name-"+i,"context",name,228+i*180,324,53,24),
+   n("rename-"+i,"link","Umbenennen",264+i*180,156,53),
+   n("merge-"+i,"link","Zusammenführen",264+i*180,156,221),
+   n("statistics-"+i,"link","Statistik",324+i*180,156,53),
+   n("delete-"+i,"danger","Löschen",324+i*180,156,221)
+  ])
+ ];
+ if(["product-add","product-edit"].includes(menuId))return [
+  n("name","name",menuId==="product-add"?"Artikelname":"Butter",120)
+ ];
+ if(menuId==="product-statistics")return [
+  n("usage-label","context","Butter · Verwendungen insgesamt",120,350,40,24),
+  n("usage-count","name","20",156)
+ ];
+ if(menuId==="product-merge")return [
+  n("source","context","Buter",120,350,40,24),
+  n("target","link","Zielartikel: Butter",176,350,40,56),
+  n("preview","note","20 + 3 = 23 Verwendungen werden übernommen. Bestehende Listen und Wochenstatistiken bleiben erhalten.",264,350,40,64)
+ ];
+ if(menuId==="product-target")return [
+  n("search","name","Zielartikel suchen …",120),
+  ...["Butter","Butter mild","Butter ungesalzen"].map((name,i)=>n("target-"+i,"link",name,200+i*68,350,40,56))
+ ];
+ if(menuId==="product-merge-confirm")return [
+  n("source","context","Buter → Butter",120,350,40,48),
+  n("summary","note","3 + 20 = 23 Verwendungen. Wochenstatistiken werden zusammengeführt. Bestehende Einkaufslisten verwenden anschließend Butter.",176,350,40,128)
+ ];
+ if(menuId==="product-delete")return [
+  n("product-name","context","Butter",120,350,40,48),
+  n("warning","note","Statistik für diesen Artikel wird ebenfalls gelöscht! Bisher 20 Verwendungen.",176,350,40,80),
+  n("lists","note","Der Artikel wird auch aus folgenden Einkaufslisten entfernt: Wocheneinkauf, Drogerie.",280,350,40,96)
+ ];
+ return [
+  n("source","context","Buter · 3 Verwendungen",120,350,40,24),
+  n("rename","link","Umbenennen",176,350,40,56),
+  n("target-name","context","Butter · 20 Verwendungen",264,350,40,24),
+  n("merge","link","Zusammenführen",320,350,40,56),
+  n("dismiss","secondary","Kein Fehler",408,169),
+  n("statistics","link","Statistik",488,169),
+  n("delete","danger","Löschen",488,169,221)
+ ];
+}
+const initial = productEditor ? [
+  {id:"title",type:"title",text:menuLabel,x:40,y:24,w:menuId==="product-compare"?140:menuId==="product-delete"?150:menuId==="product-merge"?226:212,h:48},
+  {id:"help",type:"help",text:"Hilfe zu "+menuLabel,x:menuId==="product-compare"?196:menuId==="product-delete"?206:menuId==="product-merge"?282:268,y:31,w:34,h:34},
+  {id:"close",type:"close",text:"Schließen",x:356,y:31,w:34,h:34},
+  ...productPreview(),
+  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:768,w:350,h:8},
+  {id:"cancel",type:"secondary",text:["product-target","product-compare"].includes(menuId)?"Zurück":"Abbrechen",x:["product-target","product-compare"].includes(menuId)?276:150,y:784,w:114,h:44},
+  ...(["product-target","product-compare"].includes(menuId)?[]:[{id:"submit",type:menuId==="product-delete"?"danger":"primary",text:menuId==="products"?"Hinzufügen":menuId==="product-delete"?"Löschen":menuId==="product-merge"?"Weiter …":menuId==="product-merge-confirm"?"Bestätigen":"Speichern",x:276,y:784,w:114,h:44}])
+] : categoryEditor ? [
+  {id:"title",type:"title",text:menuLabel,x:40,y:24,w:menuId==="categories"?190:menuId==="category-edit"?181:212,h:48},
+  {id:"help",type:"help",text:"Hilfe zu "+menuLabel,x:menuId==="categories"?246:menuId==="category-edit"?237:268,y:31,w:34,h:34},
+  {id:"close",type:"close",text:"Schließen",x:356,y:31,w:34,h:34},
+  ...(menuId==="categories"?[
+    {id:"category-backwaren",type:"link",text:"Backwaren",x:40,y:120,w:350,h:56},
+    {id:"category-haushalt",type:"link",text:"Haushalt",x:40,y:188,w:350,h:56},
+    {id:"category-milchprodukte",type:"link",text:"Milchprodukte",x:40,y:256,w:350,h:56},
+    {id:"category-obst",type:"link",text:"Obst & Gemüse",x:40,y:324,w:350,h:56}
+  ]:menuId==="category-edit"?[
+    {id:"name",type:"name",text:"Milchprodukte",x:40,y:120,w:350,h:48},
+    {id:"category-products",type:"link",text:"Zugeordnete Produkte",x:40,y:200,w:350,h:56},
+    {id:"line-delete",type:"line",text:"Trennlinie Löschen",x:40,y:288,w:350,h:8},
+    {id:"remove",type:"danger",text:"Löschen",x:40,y:312,w:114,h:44}
+  ]:[
+    {id:"category-context",type:"context",text:"Milchprodukte",x:40,y:120,w:350,h:24},
+    ...["Butter","Joghurt","Milch","Quark"].flatMap((name,i)=>[
+      {id:"product-"+i,type:"context",text:name,x:56,y:172+i*68,w:188,h:44},
+      {id:"remove-product-"+i,type:"secondary",text:"Entfernen",x:260,y:172+i*68,w:114,h:44}
+    ])
+  ]),
+  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:768,w:350,h:8},
+  {id:"cancel",type:"secondary",text:menuId==="category-products"?"Zurück":"Abbrechen",x:menuId==="category-products"?276:150,y:784,w:114,h:44},
+  ...(menuId==="category-products"?[]:[{id:"submit",type:"primary",text:menuId==="categories"?"Hinzufügen":"Speichern",x:276,y:784,w:114,h:44}])
+] : marketsEditor ? [
   {id:"title",type:"title",text:"Supermärkte",x:40,y:24,w:124,h:48},
   {id:"help",type:"help",text:"Hilfe zur Supermarktverwaltung",x:180,y:31,w:34,h:34},
   {id:"close",type:"close",text:"Schließen",x:356,y:31,w:34,h:34},
@@ -182,6 +299,17 @@ const initial = marketsEditor ? [
   {id:"note",type:"note",text:"Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.",x:40,y:660,w:350,h:44,deleted:true}
 ];
 initial.splice(3,0,{id:"line-title",type:"line",text:"Trennlinie unter dem Titel",x:40,y:88,w:350,h:8});
+const compactTitleWidths={
+ categories:181,"category-edit":168,"category-products":124,
+ products:164,"product-add":178,"product-edit":197,"product-statistics":184,
+ "product-merge":168,"product-merge-confirm":171,"product-target":201,
+ "product-delete":142,"product-compare":136
+};
+if(compactTitleWidths[menuId]){
+ const title=initial.find(node=>node.id==="title"),help=initial.find(node=>node.id==="help");
+ title.w=compactTitleWidths[menuId];
+ help.x=title.x+title.w+16;
+}
 const themes = [
  ["Mono",["#141414","#202020","#2b2b2b","#383838","#f5f5f5","#171717","#aaa"]],
  ["Botanical",["#111813","#1b251e","#26362a","#304035","#a3e635","#17220d","#aab7ac"]],
@@ -199,6 +327,10 @@ document.title="Layout-Editor · "+menuLabel;
 document.querySelector("h1").textContent="Layout-Editor · "+menuLabel;
 $("stage").classList.toggle("bonus-editor",bonusEditor);
 $("stage").classList.toggle("selection-editor",selectingEditor);
+$("stage").classList.toggle("product-editor",productEditor);
+$("stage").classList.toggle("merge-confirm-editor",menuId==="product-merge-confirm");
+$("stage").classList.toggle("product-target-editor",menuId==="product-target");
+$("stage").classList.toggle("product-delete-editor",menuId==="product-delete");
 let selected="title", selection=new Set(["title"]), undo=[], redo=[], drag=null;
  $("menu-view").value=menuId;
  function openMenu(nextMenu){
@@ -216,7 +348,22 @@ let selected="title", selection=new Set(["title"]), undo=[], redo=[], drag=null;
  }
  $("menu-view").onchange=()=>openMenu($("menu-view").value);
 function chosen(){return state.nodes.filter(node=>selection.has(node.id)&&!node.deleted);}
-function menuForElement(id){return id==="categories"?"market-order":id==="category-selection"?"market-select":id==="bonus"?"market-bonus-card":id.startsWith("market-")?"market-edit":undefined;}
+function menuForElement(id){
+ if(productEditor){
+  if(id==="cancel"&&menuId==="product-merge-confirm")return "product-merge";
+  if(id==="cancel")return menuId==="product-target"?"product-merge":menuId==="products"?undefined:"products";
+  if(id==="submit"&&menuId==="products")return "product-add";
+  if(id==="submit"&&menuId==="product-merge")return "product-merge-confirm";
+  if(id==="target")return "product-target";
+  if(id.startsWith("target-")&&menuId==="product-target")return "product-merge";
+  if(id==="rename"||id.startsWith("rename-"))return "product-edit";
+  if(id==="merge"||id.startsWith("merge-"))return "product-merge";
+  if(id==="statistics"||id.startsWith("statistics-"))return "product-statistics";
+  if(id==="delete"||id.startsWith("delete-"))return "product-delete";
+  return undefined;
+ }
+ return categoryEditor?(id==="category-products"?"category-products":id==="submit"&&menuId==="categories"?"category-edit":id==="cancel"?(menuId==="category-products"?"category-edit":menuId==="category-edit"?"categories":undefined):menuId==="categories"&&id.startsWith("category-")?"category-edit":undefined):id==="categories"?"market-order":id==="category-selection"?"market-select":id==="bonus"?"market-bonus-card":id.startsWith("market-")?"market-edit":undefined;
+}
 const tell = text => $("status").textContent=text;
 function snapshot(){undo.push(clone(state));if(undo.length>100)undo.shift();redo=[];}
 function current(){return state.nodes.find(node=>node.id===selected);}
@@ -239,18 +386,20 @@ function render(){
  for(const node of state.nodes.filter(node=>!node.deleted)){
   const box=document.createElement("div");box.className="node"+(selection.has(node.id)?" selected":"");box.dataset.id=node.id;
   Object.assign(box.style,{left:node.x+"px",top:node.y+"px",width:node.w+"px",height:node.h+"px"});
-  let visual=document.createElement(node.type==="title"?"h2":node.type==="note"?"p":["name","line","context","category","image"].includes(node.type)?"div":"button");
+  let visual=document.createElement(node.type==="title"?"h2":node.type==="note"?"p":["name","line","context","category","image","frame"].includes(node.type)?"div":"button");
   if(visual.tagName==="BUTTON")visual.type="button";
   visual.className="visual "+({title:"",close:"x",help:"info",name:"name",context:"context",image:"card-preview",category:"category-order-row",choice:"category-choice",link:"management-link",toggle:"toggle",note:"note",line:"line",danger:"secondary danger-button",primary:"primary",secondary:"secondary"}[node.type]);
   visual.textContent=node.text;
+  if(productEditor&&menuId!=="product-compare"&&(node.id==="rename"||node.id==="merge"||node.id==="statistics"||/^(rename|merge|statistics)-\d+$/.test(node.id)))visual.classList.add("product-outline-action");
+  if(node.type==="frame"){visual.className="visual product-frame";visual.textContent="";}
   if(node.type==="close"){visual.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';visual.setAttribute("aria-label",node.text);}
-  if(node.type==="help"){visual.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .3c0 1.8-2.5 1.9-2.5 3.7"/><circle cx="12" cy="16.5" r=".9" fill="currentColor" stroke="none"/></svg>';visual.setAttribute("aria-label",node.text);box.ondblclick=()=>{const existing=$("help-popover");if(existing){existing.remove();return;}const help=document.createElement("div");help.id="help-popover";help.textContent="Name, Kategorienreihenfolge und Bonuskarte für diesen Supermarkt verwalten. Pfandbon Hinweis und Anzeige Bonuskarte steuern den Kassiervorgang. Änderungen werden erst mit Speichern für alle Nutzer übernommen.";help.onclick=()=>help.remove();$("stage").append(help);};}
-  if(node.type==="link"){
+  if(node.type==="help"){visual.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .3c0 1.8-2.5 1.9-2.5 3.7"/><circle cx="12" cy="16.5" r=".9" fill="currentColor" stroke="none"/></svg>';visual.setAttribute("aria-label",node.text);box.ondblclick=()=>{const existing=$("help-popover");if(existing){existing.remove();return;}const help=document.createElement("div");help.id="help-popover";help.textContent=categoryEditor?({"categories":"Produktkategorien im gemeinsamen Kategoriespeicher verwalten. Kategorien gelten für alle Einkaufslisten. Die verwendeten Kategorien und ihre Reihenfolge legst Du für jeden Supermarkt separat fest.","category-edit":"Kategoriename bearbeiten und zugeordnete Produkte verwalten. Speichern übernimmt den Namen für alle Nutzer. Löschen entfernt die Kategorie; die Produkte bleiben erhalten.","category-products":"Dauerhafte Produktzuordnungen für alle Einkaufslisten. Entfernen löst nur die Kategoriezuordnung; die Artikel bleiben erhalten und erscheinen ohne Kategorie. Alle Daten im Editor sind Beispiele."}[menuId]):"Name, Kategorienreihenfolge und Bonuskarte für diesen Supermarkt verwalten. Pfandbon Hinweis und Anzeige Bonuskarte steuern den Kassiervorgang. Änderungen werden erst mit Speichern für alle Nutzer übernommen.";help.onclick=()=>help.remove();$("stage").append(help);};}
+  if(node.type==="link"||(menuId==="product-target"&&node.id==="search")){
    visual.textContent="";
    const label=document.createElement("span");label.className="link-label";label.textContent=node.text.replace(/\s*›\s*$/,"");
    const chevron=document.createElementNS("http://www.w3.org/2000/svg","svg");
    chevron.classList.add("link-chevron");chevron.setAttribute("viewBox","0 0 24 24");chevron.setAttribute("fill","none");chevron.setAttribute("stroke","currentColor");chevron.setAttribute("stroke-width","2");chevron.setAttribute("stroke-linecap","round");chevron.setAttribute("stroke-linejoin","round");chevron.setAttribute("aria-hidden","true");
-   chevron.innerHTML='<path d="m9 6 6 6-6 6"/>';
+   chevron.innerHTML=menuId==="product-target"&&node.id==="search"?'<path d="m6 9 6 6 6-6"/>':'<path d="m9 6 6 6-6 6"/>';
    visual.append(label,chevron);
   }
   if(node.type==="choice"){
@@ -280,6 +429,13 @@ function render(){
    box.ondblclick=()=>{
     showHelp();
     if($("help-popover"))$("help-popover").textContent="Kategorien für diesen Supermarkt auswählen und ihre Reihenfolge festlegen. Diese Reihenfolge gilt nur für diesen Markt. Ohne Kategorie bleibt als verschiebbare Gruppe erhalten. Erst Speichern übernimmt die Änderungen.";
+   };
+  }
+  if(node.type==="help"&&productEditor){
+   const showHelp=box.ondblclick;
+   box.ondblclick=()=>{
+    showHelp();
+    if($("help-popover"))$("help-popover").textContent=productHelp[menuId]+" Im Editor werden nur Beispieldaten angezeigt.";
    };
   }
   if(node.type==="help"&&selectingEditor){
