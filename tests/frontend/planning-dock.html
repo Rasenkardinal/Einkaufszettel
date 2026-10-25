@@ -29,6 +29,10 @@ async function runTests() {
   `)();
   const results = [], dock = doc.querySelector("#add-form"), app = doc.querySelector("main.app");
   const input = doc.querySelector("#new-item"), suggestions = doc.querySelector("#product-suggestions");
+  const finishAction = doc.createElement("button");
+  finishAction.className = "end-shopping-action";
+  finishAction.style.cssText = "position:fixed;visibility:hidden;pointer-events:none";
+  doc.body.append(finishAction);
   const assert = (value, message) => { if (!value) throw Error(message); };
   const pause = () => new Promise(resolve => win.requestAnimationFrame(() => win.requestAnimationFrame(resolve)));
   function test(name, fn) { fn(); results.push("PASS " + name); }
@@ -41,7 +45,7 @@ async function runTests() {
     test("Planning dock stays at the bottom with standard controls at " + width + "px", () => {
       const box = dock.getBoundingClientRect();
       assert(Math.abs(box.bottom - win.innerHeight) < 1, "Dock not at screen bottom");
-      assert(win.getComputedStyle(dock).backgroundColor === "rgb(42, 42, 42)", "Dock must match approved contrast proposal 2");
+      assert(win.getComputedStyle(dock).backgroundColor === win.getComputedStyle(finishAction).backgroundColor, "Dock must match the finish-shopping button background");
       assert(win.getComputedStyle(input).backgroundColor === "rgb(20, 20, 20)", "Input must match approved #141414");
       assert(win.getComputedStyle(dock).borderTopColor === "rgb(89, 89, 89)", "Dock divider must match proposal 2");
       assert(parseFloat(win.getComputedStyle(dock).paddingBottom) >= 28, "Display corners need at least 28px bottom padding");
