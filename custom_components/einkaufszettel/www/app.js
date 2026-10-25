@@ -1864,8 +1864,27 @@ window.addEventListener("beforeunload", event => {
   if (catalogDirty || managingSupermarkets) { event.preventDefault(); event.returnValue = ""; }
 });
 
+function fitPlanningDock() {
+  const app = document.querySelector("main.app");
+  const viewport = window.visualViewport;
+  const visibleBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+  const offset = Math.max(0, window.innerHeight - visibleBottom);
+  elements.addForm.style.setProperty("--planning-dock-offset", `${offset}px`);
+  const height = elements.addForm.getBoundingClientRect().height;
+  if (height) app.style.setProperty("--planning-dock-height", `${height}px`);
+  const visibleHeight = viewport ? viewport.height : window.innerHeight;
+  elements.addForm.style.setProperty("--planning-suggestion-height", `${Math.max(0, visibleHeight - height - 16)}px`);
+}
+
+window.addEventListener("resize", fitPlanningDock);
+window.visualViewport?.addEventListener("resize", fitPlanningDock);
+window.visualViewport?.addEventListener("scroll", fitPlanningDock);
+new ResizeObserver(fitPlanningDock).observe(elements.addForm);
+
 function updateModeView() {
   elements.addForm.hidden = !planningMode;
+  document.querySelector("main.app").classList.toggle("planning-mode", planningMode);
+  fitPlanningDock();
   closeProductSuggestions();
   const action = planningMode ? "Einkaufen" : "Weiter planen";
   const mode = planningMode ? "Planungsmodus" : "Einkaufsmodus";

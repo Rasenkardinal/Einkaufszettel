@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Einkaufszettel · Suchleiste am unteren Rand</title>
+<link rel="stylesheet" href="../../custom_components/einkaufszettel/www/app.css">
+<style>
+body { padding: 28px; margin: 0; }
+.preview { max-width: 1620px; margin: auto; }
+.preview > h1 { font-size: 26px; margin: 0 0 12px; }
+.intro { max-width: 950px; font-size: 14px; line-height: 1.7; color: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: 12px; margin: 22px 0; }
+.controls button { padding: 10px 16px; font-size: 14px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,350px),1fr)); gap: 22px; }
+.proposal { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.proposal > h2 { font-size: 18px; margin: 0 0 10px; }
+.description { font-size: 12px; line-height: 1.7; color: var(--muted); min-height: 62px; margin: 0 0 16px; }
+.phone { position: relative; display: flex; flex-direction: column; height: 650px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--bg); }
+.statusbar { display: flex; justify-content: space-between; flex: none; padding: 12px 20px 8px; font-size: 10px; font-weight: 600; }
+.app-header { display: flex; gap: 8px; padding: 12px 16px 18px; border-bottom: 1px solid var(--line); flex: none; }
+.app-header img { width: 24px; height: 24px; }
+.app-header .titles { flex: 1; min-width: 0; }
+.eyebrow { margin: 0 0 6px; font-size: 9px; }
+.heading { display: flex; align-items: center; gap: 12px; }
+.heading h3 { flex: 1; min-width: 0; margin: 0; font-size: 22px; letter-spacing: -.04em; }
+.heading svg { width: 20px; height: 20px; color: var(--muted); flex: none; }
+.dots { font-size: 24px; line-height: 40px; color: var(--muted); }
+.list-area { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 18px 16px 110px; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; font-size: 15px; }
+.section-heading small { font-size: 11px; color: var(--muted); }
+.category { font-size: 11px; color: var(--muted); margin: 18px 0 8px; }
+.item { display: flex; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); padding: 13px 12px; margin: 8px 0; font-size: 14px; }
+.check { width: 19px; height: 19px; flex: none; border: 1px solid var(--line); border-radius: 5px; }
+.item-name { flex: 1; }
+.item small { color: var(--muted); font-size: 11px; }
+.dock { position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; padding: 12px 14px 24px; background: var(--bg); border-top: 1px solid var(--line); }
+.search-form { position: relative; display: flex; gap: 8px; margin: 0; }
+.search-form input { min-width: 0; width: 0; flex: 1; height: 48px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--input-text); padding: 0 12px; font-size: 16px; }
+.search-form input:focus { outline: 1px solid var(--accent); outline-offset: 1px; }
+.search-form .plus { width: 48px; height: 48px; padding: 0; flex: none; font-size: 25px; }
+.home-indicator { position: absolute; bottom: 7px; left: calc(50% - 48px); width: 96px; height: 4px; background: var(--muted); border-radius: 4px; opacity: .6; }
+.suggestions { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; max-height: 152px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 -8px 22px #0005; }
+.suggestions[hidden] { display: none; }
+.suggestions button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 10px 12px; background: none; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; color: var(--text); text-align: left; font-size: 14px; }
+.suggestions button:last-child { border-bottom: 0; }
+.suggestions small { font-size: 10px; color: var(--muted); }
+.keyboard { display: none; position: absolute; bottom: 0; left: 0; right: 0; height: 222px; box-sizing: border-box; padding: 10px 4px 22px; background: #25272a; border-top: 1px solid #444; }
+.keys { display: flex; justify-content: center; gap: 4px; margin-bottom: 7px; }
+.key { display: grid; place-items: center; flex: 1; max-width: 33px; height: 32px; border-radius: 4px; background: #45484e; color: #fff; font-size: 13px; box-shadow: 0 1px 1px #0008; }
+.keys:nth-child(2) { padding-inline: 10px; }
+.keys:nth-child(3) { padding-inline: 4px; }
+.key.wide { max-width: none; flex: 1.5; background: #35383e; font-size: 10px; }
+.key.space { max-width: none; flex: 5; }
+.key.enter { max-width: none; flex: 2; background: #ddd; color: #151515; font-size: 10px; }
+.keyboard-label { color: #bfc3ca; text-align: center; font-size: 9px; margin: 9px 0 0; }
+.phone.keyboard-open .keyboard { display: block; }
+.phone.keyboard-open .dock { bottom: 222px; padding-bottom: 10px; }
+.phone.keyboard-open .list-area { margin-bottom: 222px; }
+.phone.keyboard-open .dock > .home-indicator { display: none; }
+.v2 .dock { padding-top: 10px; background: var(--surface2); box-shadow: 0 -8px 20px #0004; }
+.v2 .search-form { border: 1px solid var(--line); border-radius: 13px; padding: 4px; background: var(--bg); gap: 4px; }
+.v2 .search-form input { border: 0; background: transparent; }
+.v2 .search-form .plus { border-radius: 9px; }
+.v3 .dock { padding-top: 8px; background: transparent; border-top: 0; }
+.v3 .search-form { padding: 8px; background: var(--surface2); border: 1px solid var(--line); border-radius: 32px; box-shadow: 0 -3px 18px #0005; }
+.v3 .search-form input { border-radius: 24px; }
+.v3 .plus { border-radius: 50%; }
+.v3 .suggestions { left: 8px; right: 8px; }
+.v3.keyboard-open .dock { padding-top: 8px; background: var(--bg); border-top: 1px solid var(--line); }
+.v4 .dock { padding-top: 8px; }
+.dock-label { display: none; }
+.v4 .dock-label { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; margin: 0 2px 9px; }
+.v4 .dock-label button { border: 0; padding: 0; background: transparent; color: var(--text); font-size: 10px; min-height: 20px; }
+.v4.keyboard-open .dock-label { display: none; }
+.v4 .plus { width: 54px; }
+.card-controls { display: flex; gap: 10px; margin-top: 14px; }
+.card-controls button { flex: 1; min-height: 44px; padding: 8px; font-size: 12px; }
+.state-label { color: var(--muted); font-size: 11px; margin: 12px 0 0; line-height: 1.6; }
+.phone.shopping .dock, .phone.shopping .keyboard { display: none; }
+.phone.shopping .list-area { margin-bottom: 0; padding-bottom: 20px; }
+.note { color: var(--muted); font-size: 13px; line-height: 1.8; margin-top: 24px; }
+@media(max-width:480px) { body { padding: 16px; } .proposal { padding: 12px; } .app-header { padding-inline: 12px; } .heading { gap: 8px; } .heading h3 { font-size: 20px; } }
+</style>
+<body>
+<main class="preview">
+  <h1>Planungsmodus · Suchleiste unten</h1>
+  <p class="intro">Vier Entwürfe im bestehenden dunklen App-Design. Die Suche mit Plus bleibt am unteren Bildschirmrand; bei geöffneter Tastatur dockt sie ohne Lücke direkt an deren Oberkante an. Produktvorschläge erscheinen darüber. Die Liste scrollt unabhängig und erhält Platz unter dem letzten Artikel.</p>
+  <div class="controls">
+    <button id="all-keyboards" class="secondary" type="button" aria-pressed="false">Alle Tastaturen öffnen</button>
+    <button id="all-modes" class="secondary" type="button" aria-pressed="false">Einkaufsmodus vergleichen</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <p class="note"><strong>Empfehlung: Nr. 1</strong> hält sich am engsten an das bestehende Design; Nr. 2 fasst Suche und Plus stärker als Einheit zusammen. Die Tastaturen sind maßstäbliche, simulierte Darstellungen: kein Zugriff auf die echte Gerätetastatur. In der späteren App-Umsetzung muss die Position an den tatsächlich sichtbaren Browserbereich angepasst werden. Auf echtem Mobilgerät öffnet ein Fokus im Feld zusätzlich die echte Tastatur.<br>Nur Entwürfe – keine Änderung an der App.</p>
+</main>
+<script>
+const variants = [
+  ["1 · Standard-Dock", "Gerade, klar abgegrenzte Fußleiste. Suchfeld und Plus bleiben separate Standard-Elemente. Am nächsten am bisherigen Design."],
+  ["2 · Gemeinsame Eingabeleiste", "Suchfeld und Plus sitzen in einer gemeinsamen Umrandung. Die abgesetzte Fläche trennt die Eingabe deutlicher von der Liste."],
+  ["3 · Schwebende Kapsel", "Abgerundete Leiste mit rundem Plus. Ohne Tastatur leicht schwebend; beim Tippen auf einer festen Fläche über der Tastatur."],
+  ["4 · Planung mit Schnellzugriff", "Zusätzliche kleine Zeile mit „Artikel ergänzen“ und „Häufige Artikel“. Bei offener Tastatur reduziert auf Suchfeld und Plus."]
+];
+const sync = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4a8 8 0 0 1 8 8l-3-2m3 2 2-3M12 20a8 8 0 0 1-8-8l3 2m-3-2-2 3"/></svg>';
+const cart = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h2l3 12h11l2-8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>';
+const items = [["Obst & Gemüse", "Äpfel", "1 kg"], ["", "Tomaten", "500 g"], ["Milchprodukte", "Milch", "2 × 1 l"], ["", "Joghurt", "4 Becher"], ["Backwaren", "Brot", "Vollkorn"], ["Sonstiges", "Kaffee", "500 g"]];
+const row = (name, detail = "") => `<div class="item"><i class="check"></i><span class="item-name">${name}</span><small>${detail}</small></div>`;
+const keyboard = `<div class="keyboard" aria-label="Simulierte Bildschirmtastatur">
+  ${["qwertzuiop", "asdfghjkl"].map(keys => `<div class="keys">${[...keys].map(k => `<span class="key">${k}</span>`).join("")}</div>`).join("")}
+  <div class="keys"><span class="key wide">⇧</span>${[..."yxcvbnm"].map(k => `<span class="key">${k}</span>`).join("")}<span class="key wide">⌫</span></div>
+  <div class="keys"><span class="key wide">123</span><span class="key wide">☺</span><span class="key space">Leertaste</span><span class="key enter">Fertig</span></div>
+  <p class="keyboard-label">Tastatur-Vorschau</p><div class="home-indicator"></div></div>`;
+document.querySelector("#grid").innerHTML = variants.map(([title, description], i) => `
+  <article class="proposal"><h2>${title}</h2><p class="description">${description}</p>
+  <section class="phone v${i+1}" aria-label="${title} · App-Vorschau">
+    <div class="statusbar"><span>9:41</span><span>▮▮▮  Wi-Fi  ▰</span></div>
+    <header class="app-header"><img src="../../custom_components/einkaufszettel/www/icon.svg" alt="">
+      <div class="titles"><p class="eyebrow">EINKAUFSZETTEL</p><div class="heading"><h3>Wocheneinkauf</h3>${cart}${sync}</div></div><span class="dots">⋮</span></header>
+    <div class="list-area"><div class="section-heading"><strong>Auf der Liste</strong><small>REWE⌄</small></div>
+      <div class="rows">${items.map(([category,name,detail])=>(category?`<p class="category">${category}</p>`:"")+row(name,detail)).join("")}</div>
+    </div>
+    <div class="dock"><div class="dock-label"><span>Artikel ergänzen</span><button type="button" class="common">Häufige Artikel ›</button></div>
+      <form class="search-form"><label class="visually-hidden" for="search-${i}">Neuer Artikel</label>
+        <input id="search-${i}" placeholder="Was fehlt noch?" autocomplete="off" aria-controls="suggestions-${i}" aria-expanded="false">
+        <button class="primary plus" aria-label="Artikel hinzufügen" type="submit">+</button>
+        <div class="suggestions" id="suggestions-${i}" hidden></div>
+      </form><div class="home-indicator"></div>
+    </div>${keyboard}
+  </section>
+  <div class="card-controls"><button class="secondary keyboard-toggle" type="button" aria-pressed="false">Tastatur öffnen</button><button class="secondary mode-toggle" type="button" aria-pressed="false">Einkaufsmodus</button></div>
+  <p class="state-label" role="status">Planungsmodus · am unteren Bildschirmrand verankert</p></article>`).join("");
+const cards = [...document.querySelectorAll(".proposal")];
+function suggestions(card, common = false) {
+  const input = card.querySelector("input"), box = card.querySelector(".suggestions");
+  const candidates = ["Butter", "Buttermilch", "Butterkekse", "Milch", "Brot", "Kaffee"];
+  const matches = common ? candidates.slice(0,3) : input.value.trim() ? candidates.filter(n=>n.toLocaleLowerCase("de").includes(input.value.trim().toLocaleLowerCase("de"))) : [];
+  box.replaceChildren(...matches.map(name => {
+    const button = document.createElement("button");
+    button.type = "button";
+    const label = document.createElement("span"); label.textContent = name;
+    const hint = document.createElement("small"); hint.textContent = "Hinzufügen +";
+    button.append(label,hint); button.onclick=()=>add(card,name);
+    return button;
+  }));
+  box.hidden = !matches.length;
+  input.setAttribute("aria-expanded",String(matches.length>0));
+}
+function setKeyboard(card, open) {
+  card.querySelector(".phone").classList.toggle("keyboard-open",open);
+  const button=card.querySelector(".keyboard-toggle");
+  button.textContent=open?"Tastatur schließen":"Tastatur öffnen";
+  button.setAttribute("aria-pressed",String(open));
+  if(!open) { card.querySelector(".suggestions").hidden=true; card.querySelector("input").setAttribute("aria-expanded","false"); card.querySelector("input").blur(); }
+  card.querySelector(".state-label").textContent=open?"Planungsmodus · Suchleiste direkt über der Tastatur":"Planungsmodus · am unteren Bildschirmrand verankert";
+}
+function setMode(card, shopping) {
+  setKeyboard(card,false);
+  card.querySelector(".phone").classList.toggle("shopping",shopping);
+  const button=card.querySelector(".mode-toggle");
+  button.textContent=shopping?"Planungsmodus":"Einkaufsmodus";
+  button.setAttribute("aria-pressed",String(shopping));
+  card.querySelector(".state-label").textContent=shopping?"Einkaufsmodus · Suche und Plus ausgeblendet":"Planungsmodus · am unteren Bildschirmrand verankert";
+}
+function add(card,name) {
+  if(!name.trim()) { card.querySelector("input").focus(); return; }
+  const wrapper=document.createElement("div");
+  wrapper.innerHTML=row("");
+  wrapper.querySelector(".item-name").textContent=name.trim();
+  card.querySelector(".rows").append(wrapper.firstElementChild);
+  card.querySelector("input").value="";
+  suggestions(card);
+  card.querySelector(".list-area").scrollTop=card.querySelector(".list-area").scrollHeight;
+  card.querySelector(".state-label").textContent=`„${name.trim()}“ hinzugefügt · nur in dieser Vorschau`;
+}
+for(const card of cards) {
+  card.querySelector(".keyboard-toggle").onclick=()=>{
+    const open=!card.querySelector(".phone").classList.contains("keyboard-open");
+    setMode(card,false); setKeyboard(card,open);
+    if(open) { card.querySelector("input").value="But"; suggestions(card); }
+  };
+  card.querySelector(".mode-toggle").onclick=()=>setMode(card,!card.querySelector(".phone").classList.contains("shopping"));
+  const input=card.querySelector("input");
+  input.onfocus=()=>setKeyboard(card,true);
+  input.oninput=()=>suggestions(card);
+  input.onkeydown=event=>{if(event.key==="Escape")setKeyboard(card,false);};
+  card.querySelector("form").onsubmit=event=>{event.preventDefault();add(card,input.value);};
+  card.querySelector(".common").onclick=()=>{setKeyboard(card,true);suggestions(card,true);};
+}
+document.querySelector("#all-keyboards").onclick=event=>{
+  const open=event.currentTarget.getAttribute("aria-pressed")!=="true";
+  for(const card of cards) {setMode(card,false);setKeyboard(card,open);if(open){card.querySelector("input").value="But";suggestions(card);}}
+  event.currentTarget.setAttribute("aria-pressed",String(open));
+  event.currentTarget.textContent=open?"Alle Tastaturen schließen":"Alle Tastaturen öffnen";
+};
+document.querySelector("#all-modes").onclick=event=>{
+  const shopping=event.currentTarget.getAttribute("aria-pressed")!=="true";
+  for(const card of cards)setMode(card,shopping);
+  event.currentTarget.setAttribute("aria-pressed",String(shopping));
+  event.currentTarget.textContent=shopping?"Zurück zum Planungsmodus":"Einkaufsmodus vergleichen";
+};
+if (new URLSearchParams(location.search).get("variant") === "1") {
+  cards.slice(1).forEach(card => card.remove());
+  document.querySelector(".controls").hidden = true;
+  cards[0].querySelector(".card-controls").hidden = true;
+  document.querySelector(".grid").style.maxWidth = "430px";
+  document.querySelector(".preview > h1").textContent = "Standard-Dock · Planungsmodus";
+}
+</script>
+</body>
+</html>

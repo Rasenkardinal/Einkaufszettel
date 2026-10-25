@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Planning dock regression tests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Planungsmodus" style="width:390px;height:740px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all(["app.html", "app.js"].map(file =>
+    fetch(base + file, {cache: "no-store"}).then(response => response.text())));
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document;
+  const viewport = new win.EventTarget();
+  viewport.height = 740; viewport.offsetTop = 0;
+  Object.defineProperty(win, "visualViewport", {configurable: true, value: viewport});
+  const api = win.Function(script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+    entryId = "test"; busy = false;
+    products = [{key:"butter",name:"Butter"},{key:"buttermilch",name:"Buttermilch"}];
+    return {
+      planning(value) { planningMode = value; updateModeView(); setBusy(false); },
+      fitPlanningDock,
+      management() { openCatalog("markets"); },
+      leaveManagement
+    };
+  `)();
+  const results = [], dock = doc.querySelector("#add-form"), app = doc.querySelector("main.app");
+  const input = doc.querySelector("#new-item"), suggestions = doc.querySelector("#product-suggestions");
+  const assert = (value, message) => { if (!value) throw Error(message); };
+  const pause = () => new Promise(resolve => win.requestAnimationFrame(() => win.requestAnimationFrame(resolve)));
+  function test(name, fn) { fn(); results.push("PASS " + name); }
+  for (const width of [320, 390, 430, 900]) {
+    frame.style.width = width + "px";
+    viewport.height = 740; viewport.offsetTop = 0;
+    api.planning(true);
+    await pause();
+    api.fitPlanningDock();
+    test("Planning dock stays at the bottom with standard controls at " + width + "px", () => {
+      const box = dock.getBoundingClientRect();
+      assert(Math.abs(box.bottom - win.innerHeight) < 1, "Dock not at screen bottom");
+      assert(box.width === Math.min(width,700), "Dock does not match app width");
+      assert(Math.abs(box.left - app.getBoundingClientRect().left) < 1, "Dock not centered with app");
+      assert(win.getComputedStyle(input).fontSize === "16px", "Input can trigger mobile auto-zoom");
+      assert(dock.querySelectorAll(":scope > button").length === 1, "Unexpected keyboard or mode controls");
+      assert(doc.querySelector("#open-common-items").getBoundingClientRect().height === 48, "Plus target not 48px");
+    });
+    viewport.height = 440;
+    viewport.dispatchEvent(new win.Event("resize"));
+    await pause();
+    input.focus();
+    input.value = "But";
+    input.dispatchEvent(new win.Event("input", {bubbles:true}));
+    test("Keyboard docks the bar and suggestions open upward at " + width + "px", () => {
+      const box = dock.getBoundingClientRect(), list = suggestions.getBoundingClientRect();
+      assert(Math.abs(box.bottom - 440) < 1, "Dock does not touch keyboard top");
+      assert(!suggestions.hidden && suggestions.children.length === 2, "Suggestions missing");
+      assert(list.bottom <= box.top && list.top >= 0, "Suggestions are covered or offscreen");
+      assert(doc.documentElement.scrollWidth <= width, "Horizontal overflow");
+    });
+    viewport.offsetTop = 40;
+    viewport.dispatchEvent(new win.Event("scroll"));
+    test("Visual viewport panning is included at " + width + "px", () => {
+      assert(Math.abs(dock.getBoundingClientRect().bottom - 480) < 1, "Viewport offset ignored");
+    });
+    viewport.height = 740; viewport.offsetTop = 0;
+    viewport.dispatchEvent(new win.Event("resize"));
+    api.planning(false);
+    test("Shopping mode removes dock and reserved space at " + width + "px", () => {
+      assert(!dock.getClientRects().length && !app.classList.contains("planning-mode"), "Shopping dock still present");
+    });
+  }
+  api.planning(true);
+  const rows = doc.querySelector("#items");
+  for (let i = 0; i < 40; i++) {
+    const row = doc.createElement("li");
+    row.textContent = "Artikel " + i; row.style.minHeight = "56px"; rows.append(row);
+  }
+  await pause();
+  win.scrollTo(0,doc.documentElement.scrollHeight);
+  test("Last item scrolls clear of the bottom dock", () => {
+    assert(rows.lastElementChild.getBoundingClientRect().bottom <= dock.getBoundingClientRect().top, "Last item covered");
+  });
+  api.management();
+  test("Management pages hide the planning dock", () => assert(!dock.getClientRects().length, "Dock leaked into management"));
+  api.leaveManagement();
+  await pause();
+  test("Returning from management restores the dock", () => assert(dock.getClientRects().length, "Dock not restored"));
+  Object.defineProperty(win, "visualViewport", {configurable:true, value:undefined});
+  api.fitPlanningDock();
+  test("Browsers without VisualViewport use the window bottom", () => {
+    assert(Math.abs(dock.getBoundingClientRect().bottom - win.innerHeight) < 1, "Fallback bottom wrong");
+  });
+  document.querySelector("#results").textContent = results.join("\n");
+}
+runTests().catch(error => { document.querySelector("#results").textContent += "\nFAIL " + error.stack; });
+</script>
+</html>
