@@ -37,7 +37,7 @@ async function runTests() {
   assert(win.getComputedStyle(doc.querySelector("#edit-quantity")).padding === "10px", "Article fields have excessive padding");
 
   const canvas = doc.createElement("canvas");
-  canvas.width = 8; canvas.height = 8;
+  canvas.width = 800; canvas.height = 600;
   canvas.getContext("2d").fillRect(0, 0, 8, 8);
   const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
   const transfer = new win.DataTransfer();
@@ -58,8 +58,9 @@ async function runTests() {
   api.state()[0].metadata.image = image;
   api.render();
   const savedLabel = doc.querySelector('[aria-label="Bearbeiten: Tomaten"]');
-  const photoIcon = savedLabel.querySelector(".item-photo-icon");
-  assert(photoIcon && photoIcon.getAttribute("aria-hidden") === "true", "Small photo icon missing for an item with an image");
+  const photoButton = doc.querySelector('[aria-label="Foto von Tomaten anzeigen"]');
+  const photoIcon = photoButton.querySelector(".item-photo-icon");
+  assert(photoIcon && photoIcon.getAttribute("aria-hidden") === "true", "Photo icon missing for an item with an image");
   assert(win.getComputedStyle(photoIcon).width === "32px", "Photo indicator is not the expected larger size");
   const photoQuantity = savedLabel.querySelector(".item-photo-meta .item-note");
   assert(photoQuantity.textContent === "2", "Photo item should show only its quantity");
@@ -71,9 +72,63 @@ async function runTests() {
     (savedLabel.getBoundingClientRect().width - columnGap) * 0.52 + columnGap;
   assert(Math.abs(photoQuantity.getBoundingClientRect().left - expectedQuantityLeft) < 1,
     "Photo quantity moved from the existing details column");
-  const labelRect = savedLabel.getBoundingClientRect();
-  const iconRect = photoIcon.getBoundingClientRect();
-  assert(Math.abs(iconRect.right - labelRect.right) < 1, "Photo icon is not aligned at the far right of the row");
+  const rowRect = savedLabel.closest(".item-main").getBoundingClientRect();
+  const iconButtonRect = photoButton.getBoundingClientRect();
+  assert(Math.abs(iconButtonRect.right - rowRect.right) < 1, "Photo icon is not aligned at the far right of the row");
+
+  photoButton.click();
+  const photoDialog = doc.querySelector("#item-photo-dialog");
+  const photoViewport = doc.querySelector("#item-photo-viewport");
+  const photoImage = doc.querySelector("#item-photo-image");
+  assert(photoDialog.open, "Tapping the photo icon did not open the image viewer");
+  assert(photoImage.src === image && photoImage.alt === "Foto von Tomaten", "Image viewer did not show the selected item image");
+  photoViewport.dispatchEvent(new win.WheelEvent("wheel", {
+    bubbles: true, cancelable: true, deltaY: -100, clientX: 190, clientY: 220,
+  }));
+  assert(photoImage.style.transform.includes("scale(1.2)"), "Mouse wheel did not zoom the image");
+  for (let step = 0; step < 20; step++) {
+    photoViewport.dispatchEvent(new win.WheelEvent("wheel", {
+      bubbles: true, cancelable: true, deltaY: -100, clientX: 190, clientY: 220,
+    }));
+  }
+  assert(photoImage.style.transform.endsWith("scale(5)"), "Zoom exceeded or missed its maximum level");
+  photoViewport.dispatchEvent(new win.MouseEvent("dblclick", {
+    bubbles: true, clientX: 190, clientY: 220,
+  }));
+  assert(photoImage.style.transform.endsWith("scale(1)"), "Double-click did not toggle zoom out");
+  photoViewport.dispatchEvent(new win.MouseEvent("dblclick", {
+    bubbles: true, clientX: 190, clientY: 220,
+  }));
+  assert(photoImage.style.transform.includes("scale(2.5)"), "Double-click did not toggle zoom in");
+  photoViewport.dispatchEvent(new win.MouseEvent("dblclick", {
+    bubbles: true, clientX: 190, clientY: 220,
+  }));
+  assert(photoImage.style.transform.endsWith("scale(1)"), "Double-click did not reset zoom");
+  if (win.PointerEvent) {
+    const pointerEvent = (type, pointerId, clientX) => new win.PointerEvent(type, {
+      bubbles: true, pointerId, pointerType: "touch", isPrimary: pointerId === 1,
+      clientX, clientY: 220,
+    });
+    photoViewport.dispatchEvent(pointerEvent("pointerdown", 1, 100));
+    photoViewport.dispatchEvent(pointerEvent("pointerdown", 2, 150));
+    photoViewport.dispatchEvent(pointerEvent("pointermove", 2, 200));
+    assert(photoImage.style.transform.includes("scale(2)"), "Pinch gesture did not zoom the image");
+    photoViewport.dispatchEvent(pointerEvent("pointerup", 1, 100));
+    photoViewport.dispatchEvent(pointerEvent("pointerup", 2, 200));
+    const previousTransform = photoImage.style.transform;
+    photoViewport.dispatchEvent(pointerEvent("pointerdown", 1, 100));
+    photoViewport.dispatchEvent(pointerEvent("pointermove", 1, 130));
+    assert(photoImage.style.transform !== previousTransform, "Dragging did not pan the zoomed image");
+    photoViewport.dispatchEvent(pointerEvent("pointerup", 1, 130));
+  }
+  doc.querySelector("#close-item-photo").click();
+  await new Promise(resolve => win.setTimeout(resolve, 20));
+  assert(!photoDialog.open && photoImage.style.transform === "", "Closing the viewer did not reset zoom");
+  results.push("PASS Photo icon opens a viewer with wheel, double-click, pinch and pan zoom");
+
+  photoButton.click();
+  photoDialog.dispatchEvent(new win.MouseEvent("click", {bubbles: true}));
+  assert(!photoDialog.open, "Tapping outside the image did not close the viewer");
   doc.querySelector('[aria-label="Bearbeiten: Tomaten"]').click();
   assert(!doc.querySelector("#edit-image-preview").hidden, "Saved image was not restored in the editor");
   doc.querySelector("#edit-image-remove").click();
@@ -82,7 +137,7 @@ async function runTests() {
   assert(operations.at(-1).metadata.image === null, "Image removal was not saved");
   api.state()[0].metadata.image = null;
   api.render();
-  assert(!doc.querySelector('[aria-label="Bearbeiten: Tomaten"]').querySelector(".item-photo-icon"), "Photo indicator remained after image removal");
+  assert(!doc.querySelector('[aria-label="Foto von Tomaten anzeigen"]'), "Photo indicator remained after image removal");
   results.push("PASS Saved images can be reopened and removed");
   document.querySelector("#results").textContent = results.join("\n");
 }

@@ -16,6 +16,11 @@ const elements = {
   marketBonusCard: document.querySelector("#market-bonus-card"),
   bonusCardDialog: document.querySelector("#bonus-card-dialog"),
   bonusCardDialogImage: document.querySelector("#bonus-card-dialog-image"),
+  itemPhotoDialog: document.querySelector("#item-photo-dialog"),
+  closeItemPhoto: document.querySelector("#close-item-photo"),
+  itemPhotoViewport: document.querySelector("#item-photo-viewport"),
+  itemPhotoImage: document.querySelector("#item-photo-image"),
+  itemPhotoCaption: document.querySelector("#item-photo-caption"),
   marketFlyout: document.querySelector("#market-flyout"),
   marketName: document.querySelector("#market-name"),
   manageSupermarkets: document.querySelector("#manage-supermarkets"),
@@ -402,6 +407,142 @@ elements.marketBonusCard.addEventListener("click", () => {
   elements.bonusCardDialogImage.src = market.bonus_card;
   elements.bonusCardDialogImage.alt = `Bonuskarte oder APP-Code für ${market.name}`;
   elements.bonusCardDialog.showModal();
+});
+
+let itemPhotoZoom = { scale: 1, x: 0, y: 0 };
+const itemPhotoPointers = new Map();
+let itemPhotoGesture = null;
+const MAX_ITEM_PHOTO_ZOOM = 5;
+
+function applyItemPhotoZoom(scale, x = itemPhotoZoom.x, y = itemPhotoZoom.y) {
+  const viewport = elements.itemPhotoViewport;
+  const image = elements.itemPhotoImage;
+  const nextScale = Math.min(MAX_ITEM_PHOTO_ZOOM, Math.max(1, scale));
+  const maxX = Math.max(0, (image.offsetWidth * nextScale - viewport.clientWidth) / 2);
+  const maxY = Math.max(0, (image.offsetHeight * nextScale - viewport.clientHeight) / 2);
+  itemPhotoZoom = {
+    scale: nextScale,
+    x: Math.min(maxX, Math.max(-maxX, nextScale === 1 ? 0 : x)),
+    y: Math.min(maxY, Math.max(-maxY, nextScale === 1 ? 0 : y)),
+  };
+  image.style.transform = `translate(${itemPhotoZoom.x}px, ${itemPhotoZoom.y}px) scale(${itemPhotoZoom.scale})`;
+  viewport.dataset.zoomed = String(itemPhotoZoom.scale > 1);
+}
+
+function resetItemPhotoZoom() {
+  itemPhotoZoom = { scale: 1, x: 0, y: 0 };
+  itemPhotoPointers.clear();
+  itemPhotoGesture = null;
+  elements.itemPhotoImage.style.transform = "";
+  elements.itemPhotoViewport.dataset.zoomed = "false";
+}
+
+function openItemPhoto(item) {
+  if (!item.metadata?.image) return;
+  resetItemPhotoZoom();
+  elements.itemPhotoImage.src = item.metadata.image;
+  elements.itemPhotoImage.alt = `Foto von ${item.summary}`;
+  elements.itemPhotoCaption.textContent = `${item.summary} · Mit zwei Fingern zoomen, am Desktop Mausrad oder Doppelklick.`;
+  elements.itemPhotoDialog.showModal();
+}
+
+elements.closeItemPhoto.addEventListener("click", () => elements.itemPhotoDialog.close());
+elements.itemPhotoDialog.addEventListener("click", event => {
+  if (event.target === elements.itemPhotoDialog) elements.itemPhotoDialog.close();
+});
+elements.itemPhotoDialog.addEventListener("close", () => {
+  resetItemPhotoZoom();
+  elements.itemPhotoImage.removeAttribute("src");
+});
+elements.itemPhotoViewport.addEventListener("pointerdown", event => {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  if (event.pointerType === "mouse" && event.isTrusted) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  itemPhotoPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (itemPhotoPointers.size === 2) {
+    const [first, second] = [...itemPhotoPointers.values()];
+    itemPhotoGesture = {
+      type: "pinch",
+      distance: Math.hypot(second.x - first.x, second.y - first.y),
+      centerX: (first.x + second.x) / 2,
+      centerY: (first.y + second.y) / 2,
+      ...itemPhotoZoom,
+    };
+  } else if (itemPhotoZoom.scale > 1) {
+    itemPhotoGesture = {
+      type: "pan",
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: itemPhotoZoom.x,
+      offsetY: itemPhotoZoom.y,
+      scale: itemPhotoZoom.scale,
+    };
+  } else {
+    itemPhotoGesture = null;
+  }
+});
+elements.itemPhotoViewport.addEventListener("pointermove", event => {
+  if (!itemPhotoPointers.has(event.pointerId)) return;
+  itemPhotoPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (itemPhotoGesture?.type === "pinch" && itemPhotoPointers.size >= 2) {
+    const [first, second] = [...itemPhotoPointers.values()];
+    const centerX = (first.x + second.x) / 2;
+    const centerY = (first.y + second.y) / 2;
+    const distance = Math.hypot(second.x - first.x, second.y - first.y);
+    applyItemPhotoZoom(
+      itemPhotoGesture.scale * distance / Math.max(itemPhotoGesture.distance, 1),
+      itemPhotoGesture.x + centerX - itemPhotoGesture.centerX,
+      itemPhotoGesture.y + centerY - itemPhotoGesture.centerY,
+    );
+    event.preventDefault();
+  } else if (itemPhotoGesture?.type === "pan" && itemPhotoGesture.pointerId === event.pointerId) {
+    applyItemPhotoZoom(
+      itemPhotoGesture.scale,
+      itemPhotoGesture.offsetX + event.clientX - itemPhotoGesture.startX,
+      itemPhotoGesture.offsetY + event.clientY - itemPhotoGesture.startY,
+    );
+    event.preventDefault();
+  }
+});
+function finishItemPhotoPointer(event) {
+  itemPhotoPointers.delete(event.pointerId);
+  if (itemPhotoPointers.size < 2) {
+    itemPhotoGesture = null;
+    if (itemPhotoZoom.scale > 1 && itemPhotoPointers.size === 1) {
+      const [pointerId, pointer] = [...itemPhotoPointers.entries()][0];
+      itemPhotoGesture = {
+        type: "pan",
+        pointerId,
+        startX: pointer.x,
+        startY: pointer.y,
+        offsetX: itemPhotoZoom.x,
+        offsetY: itemPhotoZoom.y,
+        scale: itemPhotoZoom.scale,
+      };
+    }
+  }
+}
+elements.itemPhotoViewport.addEventListener("pointerup", finishItemPhotoPointer);
+elements.itemPhotoViewport.addEventListener("pointercancel", finishItemPhotoPointer);
+elements.itemPhotoViewport.addEventListener("wheel", event => {
+  event.preventDefault();
+  const rect = elements.itemPhotoViewport.getBoundingClientRect();
+  const factor = event.deltaY < 0 ? 1.2 : 1 / 1.2;
+  const scale = Math.min(MAX_ITEM_PHOTO_ZOOM, Math.max(1, itemPhotoZoom.scale * factor));
+  const pointX = event.clientX - rect.left - rect.width / 2 - itemPhotoZoom.x;
+  const pointY = event.clientY - rect.top - rect.height / 2 - itemPhotoZoom.y;
+  const ratio = scale / itemPhotoZoom.scale;
+  applyItemPhotoZoom(scale, itemPhotoZoom.x - pointX * (ratio - 1), itemPhotoZoom.y - pointY * (ratio - 1));
+}, { passive: false });
+elements.itemPhotoViewport.addEventListener("dblclick", event => {
+  const rect = elements.itemPhotoViewport.getBoundingClientRect();
+  const scale = itemPhotoZoom.scale > 1 ? 1 : 2.5;
+  const ratio = scale / itemPhotoZoom.scale;
+  const pointX = event.clientX - rect.left - rect.width / 2 - itemPhotoZoom.x;
+  const pointY = event.clientY - rect.top - rect.height / 2 - itemPhotoZoom.y;
+  applyItemPhotoZoom(scale, itemPhotoZoom.x - pointX * (ratio - 1), itemPhotoZoom.y - pointY * (ratio - 1));
 });
 
 function loadMarketSelection() {
@@ -2443,9 +2584,16 @@ function render() {
         note.textContent = details;
         photoMeta.append(note);
       }
-      photoMeta.append(itemPhotoIcon());
       label.append(photoMeta);
       label.classList.add("has-photo");
+      const photoButton = document.createElement("button");
+      photoButton.type = "button";
+      photoButton.className = "item-photo-button";
+      photoButton.setAttribute("aria-label", `Foto von ${item.summary} anzeigen`);
+      photoButton.append(itemPhotoIcon());
+      photoButton.addEventListener("click", () => openItemPhoto(item));
+      main.classList.add("has-photo");
+      main.append(checkbox, label, photoButton);
     } else if (details) {
       const note = document.createElement("span");
       note.className = "item-note";
@@ -2543,7 +2691,7 @@ function render() {
       });
     });
     if (pendingIds.has(item.uid)) label.title = "Lokal gespeichert – Übertragung an Home Assistant ausstehend";
-    main.append(checkbox, label);
+    if (!hasPhoto) main.append(checkbox, label);
     row.append(main);
     enableItemSwipeDelete(row, item.uid);
     const categoryId = categories.some(c => c.id === item.metadata?.category_id) ? item.metadata.category_id : "";
