@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="de">
 <meta charset="utf-8">
-<title>Supermarkt bearbeiten · Katalog-Picker-Test</title>
+<title>Supermarkt bearbeiten · Katalog-Test</title>
 <pre id="results">Running...</pre>
 <iframe id="fixture" title="Supermarkt bearbeiten" style="width:390px;height:844px;border:0"></iframe>
 <script>
@@ -13,26 +13,52 @@ async function runTests() {
   frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
     .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
   await new Promise(resolve => frame.onload = resolve);
-  const win = frame.contentWindow, doc = win.document, saves = [];
+  const win = frame.contentWindow, doc = win.document, test = {saves: []};
   const storage = {getItem: () => null, setItem() {}, removeItem() {}};
   const api = win.Function("test", "localStorage",
     script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
       entryId = "test"; busy = false;
-      supermarkets = [{id:"market",name:"Kaufland",category_ids:[]}];
-      categories = []; products = [];
+      const record = (id, name, categories = [], products = []) => ({
+        id, name, categories, products, product_aliases: {},
+        dismissed_product_suggestions: [], deleted_product_keys: [],
+        product_operations: {}, product_events: {},
+      });
+      catalogs = {
+        supermarket: record("supermarket", "Supermarkt",
+          [{id:"fruit",name:"Obst"}],
+          [{key:"handschuhe",name:"Handschuhe",category_id:"fruit",category_known:true}]),
+        hardware: record("hardware", "Baumarkt",
+          [{id:"tools",name:"Werkzeug"}],
+          [{key:"handschuhe",name:"Handschuhe",category_id:"tools",category_known:true}]),
+        tasks: record("tasks", "Aufgaben"),
+      };
+      supermarkets = [{id:"market",name:"Kaufland",catalog_id:"supermarket",
+        category_ids:["fruit"]}];
+      categories = catalogs.supermarket.categories;
+      products = catalogs.supermarket.products;
+      currentItems = [
+        {uid:"market-item",summary:"Handschuhe",metadata:{catalog_id:"supermarket",category_id:"fruit"}},
+        {uid:"hardware-item",summary:"Handschuhe",metadata:{catalog_id:"hardware",category_id:"old-tools"}},
+      ];
       saveCatalog = (...args) => test.saves.push(args);
       const open = () => openCatalog("market-edit", supermarkets[0]);
+      const markSaved = () => { catalogDirty = false; };
+      const state = () => JSON.stringify({supermarkets,catalogs,activeCatalogId,currentItems});
       open();
-      return {open, dirty: () => catalogDirty, state: () => JSON.stringify({supermarkets,categories,products})};
-    `)({saves}, storage);
+      return {open, markSaved, dirty: () => catalogDirty, state,
+        apply: applyCatalog, activate: activateCatalog,
+        draft: () => catalogDraft, catalogs: () => catalogs};
+    `) (test, storage);
   const assert = (condition, message) => { if (!condition) throw Error(message); };
-  const results = [], original = api.state();
+  const results = [];
   let details = doc.querySelector(".market-catalog-preview");
   assert(details && !details.open, "Catalog option should initially be collapsed");
   assert(details.querySelector(".market-catalog-current").textContent === "Supermarkt", "Default catalog missing");
   assert(details.previousElementSibling.classList.contains("category-navigation") &&
     details.nextElementSibling.classList.contains("market-checkout-options"), "Option is not before checkout settings");
   assert(!details.querySelector("select, input[type=radio]"), "Native selector or radio button remains");
+  assert(!details.querySelector(".market-catalog-notice") &&
+    !details.textContent.includes("nicht gespeichert"), "The old Clickdummy notice remains");
   const navigation = [...doc.querySelectorAll("#catalog-page .category-navigation")];
   const catalogCard = details.querySelector("summary");
   assert(navigation.length === 2 &&
@@ -54,9 +80,10 @@ async function runTests() {
   assert(switchCenters.every((center, index) =>
     Math.abs(center - (lineCenters[index] + lineCenters[index + 1]) / 2) <= 1),
   "Checkout switches are not centered between their dividers");
-  const trigger = details.querySelector('[role="combobox"]');
+
+  let trigger = details.querySelector('[role="combobox"]');
   assert(trigger && trigger.getAttribute("aria-haspopup") === "listbox" &&
-    trigger.getAttribute("aria-describedby") === "market-catalog-notice", "Picker accessibility metadata missing");
+    !trigger.hasAttribute("aria-describedby"), "Picker accessibility metadata is incorrect");
   const info = doc.querySelector("#catalog-page .management-help-trigger");
   assert(info.previousElementSibling.id === "catalog-title" && info.nextElementSibling.id === "catalog-close", "Info is not directly next to the title");
   info.click();
@@ -64,11 +91,11 @@ async function runTests() {
   info.click();
   details.querySelector("summary").click();
   assert(details.open, "Catalog option does not expand");
-  assert(details.querySelector(".market-catalog-notice").textContent.includes("nicht gespeichert"), "Preview notice missing");
-  assert(details.querySelectorAll("p").length === 3, "Expected only the preview notice and catalog labels");
+  assert(!details.querySelector(".market-catalog-notice"), "Clickdummy notice is still displayed");
   const options = [...details.querySelectorAll('[role="option"]')];
   assert(options.map(option => option.textContent.trim()).join("|") ===
-    "Supermarkt✓|Baumarkt✓|Aufgaben✓|Eigener Katalog …✓", "Catalog options do not match the approved choices");
+    "Supermarkt✓|Baumarkt✓|Aufgaben✓|Neuen eigenen Katalog anlegen …✓",
+  "Catalog options do not match the available catalogs");
   trigger.focus();
   trigger.dispatchEvent(new win.KeyboardEvent("keydown", {key:"ArrowDown", bubbles:true}));
   assert(trigger.getAttribute("aria-expanded") === "true" &&
@@ -77,33 +104,60 @@ async function runTests() {
   assert(doc.activeElement.dataset.catalogValue === "hardware", "ArrowDown did not move through options");
   doc.activeElement.click();
   assert(trigger.getAttribute("aria-expanded") === "false" &&
-    details.querySelector(".market-catalog-current").textContent === "Baumarkt", "Selecting a catalog did not update the preview");
-  trigger.dispatchEvent(new win.KeyboardEvent("keydown", {key:"ArrowDown", bubbles:true}));
-  doc.activeElement.dispatchEvent(new win.KeyboardEvent("keydown", {key:"Escape", bubbles:true}));
-  assert(trigger.getAttribute("aria-expanded") === "false" && doc.activeElement === trigger &&
-    details.querySelector(".market-catalog-current").textContent === "Baumarkt", "Escape did not close the picker and restore focus");
+    details.querySelector(".market-catalog-current").textContent === "Baumarkt" &&
+    api.dirty(), "Selecting a catalog did not update the pending market assignment");
+  details.closest("form").requestSubmit();
+  assert(test.saves.length === 1, "Market save was not submitted");
+  assert(JSON.stringify(test.saves[0]) === JSON.stringify(["save_supermarket", {
+    market_id:"market", name:"Kaufland", catalog_id:"hardware",
+    deposit_receipt_hint:true, show_bonus_card:true,
+  }, "markets"]), "Selected catalog was not included in the market save");
+
+  const nextCatalogs = api.catalogs();
+  api.apply({
+    catalog_id:"hardware",
+    catalogs:nextCatalogs,
+    supermarkets:[{id:"market",name:"Kaufland",catalog_id:"hardware",category_ids:[]}],
+    categories:nextCatalogs.hardware.categories,
+    products:nextCatalogs.hardware.products,
+  });
+  const items = JSON.parse(api.state()).currentItems;
+  assert(items.find(item => item.uid === "hardware-item").metadata.category_id === "tools" &&
+    items.find(item => item.uid === "market-item").metadata.category_id === "fruit",
+  "Activating a catalog changed another catalog's item category");
+  assert(JSON.parse(api.state()).activeCatalogId === "hardware", "Saved market catalog was not activated");
+  results.push("PASS Catalog assignment is saved and category data stays isolated by market");
+
+  api.markSaved();
+  api.open();
+  details = doc.querySelector(".market-catalog-preview");
+  trigger = details.querySelector('[role="combobox"]');
+  assert(!details.open && details.querySelector(".market-catalog-current").textContent === "Baumarkt",
+    "Saved catalog selection did not persist when reopening the market");
+  details.querySelector("summary").click();
   trigger.dispatchEvent(new win.KeyboardEvent("keydown", {key:"ArrowDown", bubbles:true}));
   doc.activeElement.dispatchEvent(new win.KeyboardEvent("keydown", {key:"End", bubbles:true}));
-  assert(doc.activeElement.dataset.catalogValue === "custom", "End did not focus the custom catalog option");
+  assert(doc.activeElement.dataset.catalogValue === "__new", "End did not focus the custom catalog option");
   doc.activeElement.click();
   const name = details.querySelector("input");
   assert(!name.hidden, "Custom catalog name field not shown");
   name.value = "Garten";
   name.dispatchEvent(new win.Event("input", {bubbles:true}));
-  assert(!api.dirty() && api.state() === original, "Dummy changed shared state");
-  assert(details.querySelector(".market-catalog-current").textContent === "Garten", "Custom catalog name is not reflected in the picker");
+  assert(api.dirty() && details.querySelector(".market-catalog-current").textContent === "Garten",
+    "Custom catalog name is not treated as an unsaved market change");
   details.closest("form").requestSubmit();
-  assert(saves.length === 1, "Normal save no longer works");
-  assert(JSON.stringify(saves[0]) === JSON.stringify(["save_supermarket", {
-    market_id:"market", name:"Kaufland", deposit_receipt_hint:true, show_bonus_card:true,
-  }, "markets"]), "Dummy values leaked into save payload");
-  results.push("PASS Expandable catalog selector, custom name and explicit notice; no state, dirty flag or save payload changes");
+  assert(test.saves.length === 2, "New catalog market assignment was not submitted");
+  const [newCatalogCommand, newCatalogPayload] = test.saves[1];
+  assert(newCatalogCommand === "save_supermarket" && newCatalogPayload.catalog_name === "Garten" &&
+    /^[0-9a-f]{32}$/u.test(newCatalogPayload.catalog_id), "New catalog name and ID were not sent to the backend");
+  results.push("PASS New catalog creation sends the requested name and a stable ID");
+
+  api.markSaved();
   api.open();
   details = doc.querySelector(".market-catalog-preview");
-  assert(!details.open && details.querySelector(".market-catalog-current").textContent === "Supermarkt" &&
-    details.querySelector("input").value === "", "Preview values persisted after reopening");
   details.querySelector("summary").click();
-  for (const width of [320,390,430,900]) {
+  const widths = [320,390,430,900];
+  for (const width of widths) {
     frame.style.width = `${width}px`;
     await new Promise(resolve => win.requestAnimationFrame(resolve));
     const title = doc.querySelector("#catalog-title").getBoundingClientRect();
@@ -114,13 +168,6 @@ async function runTests() {
     assert(details.querySelector('[role="combobox"]').getBoundingClientRect().height >= 48, "Picker touch target too small");
     results.push(`PASS Expanded option and title/info layout at ${width}px`);
   }
-  frame.style.width = "390px";
-  details.querySelector("summary").click();
-  doc.querySelector("#catalog-close").click();
-  assert(!doc.querySelector("#discard-changes").open, "Preview selection caused a discard confirmation");
-  assert(doc.querySelector("#catalog-title").textContent === "Supermärkte", "Close did not return to markets");
-  results.push("PASS Preview resets on reopening and does not interfere with close navigation");
-  api.open();
   document.querySelector("#results").textContent = results.join("\n");
 }
 runTests().catch(error => {

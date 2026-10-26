@@ -116,7 +116,13 @@ async def persist_items(
                     if item.source_uid
                     else f"local:{item.uid}"
                 )
-                events.append((f"added:{identity}", item.summary))
+                events.append(
+                    (
+                        f"added:{identity}",
+                        item.summary,
+                        item.metadata.get("catalog_id", "supermarket"),
+                    )
+                )
         items = await data.product_rules(
             items, operation=product_operation, events=events
         )
@@ -210,6 +216,7 @@ async def apply_operation(
             article.summary,
             changes["metadata"]["category_id"],
             payload,
+            article.metadata.get("catalog_id", "supermarket"),
         )
     await persist_items(data, items, state, product_operation=product_operation)
     return result

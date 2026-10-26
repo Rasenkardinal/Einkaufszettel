@@ -16,7 +16,13 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 
-from .catalog import change_catalog, product_key, validate_catalog
+from .catalog import (
+    catalog_payload,
+    change_catalog,
+    create_custom_catalog,
+    product_key,
+    validate_catalog,
+)
 from .const import CONF_SOURCE, DOMAIN, update_signal
 from .model import ShoppingItem, append_new_items, deletion_marker, update_item
 from .source import async_read_source
@@ -32,10 +38,9 @@ async def _market_command(hass: HomeAssistant, connection, msg: dict[str, Any]) 
     async with lock:
         store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}.supermarkets")
         try:
-            data = await store.async_load()
-            if data is not None:
-                validate_catalog(data)
-            markets = [] if data is None else data["supermarkets"]
+            stored = await store.async_load()
+            data = validate_catalog(stored if stored is not None else {})
+            markets = data["supermarkets"]
             if not isinstance(markets, list) or any(
                 not isinstance(market, dict)
                 or not isinstance(market.get("id"), str)
@@ -69,6 +74,26 @@ async def _market_command(hass: HomeAssistant, connection, msg: dict[str, Any]) 
                         raise ValueError(
                             "Ein Supermarkt mit diesem Namen existiert bereits."
                         )
+                    existing = next(
+                        (market for market in markets if market["id"] == uid), None
+                    )
+                    catalog_id = msg.get(
+                        "catalog_id",
+                        existing.get("catalog_id", "supermarket")
+                        if existing
+                        else "supermarket",
+                    )
+                    catalog_name = msg.get("catalog_name", "").strip()
+                    if catalog_id not in data["catalogs"]:
+                        if not catalog_name:
+                            raise ValueError(
+                                "Bitte wähle einen vorhandenen Artikelkatalog."
+                            )
+                        data = create_custom_catalog(data, catalog_id, catalog_name)
+                    elif catalog_name:
+                        raise ValueError(
+                            "Der eigene Katalog wurde inzwischen geändert."
+                        )
                     options = {
                         key: msg[key]
                         for key in ("deposit_receipt_hint", "show_bonus_card")
@@ -78,19 +103,41 @@ async def _market_command(hass: HomeAssistant, connection, msg: dict[str, Any]) 
                         raise ValueError("Ungültige Supermarktoptionen.")
                     if uid:
                         markets = [
-                            {**m, "name": name, **options} if m["id"] == uid else m
+                            {
+                                **m,
+                                **(
+                                    {"category_ids": []}
+                                    if m.get("catalog_id", "supermarket") != catalog_id
+                                    else {}
+                                ),
+                                "name": name,
+                                "catalog_id": catalog_id,
+                                **options,
+                            }
+                            if m["id"] == uid
+                            else m
                             for m in markets
                         ]
                     else:
                         markets = [
                             *markets,
-                            {"id": uuid4().hex, "name": name, **options},
+                            {
+                                "id": uuid4().hex,
+                                "name": name,
+                                "catalog_id": catalog_id,
+                                **options,
+                            },
                         ]
-                await store.async_save({**(data or {}), "supermarkets": markets})
+                data["supermarkets"] = markets
+            data = validate_catalog(data)
+            if action != "get_supermarkets" or data != (
+                stored if stored is not None else {}
+            ):
+                await store.async_save(data)
         except (HomeAssistantError, OSError, ValueError, KeyError, TypeError) as err:
             connection.send_error(msg["id"], "cannot_manage_supermarkets", str(err))
             return
-        connection.send_result(msg["id"], markets)
+        connection.send_result(msg["id"], data["supermarkets"])
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_supermarkets"})
@@ -109,6 +156,8 @@ async def websocket_get_supermarkets(
         vol.Required("name"): str,
         vol.Optional("deposit_receipt_hint"): bool,
         vol.Optional("show_bonus_card"): bool,
+        vol.Optional("catalog_id"): str,
+        vol.Optional("catalog_name"): str,
     }
 )
 @websocket_api.async_response
@@ -137,6 +186,7 @@ async def _catalog_command(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
     action = msg["type"].rsplit("/", 1)[-1]
+    catalog_id = msg.get("catalog_id", "supermarket")
     if action != "get_catalog" and connection.user is None:
         connection.send_error(msg["id"], "unauthorized", "HA-Anmeldung erforderlich.")
         return
@@ -169,6 +219,16 @@ async def _catalog_command(
             try:
                 stored = await store.async_load()
                 data = validate_catalog(stored if stored is not None else {})
+                selected_catalog = data["catalogs"].get(catalog_id)
+                if selected_catalog is None:
+                    raise ValueError(
+                        "Der Artikelkatalog wurde nicht gefunden. Bitte neu laden."
+                    )
+                aliases = selected_catalog.get("product_aliases", {})
+                if action == "get_catalog" and data != (
+                    stored if stored is not None else {}
+                ):
+                    await store.async_save(data)
                 if action in ("delete_product", "get_product_delete_info"):
                     unloaded = [
                         entry.data[CONF_NAME]
@@ -183,12 +243,12 @@ async def _catalog_command(
                             + ", ".join(unloaded)
                         )
                     source_key = msg["product_key"]
-                    aliases = data.get("product_aliases", {})
                     affected_lists = [
                         {"entry_id": entry.entry_id, "name": entry.data[CONF_NAME]}
                         for entry in entries
                         if any(
-                            aliases.get(
+                            item.metadata.get("catalog_id", "supermarket") == catalog_id
+                            and aliases.get(
                                 product_key(item.summary), product_key(item.summary)
                             )
                             == source_key
@@ -199,7 +259,7 @@ async def _catalog_command(
                         product = next(
                             (
                                 p
-                                for p in data.get("products", [])
+                                for p in selected_catalog.get("products", [])
                                 if p["key"] == source_key
                             ),
                             None,
@@ -224,10 +284,15 @@ async def _catalog_command(
                             items = [
                                 item
                                 for item in runtime.items
-                                if aliases.get(
-                                    product_key(item.summary), product_key(item.summary)
+                                if not (
+                                    item.metadata.get("catalog_id", "supermarket")
+                                    == catalog_id
+                                    and aliases.get(
+                                        product_key(item.summary),
+                                        product_key(item.summary),
+                                    )
+                                    == source_key
                                 )
-                                != source_key
                             ]
                             if items == runtime.items:
                                 continue
@@ -265,7 +330,12 @@ async def _catalog_command(
                             runtime = entry.runtime_data
                             items = [
                                 replace(item, summary=target["name"])
-                                if product_key(item.summary) == source_key
+                                if item.metadata.get("catalog_id", "supermarket")
+                                == catalog_id
+                                and aliases.get(
+                                    product_key(item.summary), product_key(item.summary)
+                                )
+                                == source_key
                                 else item
                                 for item in runtime.items
                             ]
@@ -286,15 +356,7 @@ async def _catalog_command(
                     data = updated
                 connection.send_result(
                     msg["id"],
-                    {
-                        "supermarkets": data.get("supermarkets", []),
-                        "categories": data.get("categories", []),
-                        "products": data.get("products", []),
-                        "product_aliases": data.get("product_aliases", {}),
-                        "dismissed_product_suggestions": data.get(
-                            "dismissed_product_suggestions", []
-                        ),
-                    },
+                    catalog_payload(data, catalog_id),
                 )
             except (
                 HomeAssistantError,
@@ -317,7 +379,12 @@ async def _catalog_command(
                 connection.send_error(msg["id"], "cannot_manage_catalog", detail)
 
 
-@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/get_catalog"})
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/get_catalog",
+        vol.Optional("catalog_id"): str,
+    }
+)
 @websocket_api.async_response
 async def websocket_get_catalog(
     hass: HomeAssistant, connection, msg: dict[str, Any]
@@ -331,6 +398,7 @@ async def websocket_get_catalog(
         vol.Required("type"): f"{DOMAIN}/save_category",
         vol.Required("category_id"): str,
         vol.Required("name"): str,
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response
@@ -345,6 +413,7 @@ async def websocket_save_category(
     {
         vol.Required("type"): f"{DOMAIN}/delete_category",
         vol.Required("category_id"): str,
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response
@@ -360,6 +429,7 @@ async def websocket_delete_category(
         vol.Required("type"): f"{DOMAIN}/remove_category_product",
         vol.Required("category_id"): str,
         vol.Required("product_key"): str,
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response
@@ -375,6 +445,7 @@ async def websocket_remove_category_product(
         vol.Required("type"): f"{DOMAIN}/rename_product",
         vol.Required("product_key"): str,
         vol.Required("name"): str,
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response
@@ -389,6 +460,7 @@ async def websocket_rename_product(
     {
         vol.Required("type"): f"{DOMAIN}/create_product",
         vol.Required("name"): str,
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response
@@ -403,6 +475,7 @@ async def websocket_create_product(
     {
         vol.Required("type"): f"{DOMAIN}/get_product_delete_info",
         vol.Required("product_key"): str,
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response
@@ -420,6 +493,7 @@ async def websocket_get_product_delete_info(
         vol.Optional("confirmed_lists"): [
             {vol.Required("entry_id"): str, vol.Required("name"): str}
         ],
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response
@@ -435,6 +509,7 @@ async def websocket_delete_product(
         vol.Required("type"): f"{DOMAIN}/merge_product",
         vol.Required("product_key"): str,
         vol.Required("target_key"): str,
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response
@@ -450,6 +525,7 @@ async def websocket_merge_product(
         vol.Required("type"): f"{DOMAIN}/set_product_statistics",
         vol.Required("product_key"): str,
         vol.Required("count"): int,
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response
@@ -465,6 +541,7 @@ async def websocket_set_product_statistics(
         vol.Required("type"): f"{DOMAIN}/dismiss_product_suggestion",
         vol.Required("product_key"): str,
         vol.Required("similar_key"): str,
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response
@@ -480,6 +557,7 @@ async def websocket_dismiss_product_suggestion(
         vol.Required("type"): f"{DOMAIN}/save_market_categories",
         vol.Required("market_id"): str,
         vol.Required("category_ids"): [str],
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response
@@ -495,6 +573,7 @@ async def websocket_save_market_categories(
         vol.Required("type"): f"{DOMAIN}/save_market_bonus_card",
         vol.Required("market_id"): str,
         vol.Required("bonus_card"): str,
+        vol.Optional("catalog_id"): str,
     }
 )
 @websocket_api.async_response

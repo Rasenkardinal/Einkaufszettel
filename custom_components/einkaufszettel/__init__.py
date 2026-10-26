@@ -165,14 +165,25 @@ async def async_setup_entry(
 
     async def product_rules(articles, *, operation=None, events=()):
         if operation is not None:
-            identity, name, category, payload = operation
-            operation = (f"{entry.entry_id}:{identity}", name, category, payload)
+            identity, name, category, payload, *catalog_id = operation
+            operation = (
+                f"{entry.entry_id}:{identity}",
+                name,
+                category,
+                payload,
+                *(catalog_id or ["supermarket"]),
+            )
         return await apply_product_rules(
             hass,
             articles,
             operation=operation,
             events=[
-                (f"{entry.entry_id}:{identity}", name) for identity, name in events
+                (
+                    f"{entry.entry_id}:{identity}",
+                    name,
+                    *(catalog_id or ["supermarket"]),
+                )
+                for identity, name, *catalog_id in events
             ],
             list_id=entry.entry_id,
         )

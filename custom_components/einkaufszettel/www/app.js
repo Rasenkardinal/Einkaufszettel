@@ -240,6 +240,8 @@ let editingImage = null;
 let editingImageRequest = 0;
 let editingTrigger;
 let supermarkets = [];
+let catalogs = {};
+let activeCatalogId = "supermarket";
 let selectedMarket = "";
 let planningMode = true;
 let managingSupermarkets = false;
@@ -262,6 +264,7 @@ function validateSupermarkets(value) {
   if (!Array.isArray(value) || value.some(market =>
     !market || typeof market.id !== "string" || !market.id ||
     typeof market.name !== "string" || !market.name.trim() || market.name.length > 100 ||
+    (market.catalog_id !== undefined && (typeof market.catalog_id !== "string" || !market.catalog_id)) ||
     ["deposit_receipt_hint", "show_bonus_card"].some(key =>
       market[key] !== undefined && typeof market[key] !== "boolean") ||
     (market.bonus_card !== undefined && (
@@ -280,45 +283,100 @@ function validateSupermarkets(value) {
 
 function applyCatalog(value) {
   const nextMarkets = validateSupermarkets(value.supermarkets);
-  const nextCategories = validateSupermarkets(value.categories);
-  if (nextMarkets.some(market => (market.category_ids || []).some(id => id && !nextCategories.some(c => c.id === id)))) {
-    throw new Error("Der Katalog enthält unbekannte Markt-Kategorien. Bitte erneut laden.");
+  const nextCatalogs = value.catalogs || {
+    supermarket: {
+      id: "supermarket", name: "Supermarkt",
+      categories: value.categories || [], products: value.products || [],
+      product_aliases: value.product_aliases || {},
+      dismissed_product_suggestions: value.dismissed_product_suggestions || [],
+    },
+    hardware: { id: "hardware", name: "Baumarkt", categories: [], products: [] },
+    tasks: { id: "tasks", name: "Aufgaben", categories: [], products: [] },
+  };
+  if (!nextCatalogs || typeof nextCatalogs !== "object" || Array.isArray(nextCatalogs) ||
+      Object.entries(nextCatalogs).some(([id, catalog]) =>
+        !id || !catalog || catalog.id !== id || typeof catalog.name !== "string" ||
+        !catalog.name.trim() || !Array.isArray(catalog.categories) || !Array.isArray(catalog.products))) {
+    throw new Error("Die Artikelkataloge sind ungültig. Bitte erneut laden.");
   }
-  const nextProducts = value.products === undefined ? [] : value.products;
-  if (!Array.isArray(nextProducts) || nextProducts.some(product =>
-    !product || typeof product.name !== "string" || !productNameKey(product.name) ||
-    product.key !== productNameKey(product.name) || !validProductUsage(product.usage === undefined ? {} : product.usage) ||
-    (product.usage_adjustment !== undefined && (!Number.isSafeInteger(product.usage_adjustment) || productUsageCount(product) < 0)) ||
-    (product.category_known !== undefined && typeof product.category_known !== "boolean") ||
-    (product.category_known === false && product.category_id !== null) ||
-    (product.category_id !== null && !nextCategories.some(category => category.id === product.category_id))
-  ) || new Set(nextProducts.map(product => product.key)).size !== nextProducts.length) {
-    throw new Error("Die Produktzuordnungen sind ungültig. Bitte erneut laden.");
+  const catalogNames = Object.values(nextCatalogs).map(catalog => catalog.name.toLocaleLowerCase("de"));
+  if (new Set(catalogNames).size !== catalogNames.length) {
+    throw new Error("Die Artikelkataloge enthalten doppelte Namen. Bitte erneut laden.");
   }
-  const aliases = value.product_aliases === undefined ? {} : value.product_aliases;
-  const productKeys = new Set(nextProducts.map(product => product.key));
-  if (!aliases || typeof aliases !== "object" || Array.isArray(aliases) ||
-      Object.entries(aliases).some(([key, target]) =>
-        !key || productNameKey(key) !== key || productKeys.has(key) ||
-        typeof target !== "string" || productNameKey(target) !== target || !productKeys.has(target))) {
-    throw new Error("Die Artikelzuordnungen sind ungültig. Bitte erneut laden.");
+  for (const catalog of Object.values(nextCatalogs)) {
+    const catalogCategories = validateSupermarkets(catalog.categories);
+    const categoryIds = new Set(catalogCategories.map(category => category.id));
+    if (catalog.products.some(product =>
+      !product || typeof product.name !== "string" || !productNameKey(product.name) ||
+      product.key !== productNameKey(product.name) ||
+      !validProductUsage(product.usage === undefined ? {} : product.usage) ||
+      (product.usage_adjustment !== undefined &&
+        (!Number.isSafeInteger(product.usage_adjustment) || productUsageCount(product) < 0)) ||
+      (product.category_known !== undefined && typeof product.category_known !== "boolean") ||
+      (product.category_known === false && product.category_id !== null) ||
+      (product.category_id !== null && !categoryIds.has(product.category_id))
+    ) || new Set(catalog.products.map(product => product.key)).size !== catalog.products.length) {
+      throw new Error("Die Produktzuordnungen sind ungültig. Bitte erneut laden.");
+    }
+    const productKeys = new Set(catalog.products.map(product => product.key));
+    const aliases = catalog.product_aliases || {};
+    if (!aliases || typeof aliases !== "object" || Array.isArray(aliases) ||
+        Object.entries(aliases).some(([key, target]) =>
+          !key || productNameKey(key) !== key || productKeys.has(key) ||
+          typeof target !== "string" || productNameKey(target) !== target || !productKeys.has(target))) {
+      throw new Error("Die Artikelzuordnungen sind ungültig. Bitte erneut laden.");
+    }
+    const dismissed = catalog.dismissed_product_suggestions || [];
+    if (!Array.isArray(dismissed) || dismissed.some(pair =>
+      !Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1] ||
+      pair.some(key => typeof key !== "string" || !productKeys.has(key)))) {
+      throw new Error("Die bestätigten Ähnlichkeitshinweise sind ungültig. Bitte erneut laden.");
+    }
+    const dismissedKeys = dismissed.map(pair => JSON.stringify([...pair].sort()));
+    if (new Set(dismissedKeys).size !== dismissedKeys.length) {
+      throw new Error("Die bestätigten Ähnlichkeitshinweise sind ungültig. Bitte erneut laden.");
+    }
   }
-  const dismissedSuggestions = value.dismissed_product_suggestions === undefined
-    ? [] : value.dismissed_product_suggestions;
-  if (!Array.isArray(dismissedSuggestions) || dismissedSuggestions.some(pair =>
-    !Array.isArray(pair) || pair.length !== 2 || pair[0] === pair[1] ||
-    pair.some(key => typeof key !== "string" || !productKeys.has(key)))) {
-    throw new Error("Die bestätigten Ähnlichkeitshinweise sind ungültig. Bitte erneut laden.");
+  if (nextMarkets.some(market => {
+    const catalog = nextCatalogs[market.catalog_id || "supermarket"];
+    return !catalog || (market.category_ids || []).some(id =>
+      id && !catalog.categories.some(category => category.id === id));
+  })) {
+    throw new Error("Ein Supermarkt verweist auf unbekannte Kategorien oder Kataloge. Bitte erneut laden.");
   }
-  const dismissedPairKeys = dismissedSuggestions.map(pair => JSON.stringify([...pair].sort()));
-  if (new Set(dismissedPairKeys).size !== dismissedPairKeys.length) {
-    throw new Error("Die bestätigten Ähnlichkeitshinweise sind ungültig. Bitte erneut laden.");
-  }
+  const nextCatalogId = value.catalog_id || "supermarket";
+  const activeCatalog = nextCatalogs[nextCatalogId];
+  if (!activeCatalog) throw new Error("Der aktive Artikelkatalog fehlt. Bitte erneut laden.");
+  const nextCategories = validateSupermarkets(activeCatalog.categories);
+  const nextProducts = activeCatalog.products;
+  const aliases = activeCatalog.product_aliases || {};
+  const dismissedSuggestions = activeCatalog.dismissed_product_suggestions || [];
   supermarkets = nextMarkets;
+  catalogs = nextCatalogs;
+  activeCatalogId = nextCatalogId;
   categories = nextCategories;
   products = nextProducts;
   productAliases = aliases;
   dismissedProductSuggestions = dismissedSuggestions;
+  applyProductCategories();
+}
+
+function activateCatalog(catalogId) {
+  const catalog = catalogs[catalogId || "supermarket"];
+  if (!catalog) throw new Error("Der gewählte Artikelkatalog ist nicht verfügbar. Bitte erneut laden.");
+  activeCatalogId = catalog.id;
+  categories = catalog.categories;
+  products = catalog.products;
+  productAliases = catalog.product_aliases || {};
+  dismissedProductSuggestions = catalog.dismissed_product_suggestions || [];
+  applyProductCategories();
+}
+
+function catalogIdForView() {
+  if (catalogDraft?.catalog_id && catalogDraft.catalog_id !== "__new") {
+    return catalogDraft.catalog_id;
+  }
+  return supermarkets.find(market => market.id === selectedMarket)?.catalog_id || "supermarket";
 }
 
 function productNameKey(name) {
@@ -351,13 +409,19 @@ function rememberProduct(name, categoryId, categoryKnown = true) {
     category_known: categoryKnown,
   };
   products = [...products.filter(item => item.key !== key), product];
+  if (catalogs[activeCatalogId]) catalogs[activeCatalogId].products = products;
 }
 
 function applyProductCategories() {
   currentItems = currentItems.map(item => {
-    const key = canonicalProductKey(item.summary);
-    const product = products.find(record => record.key === key);
-    if (!product) return item;
+    if ((item.metadata?.catalog_id || "supermarket") !== activeCatalogId) return item;
+    const product = products.find(record => record.key === canonicalProductKey(item.summary));
+    if (!product) {
+      if (!item.metadata?.category_id) return item;
+      const metadata = { ...item.metadata };
+      delete metadata.category_id;
+      return { ...item, metadata };
+    }
     return {
       ...item,
       summary: product.name,
@@ -370,6 +434,8 @@ function applyProductCategories() {
 
 function cacheCatalog() {
   localStorage.setItem(CATALOG_KEY, JSON.stringify({
+    catalog_id: activeCatalogId,
+    catalogs,
     supermarkets,
     categories,
     products,
@@ -384,6 +450,8 @@ function renderMarketSelection() {
     elements.marketFlyout.append(createPickerOption(market.name, market.id === selectedMarket, () => {
       closeFlyout(elements.marketSelect, elements.marketFlyout, true);
       selectedMarket = market.id;
+      activateCatalog(market.catalog_id || "supermarket");
+      cacheCatalog();
       renderMarketSelection();
       render();
       try {
@@ -561,6 +629,7 @@ function loadMarketSelection() {
   } catch (error) {
     showError(error);
   }
+  activateCatalog(supermarkets.find(market => market.id === selectedMarket)?.catalog_id || "supermarket");
   renderMarketSelection();
 }
 
@@ -570,7 +639,7 @@ function loadCachedSupermarkets() {
     if (catalog) applyCatalog(JSON.parse(catalog));
     else {
       const cached = localStorage.getItem(MARKETS_KEY);
-      if (cached) supermarkets = validateSupermarkets(JSON.parse(cached));
+      if (cached) applyCatalog({ supermarkets: JSON.parse(cached), categories: [], products: [] });
     }
   } catch (error) {
     showError(error);
@@ -578,24 +647,27 @@ function loadCachedSupermarkets() {
   loadMarketSelection();
 }
 
-async function refreshSupermarkets() {
-  const catalog = await sendCommand(`${DOMAIN}/get_catalog`);
+async function refreshSupermarkets(requestedCatalogId = catalogIdForView()) {
+  const catalog = await sendCommand(`${DOMAIN}/get_catalog`, { catalog_id: requestedCatalogId });
   await withLocalState(async () => {
     applyCatalog(catalog);
     if (database) replayProductAssignments(await readQueue(null));
     cacheCatalog();
     loadMarketSelection();
+    activateCatalog(catalogIdForView());
     render();
   });
 }
 
 function replayProductAssignments(operations) {
   for (const operation of operations) {
-    if (operation.type === "add_item" && operation.summary) {
+    if (operation.type === "add_item" && operation.summary &&
+        (operation.metadata?.catalog_id || "supermarket") === activeCatalogId) {
       const known = products.find(product => product.key === canonicalProductKey(operation.summary));
       rememberProduct(operation.summary, known?.category_id ?? null, known ? known.category_known !== false : false);
     }
-    if (operation.product_name && Object.hasOwn(operation.metadata || {}, "category_id")) {
+    if (operation.product_name && Object.hasOwn(operation.metadata || {}, "category_id") &&
+        (operation.metadata?.catalog_id || "supermarket") === activeCatalogId) {
       rememberProduct(operation.product_name, operation.metadata.category_id);
     }
   }
@@ -799,6 +871,7 @@ function openCatalog(view, record) {
   catalogDirty = false;
   catalogView = view;
   catalogDraft = record ? { ...record, category_ids: [...(record.category_ids || [])] } : { id: "", name: "", category_ids: [] };
+  activateCatalog(catalogIdForView());
   showManagementPage(elements.catalogPage);
   renderCatalogPage();
   if (restoreProductScroll) restoreProductManagementScroll(restoreProductScroll);
@@ -871,15 +944,15 @@ async function saveCatalog(command, payload, nextView) {
   setMessage(elements.catalogMessage, "Wird gespeichert …", "info");
   let saved = false;
   try {
-    const result = await sendCommand(`${DOMAIN}/${command}`, payload);
+    const requestPayload = { catalog_id: catalogIdForView(), ...payload };
+    const result = await sendCommand(`${DOMAIN}/${command}`, requestPayload);
     if (command.endsWith("supermarket")) {
-      applyCatalog({
-        supermarkets: result,
-        categories,
-        products,
-        product_aliases: productAliases,
-        dismissed_product_suggestions: dismissedProductSuggestions,
-      });
+      supermarkets = validateSupermarkets(result);
+      if (command === "save_supermarket") {
+        catalogDraft.catalog_id = requestPayload.catalog_id;
+        catalogDraft.catalog_name = "";
+      }
+      await refreshSupermarkets(requestPayload.catalog_id);
     } else {
       applyCatalog(result);
     }
@@ -903,6 +976,7 @@ async function saveCatalog(command, payload, nextView) {
       const message = elements.catalogMessage.textContent;
       const status = elements.catalogMessage.dataset.status;
       loadMarketSelection();
+      activateCatalog(catalogIdForView());
       render();
       renderCatalogPage();
       setMessage(elements.catalogMessage, message, status);
@@ -1069,7 +1143,7 @@ function productManagementRow(product, suggestion) {
 
 function renderProductManagement() {
   elements.catalogTitle.textContent = "Artikel verwalten";
-  elements.catalogHelp.textContent = "Artikel und Suchvorschläge für alle Listen. Umbenennen und Zusammenführen übernehmen auch die bisherige Statistik. Löschen entfernt auch die Statistik und Einträge auf den im Dialog genannten Listen.";
+  elements.catalogHelp.textContent = "Artikel und Suchvorschläge im Katalog des gewählten Marktes. Umbenennen und Zusammenführen übernehmen auch die bisherige Statistik. Löschen entfernt die Statistik und Einträge auf den im Dialog genannten Listen.";
   const search = document.createElement("input");
   search.className = "product-search";
   search.type = "search";
@@ -1441,7 +1515,7 @@ function renderCatalogPage() {
       leaveMarketCategorySelection(false);
     } else openCatalog(isMarket ? "markets" : "categories");
   };
-  elements.catalogHelp.textContent = "Gemeinsamer Katalog für alle Nutzer. Alle angemeldeten HA-Nutzer können ihn bearbeiten. Speichern benötigt eine Verbindung; Änderungen gelten für alle Nutzer.";
+  elements.catalogHelp.textContent = "Artikelkataloge werden gemeinsam für alle Nutzer gespeichert. Alle angemeldeten HA-Nutzer können sie bearbeiten. Speichern benötigt eine Verbindung; Änderungen gelten für alle Nutzer.";
   if (catalogView === "products") {
     renderProductManagement();
   } else if (catalogView === "product-statistics") {
@@ -1552,6 +1626,7 @@ function renderCatalogPage() {
         openCatalog("market-bonus-card", supermarkets.find(m => m.id === catalogDraft.id));
       }, "management-link category-navigation"));
     }
+    let customCatalogNameInput;
     if (isMarket) {
       const catalogPreview = document.createElement("details");
       catalogPreview.className = "market-catalog-preview";
@@ -1563,11 +1638,6 @@ function renderCatalogPage() {
       summary.append(summaryText, chevron());
       const previewContent = document.createElement("div");
       previewContent.className = "market-catalog-preview-content";
-      const previewNotice = paragraph(
-        "Noch ohne Funktion: Alle Einstellungen in diesem Feld bleiben bis zur Implementierung wirkungslos und werden nicht gespeichert.",
-        "market-catalog-notice",
-      );
-      previewNotice.id = "market-catalog-notice";
       const picker = document.createElement("div");
       picker.className = "category-picker market-catalog-picker-control";
       const catalogLabel = document.createElement("p");
@@ -1584,7 +1654,6 @@ function renderCatalogPage() {
       trigger.setAttribute("aria-expanded", "false");
       trigger.setAttribute("aria-haspopup", "listbox");
       trigger.setAttribute("aria-controls", "market-catalog-picker-options");
-      trigger.setAttribute("aria-describedby", previewNotice.id);
       trigger.append(pickerValue, chevron("category-picker-arrow", true));
       const flyout = document.createElement("div");
       flyout.id = "market-catalog-picker-flyout";
@@ -1596,33 +1665,37 @@ function renderCatalogPage() {
       listbox.setAttribute("role", "listbox");
       listbox.setAttribute("aria-labelledby", catalogLabel.id);
       const catalogChoices = [
-        ["supermarket", "Supermarkt"],
-        ["hardware", "Baumarkt"],
-        ["tasks", "Aufgaben"],
-        ["custom", "Eigener Katalog …"],
+        ...Object.values(catalogs).map(catalog => [catalog.id, catalog.name]),
+        ["__new", "Neuen eigenen Katalog anlegen …"],
       ];
-      let selectedCatalog = "supermarket";
+      let selectedCatalog = catalogDraft.catalog_id || "supermarket";
       const customLabel = document.createElement("label");
       customLabel.htmlFor = "market-catalog-custom-name";
       customLabel.textContent = "Name des eigenen Katalogs";
-      customLabel.hidden = true;
+      customLabel.hidden = selectedCatalog !== "__new";
       const customName = document.createElement("input");
+      customCatalogNameInput = customName;
       customName.id = "market-catalog-custom-name";
       customName.type = "text";
       customName.maxLength = 100;
-      customName.hidden = true;
-      customName.setAttribute("aria-describedby", previewNotice.id);
+      customName.placeholder = "z. B. Garten";
+      customName.value = catalogDraft.catalog_name || "";
+      customName.hidden = selectedCatalog !== "__new";
       const updateCatalogName = () => {
-        const name = selectedCatalog === "custom"
+        const name = selectedCatalog === "__new"
           ? customName.value.trim() || "Eigener Katalog"
-          : catalogChoices.find(([value]) => value === selectedCatalog)[1];
+          : catalogs[selectedCatalog]?.name || "";
         pickerValue.textContent = name;
         currentCatalog.textContent = name;
       };
       const optionButtons = catalogChoices.map(([value, text]) => {
         const option = button("", () => {
+          const previousCatalog = catalogDraft.catalog_id || "supermarket";
           selectedCatalog = value;
-          customLabel.hidden = customName.hidden = value !== "custom";
+          catalogDraft.catalog_id = value;
+          catalogDraft.catalog_name = value === "__new" ? customName.value : "";
+          catalogDirty ||= previousCatalog !== value;
+          customLabel.hidden = customName.hidden = value !== "__new";
           optionButtons.forEach(candidate => {
             const selected = candidate.dataset.catalogValue === value;
             candidate.setAttribute("aria-selected", String(selected));
@@ -1690,10 +1763,15 @@ function renderCatalogPage() {
         event.preventDefault();
         optionButtons[nextIndex]?.focus();
       });
-      customName.addEventListener("input", updateCatalogName);
+      customName.addEventListener("input", () => {
+        catalogDraft.catalog_name = customName.value;
+        catalogDirty = true;
+        updateCatalogName();
+      });
       flyout.append(listbox);
       picker.append(catalogLabel, trigger, flyout);
-      previewContent.append(previewNotice, picker, customLabel, customName);
+      previewContent.append(picker, customLabel, customName);
+      updateCatalogName();
       catalogPreview.append(summary, previewContent);
       form.append(catalogPreview);
       const options = document.createElement("div");
@@ -1752,11 +1830,25 @@ function renderCatalogPage() {
         input.reportValidity();
         return;
       }
+      let selectedCatalogId = catalogDraft.catalog_id || "supermarket";
+      let selectedCatalogName = "";
+      if (isMarket && selectedCatalogId === "__new") {
+        selectedCatalogName = customCatalogNameInput.value.trim();
+        if (!selectedCatalogName) {
+          customCatalogNameInput.setCustomValidity("Bitte gib einen Namen für den eigenen Katalog ein.");
+          customCatalogNameInput.reportValidity();
+          return;
+        }
+        customCatalogNameInput.setCustomValidity("");
+        selectedCatalogId = crypto.randomUUID().replaceAll("-", "");
+      }
       saveCatalog(isMarket ? "save_supermarket" : "save_category",
         {
           [isMarket ? "market_id" : "category_id"]: catalogDraft.id,
           name: input.value.trim(),
           ...(isMarket ? {
+            catalog_id: selectedCatalogId,
+            ...(selectedCatalogName ? { catalog_name: selectedCatalogName } : {}),
             deposit_receipt_hint: catalogDraft.deposit_receipt_hint !== false,
             show_bonus_card: catalogDraft.show_bonus_card !== false,
           } : {}),
@@ -2418,8 +2510,14 @@ async function readQueue(listId = entryId) {
 
 async function enqueue(operation, listId = entryId) {
   if (!listId) throw new Error("Bitte wähle zuerst eine Einkaufsliste aus.");
+  const queuedOperation = operation.type === "add_item"
+    ? {
+      ...operation,
+      metadata: { ...operation.metadata, catalog_id: operation.metadata?.catalog_id || activeCatalogId },
+    }
+    : operation;
   const queued = {
-    ...operation,
+    ...queuedOperation,
     id: crypto.randomUUID(),
     entry_id: listId,
     created_at: (lastOperationTime = Math.max(Date.now(), lastOperationTime + 1)),
@@ -2441,13 +2539,19 @@ async function enqueue(operation, listId = entryId) {
 function applyLocalOperation(operation) {
   if (deletedUids.has(operation.uid)) return;
   if (operation.type === "add_item") {
-    const known = products.find(product => product.key === canonicalProductKey(operation.summary));
-    rememberProduct(operation.summary, known?.category_id ?? null, known ? known.category_known !== false : false);
+    const itemCatalogId = operation.metadata?.catalog_id || "supermarket";
+    const itemCatalog = catalogs[itemCatalogId];
+    const key = itemCatalog?.product_aliases?.[productNameKey(operation.summary)] || productNameKey(operation.summary);
+    const known = itemCatalog?.products.find(product => product.key === key);
+    if (itemCatalogId === activeCatalogId) {
+      rememberProduct(operation.summary, known?.category_id ?? null, known ? known.category_known !== false : false);
+    }
     if (!currentItems.some((item) => item.uid === operation.uid)) {
       currentItems.push({
         uid: operation.uid,
         summary: operation.summary,
         status: "needs_action",
+        metadata: operation.metadata || {},
       });
     }
   } else if (operation.type === "update_item") {
@@ -2466,7 +2570,9 @@ function applyLocalOperation(operation) {
   }
   if (operation.type !== "delete_item" && Object.hasOwn(operation.metadata || {}, "category_id")) {
     const item = currentItems.find(item => item.uid === operation.uid);
-    if (item) rememberProduct(item.summary, operation.metadata.category_id);
+    if (item && (item.metadata?.catalog_id || "supermarket") === activeCatalogId) {
+      rememberProduct(item.summary, operation.metadata.category_id);
+    }
   }
   applyProductCategories();
 }
@@ -4197,7 +4303,8 @@ function renderProductSuggestions() {
   const open = new Set(currentItems.filter(item => item.status === "needs_action").map(item => canonicalProductKey(item.summary)));
   const pending = new Map();
   for (const operation of pendingOperations) {
-    if (operation.type !== "add_item") continue;
+    if (operation.type !== "add_item" ||
+        (operation.metadata?.catalog_id || "supermarket") !== activeCatalogId) continue;
     const key = canonicalProductKey(operation.summary);
     const previous = pending.get(key) || { added: 0, last_added: 0 };
     pending.set(key, { added: previous.added + 1, last_added: Math.max(previous.last_added, operation.created_at) });
@@ -4263,6 +4370,7 @@ function productUsageForList(product, listId) {
   let lastAdded = stored?.last_added || 0;
   for (const operation of pendingOperations) {
     if (operation.type !== "add_item" || operation.entry_id !== listId ||
+      (operation.metadata?.catalog_id || "supermarket") !== activeCatalogId ||
       canonicalProductKey(operation.summary) !== product.key) continue;
     added += 1;
     lastAdded = Math.max(lastAdded, operation.created_at);
@@ -4287,7 +4395,9 @@ function commonItemsForCurrentList() {
       product,
       usage: productUsageForList(product, commonItemsListId),
       totalUsage: productUsageCount(product) + pendingOperations.filter(operation =>
-        operation.type === "add_item" && canonicalProductKey(operation.summary) === product.key
+        operation.type === "add_item" &&
+        (operation.metadata?.catalog_id || "supermarket") === activeCatalogId &&
+        canonicalProductKey(operation.summary) === product.key
       ).length,
     }))
     .filter(({ usage }) => commonItemsType !== "regular" || usage.weeks.size > 1);

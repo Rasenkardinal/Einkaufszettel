@@ -21,24 +21,47 @@ async def apply_product_rules(
         store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}.supermarkets")
         stored = await store.async_load()
         catalog = deepcopy(validate_catalog(stored if stored is not None else {}))
-        categories = {category["id"] for category in catalog.get("categories", [])}
-        products = {product["key"]: product for product in catalog.get("products", [])}
-        aliases = catalog.get("product_aliases", {})
-        deleted_keys = set(catalog.get("deleted_product_keys", []))
+        catalogs = catalog["catalogs"]
+        product_maps = {
+            catalog_id: {
+                product["key"]: product for product in value.get("products", [])
+            }
+            for catalog_id, value in catalogs.items()
+        }
+
+        def catalog_for(item):
+            catalog_id = item.metadata.get("catalog_id", "supermarket")
+            value = catalogs.get(catalog_id)
+            if value is None:
+                raise ValueError("Ein Artikel verweist auf einen unbekannten Katalog.")
+            return value, product_maps[catalog_id]
 
         def canonical_item(item):
-            key = aliases.get(product_key(item.summary))
+            value, products = catalog_for(item)
+            item_key = product_key(item.summary)
+            key = value.get("product_aliases", {}).get(item_key, item_key)
             product = products.get(key)
-            return (
-                replace(item, summary=product["name"]) if product is not None else item
+            if product is None or (item.source_uid and item_key == key):
+                return item
+            return replace(item, summary=product["name"])
+
+        def product_for(item):
+            value, products = catalog_for(item)
+            key = value.get("product_aliases", {}).get(
+                product_key(item.summary), product_key(item.summary)
             )
+            return products.get(key)
 
         items = [canonical_item(item) for item in items]
         seed = [canonical_item(item) for item in seed]
         # Only bootstrap names never seen before; an explicit removal stays removed.
         for item in [*seed, *items]:
+            value, products = catalog_for(item)
+            categories = {category["id"] for category in value.get("categories", [])}
+            aliases = value.get("product_aliases", {})
+            deleted_keys = set(value.get("deleted_product_keys", []))
             category = item.metadata.get("category_id")
-            key = product_key(item.summary)
+            key = aliases.get(product_key(item.summary), product_key(item.summary))
             if key in deleted_keys and key not in products:
                 continue
             if (
@@ -56,11 +79,18 @@ async def apply_product_rules(
                     "category_known": "category_id" in item.metadata,
                 }
         if operation is not None:
-            identity, name, category, payload = operation
+            identity, name, category, payload, *catalog_id_value = operation
+            catalog_id = catalog_id_value[0] if catalog_id_value else "supermarket"
+            value = catalogs.get(catalog_id)
+            if value is None:
+                raise ValueError("Der Artikelkatalog wurde nicht gefunden.")
+            products = product_maps[catalog_id]
+            categories = {item["id"] for item in value.get("categories", [])}
+            aliases = value.get("product_aliases", {})
             name_key = aliases.get(product_key(name), product_key(name))
             if name_key in products:
                 name = products[name_key]["name"]
-            receipts = catalog.setdefault("product_operations", {})
+            receipts = value.setdefault("product_operations", {})
             previous = receipts.get(identity)
             if previous is not None and previous != payload:
                 raise ValueError(
@@ -79,10 +109,17 @@ async def apply_product_rules(
                     "category_known": True,
                 }
                 receipts[identity] = payload
-        for identity, name in events:
+        for event in events:
+            identity, name, *catalog_id_value = event
+            catalog_id = catalog_id_value[0] if catalog_id_value else "supermarket"
+            value = catalogs.get(catalog_id)
+            if value is None:
+                raise ValueError("Der Artikelkatalog wurde nicht gefunden.")
+            products = product_maps[catalog_id]
+            aliases = value.get("product_aliases", {})
             if not list_id:
                 raise ValueError("Die Einkaufsliste für die Produktstatistik fehlt.")
-            receipts = catalog.setdefault("product_events", {})
+            receipts = value.setdefault("product_events", {})
             key = aliases.get(product_key(name), product_key(name))
             name = products[key]["name"] if key in products else name
             previous = receipts.get(identity)
@@ -106,23 +143,20 @@ async def apply_product_rules(
             stats["last_added"] = now.timestamp() * 1000
             stats["weeks"][week] = stats["weeks"].get(week, 0) + 1
             receipts[identity] = key
-        if products or "products" in catalog:
-            catalog["products"] = list(products.values())
+        for catalog_id, value in catalogs.items():
+            if product_maps[catalog_id] or "products" in value:
+                value["products"] = list(product_maps[catalog_id].values())
         if catalog != (stored if stored is not None else {}):
-            await store.async_save(catalog)
-        return [
-            replace(
-                item,
-                metadata={
-                    **item.metadata,
-                    "category_id": products[product_key(item.summary)]["category_id"],
-                },
-            )
-            if product_key(item.summary) in products
-            and (
-                products[product_key(item.summary)].get("category_known", True)
-                or "category_id" in item.metadata
-            )
-            else item
-            for item in items
-        ]
+            await store.async_save(validate_catalog(catalog))
+        projected = []
+        for item in items:
+            product = product_for(item)
+            if product is not None and (
+                product.get("category_known", True) or "category_id" in item.metadata
+            ):
+                item = replace(
+                    item,
+                    metadata={**item.metadata, "category_id": product["category_id"]},
+                )
+            projected.append(item)
+        return projected

@@ -998,25 +998,20 @@ async def test_product_catalog_crud_preserves_and_merges_usage(integration, admi
             "target_key": "milch",
         },
     )
-    target = persisted["products"][0]
+    supermarket_catalog = persisted["catalogs"]["supermarket"]
+    target = supermarket_catalog["products"][0]
     assert target["key"] == "milch"
     assert target["usage"]["list-a"] == {
         "added": 5,
         "last_added": 3000,
         "weeks": {"2026-W42": 3, "2026-W43": 2},
     }
-    assert persisted["product_aliases"] == {"milhc": "milch"}
-    assert persisted["product_events"] == {"event-a": "milch"}
-    connection.send_result.assert_called_with(
-        2,
-        {
-            "supermarkets": [],
-            "categories": [],
-            "products": persisted["products"],
-            "product_aliases": persisted["product_aliases"],
-            "dismissed_product_suggestions": [],
-        },
-    )
+    assert supermarket_catalog["product_aliases"] == {"milhc": "milch"}
+    assert supermarket_catalog["product_events"] == {"event-a": "milch"}
+    result = connection.send_result.call_args.args[1]
+    assert result["catalog_id"] == "supermarket"
+    assert result["catalogs"]["supermarket"] == supermarket_catalog
+    assert result["products"] == supermarket_catalog["products"]
 
     await env.websocket.websocket_delete_product(
         env.hass,
@@ -1028,10 +1023,11 @@ async def test_product_catalog_crud_preserves_and_merges_usage(integration, admi
         },
     )
     assert connection.send_result.call_args.args[0] == 3
-    assert persisted["products"] == []
-    assert persisted["product_events"] == {"event-a": "milch"}
-    assert set(persisted["deleted_product_keys"]) == {"milch", "milhc"}
-    assert persisted["product_aliases"] == {}
+    supermarket_catalog = persisted["catalogs"]["supermarket"]
+    assert supermarket_catalog["products"] == []
+    assert supermarket_catalog["product_events"] == {"event-a": "milch"}
+    assert set(supermarket_catalog["deleted_product_keys"]) == {"milch", "milhc"}
+    assert supermarket_catalog["product_aliases"] == {}
     await env.websocket.websocket_create_product(
         env.hass,
         connection,
@@ -1041,7 +1037,96 @@ async def test_product_catalog_crud_preserves_and_merges_usage(integration, admi
             "name": "Tomaten",
         },
     )
-    assert any(product["key"] == "tomaten" for product in persisted["products"])
+    assert any(
+        product["key"] == "tomaten"
+        for product in persisted["catalogs"]["supermarket"]["products"]
+    )
+
+
+async def test_market_can_create_and_reuse_an_isolated_catalog(integration):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=True))
+    persisted = None
+    store = env.stores.setdefault(
+        "einkaufszettel.supermarkets",
+        SimpleNamespace(
+            async_load=AsyncMock(return_value=None), async_save=AsyncMock()
+        ),
+    )
+
+    async def save(data):
+        nonlocal persisted
+        persisted = deepcopy(data)
+        store.async_load.return_value = deepcopy(data)
+
+    store.async_load.return_value = None
+    store.async_save.side_effect = save
+    await env.websocket.websocket_save_supermarket(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/save_supermarket",
+            "market_id": "",
+            "name": "Gartenmarkt",
+            "catalog_id": "garden",
+            "catalog_name": "Garten",
+        },
+    )
+    await env.websocket.websocket_create_product(
+        env.hass,
+        connection,
+        {
+            "id": 2,
+            "type": "einkaufszettel/create_product",
+            "catalog_id": "supermarket",
+            "name": "Dübel",
+        },
+    )
+    await env.websocket.websocket_create_product(
+        env.hass,
+        connection,
+        {
+            "id": 3,
+            "type": "einkaufszettel/create_product",
+            "catalog_id": "garden",
+            "name": "Dübel",
+        },
+    )
+    await env.websocket.websocket_set_product_statistics(
+        env.hass,
+        connection,
+        {
+            "id": 4,
+            "type": "einkaufszettel/set_product_statistics",
+            "catalog_id": "garden",
+            "product_key": "dübel",
+            "count": 7,
+        },
+    )
+    await env.websocket.websocket_get_catalog(
+        env.hass,
+        connection,
+        {
+            "id": 5,
+            "type": "einkaufszettel/get_catalog",
+            "catalog_id": "garden",
+        },
+    )
+
+    assert persisted is not None
+    assert persisted["supermarkets"][0]["catalog_id"] == "garden"
+    assert [p["key"] for p in persisted["catalogs"]["supermarket"]["products"]] == [
+        "dübel"
+    ]
+    assert persisted["catalogs"]["garden"]["products"][0]["usage_adjustment"] == 7
+    assert persisted["catalogs"]["tasks"]["products"] == []
+    result = connection.send_result.call_args.args[1]
+    assert result["catalog_id"] == "garden"
+    assert result["products"] == persisted["catalogs"]["garden"]["products"]
+    assert (
+        result["catalogs"]["supermarket"]["products"][0].get("usage_adjustment", 0) == 0
+    )
 
 
 @pytest.mark.parametrize("confirmed", [True, False])
@@ -1343,6 +1428,7 @@ async def test_catalog_shared_persistence_and_market_rename_preserves_categories
     assert persisted["supermarkets"][0] == {
         "id": "shop",
         "name": "Neu",
+        "catalog_id": "supermarket",
         "category_ids": [uid],
         "bonus_card": image,
     }
@@ -1362,15 +1448,11 @@ async def test_catalog_shared_persistence_and_market_rename_preserves_categories
     await env.websocket.websocket_get_catalog(
         env.hass, connection, {"id": 7, "type": "einkaufszettel/get_catalog"}
     )
-    connection.send_result.assert_called_with(
-        7,
-        {
-            **persisted,
-            "products": [],
-            "product_aliases": {},
-            "dismissed_product_suggestions": [],
-        },
-    )
+    result = connection.send_result.call_args.args[1]
+    assert result["catalog_id"] == "supermarket"
+    assert result["catalogs"] == persisted["catalogs"]
+    assert result["categories"] == []
+    assert result["products"] == []
     connection.send_error.assert_not_called()
 
 
@@ -1466,7 +1548,9 @@ async def test_supermarkets_shared_crud_and_restart(integration, admin):
             "name": "Edeka Süd",
         },
     )
-    assert persisted["supermarkets"] == [{"id": uid, "name": "Edeka Süd"}]
+    assert persisted["supermarkets"] == [
+        {"id": uid, "name": "Edeka Süd", "catalog_id": "supermarket"}
+    ]
     env.hass.data.clear()
     await env.websocket.websocket_get_supermarkets(
         env.hass, connection, {"id": 4, "type": "einkaufszettel/get_supermarkets"}
@@ -1477,7 +1561,8 @@ async def test_supermarkets_shared_crud_and_restart(integration, admin):
         connection,
         {"id": 5, "type": "einkaufszettel/delete_supermarket", "market_id": uid},
     )
-    assert persisted == {"supermarkets": []}
+    assert persisted["supermarkets"] == []
+    assert all(not value["products"] for value in persisted["catalogs"].values())
     env.store.async_save.assert_not_awaited()
 
 
@@ -1509,6 +1594,7 @@ async def test_supermarket_invalid_names_duplicates_and_stale_ids(
     )
     store = env.stores["einkaufszettel.supermarkets"]
     store.async_load.return_value = {"supermarkets": [{"id": "a", "name": "Edeka"}]}
+    store.async_save.reset_mock()
     connection.reset_mock()
     await env.websocket.websocket_save_supermarket(
         env.hass,

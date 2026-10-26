@@ -25,6 +25,76 @@ def sample():
     }
 
 
+def test_legacy_catalog_migrates_to_supermarket_and_leaves_parallel_catalogs_empty():
+    old = {
+        "categories": [{"id": "fruit", "name": "Obst"}],
+        "products": [
+            {
+                "key": "apfel",
+                "name": "Apfel",
+                "category_id": "fruit",
+                "usage": {
+                    "shop": {
+                        "added": 2,
+                        "last_added": 1000,
+                        "weeks": {"2026-W43": 2},
+                    }
+                },
+            }
+        ],
+        "product_aliases": {"aepfel": "apfel"},
+        "product_events": {"event": "apfel"},
+        "supermarkets": [{"id": "shop", "name": "Markt", "category_ids": ["fruit"]}],
+    }
+
+    migrated = catalog.validate_catalog(old)
+
+    supermarket = migrated["catalogs"]["supermarket"]
+    assert supermarket["categories"] == old["categories"]
+    assert supermarket["products"] == old["products"]
+    assert supermarket["product_aliases"] == old["product_aliases"]
+    assert supermarket["product_events"] == old["product_events"]
+    assert migrated["supermarkets"][0]["catalog_id"] == "supermarket"
+    for catalog_id in ("hardware", "tasks"):
+        assert migrated["catalogs"][catalog_id]["categories"] == []
+        assert migrated["catalogs"][catalog_id]["products"] == []
+        assert migrated["catalogs"][catalog_id]["product_events"] == {}
+    assert old["supermarkets"][0].get("catalog_id") is None
+
+
+def test_parallel_catalogs_keep_same_products_and_statistics_independent():
+    data = catalog.validate_catalog({})
+    for catalog_id, count in (("supermarket", 4), ("hardware", 9)):
+        data = catalog.change_catalog(
+            data,
+            "create_product",
+            {"catalog_id": catalog_id, "name": "Handschuhe"},
+        )
+        data = catalog.change_catalog(
+            data,
+            "set_product_statistics",
+            {
+                "catalog_id": catalog_id,
+                "product_key": "handschuhe",
+                "count": count,
+            },
+        )
+
+    assert data["catalogs"]["supermarket"]["products"][0]["usage_adjustment"] == 4
+    assert data["catalogs"]["hardware"]["products"][0]["usage_adjustment"] == 9
+    assert data["catalogs"]["tasks"]["products"] == []
+    assert data["products"] == data["catalogs"]["supermarket"]["products"]
+
+
+def test_custom_catalog_is_reusable_and_rejects_duplicate_names():
+    data = catalog.create_custom_catalog(
+        catalog.validate_catalog({}), "garden", "Garten"
+    )
+    assert data["catalogs"]["garden"]["products"] == []
+    with pytest.raises(ValueError, match="bereits vergeben"):
+        catalog.create_custom_catalog(data, "other", "garten")
+
+
 @pytest.mark.parametrize("keys", [None, {}, [""], ["Artikel"], ["a", "a"], [123]])
 def test_invalid_deleted_product_keys_rejected(keys):
     with pytest.raises(ValueError, match="Löschvermerke"):
@@ -174,7 +244,9 @@ def test_legacy_market_store_can_add_categories_without_losing_markets():
     )
     assert result["categories"][0]["name"] == "Milch"
     assert result["categories"][0]["id"]
-    assert result["supermarkets"] == old["supermarkets"]
+    assert result["supermarkets"] == [
+        {**old["supermarkets"][0], "catalog_id": "supermarket"}
+    ]
     assert "categories" not in old
 
 
