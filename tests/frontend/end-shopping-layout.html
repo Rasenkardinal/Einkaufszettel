@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Einkauf beenden · Layout- und Verhaltenstest</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Einkauf beenden" style="width:390px;height:844px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all(["app.html", "app.js"].map(file =>
+    fetch(base + file, {cache: "no-store"}).then(response => response.text())));
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document, operations = [];
+  const storage = {getItem: () => null, setItem() {}, removeItem() {}};
+  const api = win.Function("test", "localStorage",
+    script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+      enqueue = async operation => { test.operations.push(operation); };
+      entryId = "test"; busy = false; planningMode = false;
+      categories = []; products = [];
+      supermarkets = [{id:"market", name:"Testmarkt", deposit_receipt_hint:true}];
+      selectedMarket = "market";
+      currentItems = [
+        {uid:"done", summary:"Milch", status:"completed"},
+        {uid:"open", summary:"Brot", status:"needs_action"}
+      ];
+      render();
+      return {planning(value) { planningMode = value; render(); }};
+    `)({operations}, storage);
+  const assert = (condition, message) => { if (!condition) throw Error(message); };
+  const pause = ms => new Promise(resolve => win.setTimeout(resolve, ms));
+  const results = [];
+  const button = doc.querySelector("#items > li:last-child .end-shopping-action");
+  assert(button, "Finish button is not the final shopping row");
+  for (const width of [320, 390, 430, 900]) {
+    frame.style.width = `${width}px`;
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    const rect = button.getBoundingClientRect();
+    const sequence = button.querySelector(".end-shopping-sequence").getBoundingClientRect();
+    const label = button.querySelector(".end-shopping-label").getBoundingClientRect();
+    const tail = button.querySelector(".end-shopping-tail").getBoundingClientRect();
+    const center = (rect.left + rect.right) / 2;
+    assert(Math.abs((sequence.left + sequence.right) / 2 - center) < 1, "Icons not centered");
+    assert(Math.abs((label.left + label.right) / 2 - center) < 1, "Text not centered");
+    assert(Math.abs(label.top - sequence.bottom - 8) < 1, "Text is not 8px below the icons");
+    assert(rect.height === 96, "Button is not 96px high");
+    assert(Math.abs((tail.top + tail.bottom - rect.top - rect.bottom) / 2) < 1, "Chevron not vertically centered");
+    assert(tail.left > label.right && tail.left > sequence.right, "Chevron overlaps content");
+    assert(button.scrollWidth <= button.clientWidth, "Button content overflows");
+    assert(button.querySelectorAll("svg").length === 3, "Original icon sequence changed");
+    assert(button.querySelector(".end-shopping-label").textContent === "Einkauf beenden", "Text changed");
+    assert(win.getComputedStyle(button.querySelector(".end-shopping-label")).fontSize === "14px", "Text size changed");
+    results.push(`PASS Layout 5: centered icons above text, right chevron, 96px height at ${width}px`);
+  }
+  frame.style.width = "390px";
+  const reminder = doc.querySelector("#cashier-reminder");
+  const confirmation = doc.querySelector("#end-shopping-confirm");
+  button.dispatchEvent(new win.MouseEvent("click", {detail:1, bubbles:true, cancelable:true}));
+  assert(!reminder.open && !confirmation.open, "A regular tap opened checkout");
+  button.dispatchEvent(new win.PointerEvent("pointerdown", {
+    pointerId:91, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,
+  }));
+  await pause(575);
+  assert(reminder.open && reminder.inert, "Long press did not open and touch-gate the reminder");
+  button.dispatchEvent(new win.PointerEvent("pointerup", {
+    pointerId:91, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,
+  }));
+  await pause(0);
+  assert(!reminder.inert, "Reminder stayed touch-gated after release");
+  doc.querySelector("#cashier-reminder-ok").click();
+  for (let attempt = 0; attempt < 50 && !confirmation.open; attempt++) await pause(20);
+  assert(confirmation.open, "Reminder did not continue to confirmation");
+  doc.querySelector("#cancel-end-shopping").click();
+  assert(!confirmation.open && operations.length === 0, "Cancel deleted items");
+  results.push("PASS Tap protection, long press, touch gating, reminder and cancellation preserved");
+  button.click();
+  assert(reminder.open, "Keyboard activation did not open checkout");
+  doc.querySelector("#cashier-reminder-ok").click();
+  for (let attempt = 0; attempt < 50 && !confirmation.open; attempt++) await pause(20);
+  assert(confirmation.open, "Keyboard checkout did not reach confirmation");
+  doc.querySelector("#end-shopping-confirm-button").click();
+  await pause(50);
+  const deleted = operations.filter(operation => operation.type === "delete_item");
+  assert(deleted.length === 1 && deleted[0].uid === "done", "Checkout did not delete only completed items");
+  results.push("PASS Keyboard checkout deletes only completed items");
+  api.planning(true);
+  assert(!doc.querySelector("#items .end-shopping-action"), "Finish button appears in planning mode");
+  results.push("PASS Finish button remains hidden in planning mode");
+  document.querySelector("#results").textContent = results.join("\n");
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent = "FAIL " + error.stack;
+  throw error;
+});
+</script>

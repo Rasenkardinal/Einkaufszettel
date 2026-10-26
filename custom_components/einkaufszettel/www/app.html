@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#141414">
     <meta name="description" content="Dein Einkaufszettel – auch offline verfügbar.">
-    <meta name="app-version" content="0.4.45">
+    <meta name="app-version" content="0.4.49">
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./app.css?v=0.4.45">
+    <link rel="stylesheet" href="./app.css?v=0.4.49">
     <title>Einkaufszettel</title>
   </head>
   <body data-theme="mono">
@@ -163,13 +163,15 @@
       <div id="catalog-content"></div>
       <footer id="catalog-fixed-actions" class="management-fixed-actions" hidden></footer>
     </section>
-    <section id="list-management" class="app management-page" hidden aria-labelledby="list-management-title">
-      <header class="management-header"><span class="page-brand"><img src="./icon.svg" alt="" width="24" height="24"> EINKAUFSZETTEL</span><button id="lists-back" class="management-back" type="button"><svg viewBox="0 0 30 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M26 12H4m7-7-7 7 7 7"/></svg><span>Zurück zur Liste</span></button></header>
-      <div class="management-title-row"><h1 id="list-management-title" tabindex="-1">Listen verwalten</h1><button class="management-help-trigger" type="button" aria-label="Hilfe zu Listen verwalten anzeigen" aria-expanded="false" aria-controls="list-management-help-popover"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .3c0 1.8-2.5 1.9-2.5 3.7"/><circle cx="12" cy="16.5" r=".9" fill="currentColor" stroke="none"/></svg></button></div>
+    <section id="list-management" class="app management-page clean-market-view" hidden aria-labelledby="list-management-title">
+      <div class="management-title-row"><h1 id="list-management-title" tabindex="-1">Listen verwalten</h1><button class="management-help-trigger" type="button" aria-label="Info zu Listen verwalten anzeigen" aria-expanded="false" aria-controls="list-management-help-popover"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".9" fill="currentColor" stroke="none"/></svg></button><button id="lists-back" class="catalog-close" type="button" aria-label="Listen verwalten schließen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
       <p id="list-management-help" class="management-help" hidden>HA-Listen für die App auswählen und kurz benennen. Alexa- und HA-Namen bleiben unverändert. Alle angemeldeten Nutzer können diese Änderungen für alle Nutzer vornehmen.</p>
       <div id="list-management-help-popover" class="management-help-popover" role="region" aria-label="Hilfe zu Listen verwalten" hidden></div>
-      <p id="management-message" role="status"></p>
-      <div id="source-lists"></div>
+      <p id="management-message" class="message" role="status"></p>
+      <div class="list-management-content">
+        <p class="list-management-context">HA-Listen für die App</p>
+        <div id="source-lists"></div>
+      </div>
     </section>
     <dialog id="app-confirm" aria-labelledby="app-confirm-title" aria-describedby="app-confirm-description">
       <form method="dialog">
@@ -275,12 +277,16 @@
         </div>
       </form>
     </dialog>
-    <dialog id="bonus-card-dialog" aria-labelledby="bonus-card-dialog-title">
-      <form method="dialog">
+    <dialog id="bonus-card-dialog" class="item-photo-dialog" aria-labelledby="bonus-card-dialog-title">
+      <header class="item-photo-dialog-header">
         <h2 id="bonus-card-dialog-title">Bonuskarte / APP-Code</h2>
-        <img id="bonus-card-dialog-image" class="bonus-card-viewer-image" alt="">
-        <div class="dialog-actions"><button class="secondary" value="close" autofocus>Schließen</button></div>
-      </form>
+        <button id="close-bonus-card" class="item-photo-dialog-close" type="button" aria-label="Bild schließen" autofocus>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="item-photo-viewport bonus-card-viewport">
+        <img id="bonus-card-dialog-image" class="item-photo-image" alt="">
+      </div>
     </dialog>
     <dialog id="item-photo-dialog" class="item-photo-dialog" aria-labelledby="item-photo-dialog-title">
       <header class="item-photo-dialog-header">
@@ -324,6 +330,6 @@
         <button class="primary">Verstanden</button>
       </form>
     </dialog>
-    <script src="./app.js?v=0.4.45" defer></script>
+    <script src="./app.js?v=0.4.49" defer></script>
   </body>
 </html>

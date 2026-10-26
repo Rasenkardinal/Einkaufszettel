@@ -22,7 +22,9 @@ async function runTests() {
       categories = []; supermarkets = []; products = [];
       currentItems = [{uid:"one",summary:"Tomaten",status:"needs_action",metadata:{quantity:"2"},description:"reif"}];
       render();
-      return {state: () => currentItems, render};
+      return {state: () => currentItems, render, setMarket: market => {
+        supermarkets = [market]; selectedMarket = market.id; renderMarketSelection();
+      }};
     `)( {operations}, storage);
   const assert = (condition, message) => { if (!condition) throw Error(message); };
   const results = [];
@@ -125,8 +127,9 @@ async function runTests() {
     assert(photoImage.style.transform !== previousTransform, "Dragging did not pan the zoomed image");
     photoViewport.dispatchEvent(pointerEvent("pointerup", 1, 130));
   }
+  const photoClosed = new Promise(resolve => photoDialog.addEventListener("close", resolve, {once:true}));
   doc.querySelector("#close-item-photo").click();
-  await new Promise(resolve => win.setTimeout(resolve, 20));
+  await photoClosed;
   assert(!photoDialog.open && photoImage.style.transform === "", "Closing the viewer did not reset zoom");
   results.push("PASS Photo icon opens a viewer with wheel, double-click, pinch and pan zoom");
 
@@ -143,6 +146,48 @@ async function runTests() {
   api.render();
   assert(!doc.querySelector('[aria-label="Foto von Tomaten anzeigen"]'), "Photo indicator remained after image removal");
   results.push("PASS Saved images can be reopened and removed");
+
+  api.setMarket({id: "market", name: "Testmarkt", bonus_card: image, show_bonus_card: false});
+  const cardButton = doc.querySelector("#market-bonus-card");
+  const cardDialog = doc.querySelector("#bonus-card-dialog");
+  const cardImage = doc.querySelector("#bonus-card-dialog-image");
+  const cardClose = doc.querySelector("#close-bonus-card");
+  assert(!cardButton.hidden, "Manual bonus card access depends on the cashier reminder setting");
+  for (const width of [320, 390, 1280]) {
+    frame.style.width = `${width}px`;
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    cardButton.click();
+    assert(cardDialog.open, "Direct bonus card access did not open the viewer");
+    assert(cardImage.src === image && cardImage.alt === "Bonuskarte oder APP-Code für Testmarkt",
+      "Bonus card image or accessible description changed");
+    assert(cardDialog.querySelector("h2").textContent === "Bonuskarte / APP-Code", "Bonus card title missing");
+    assert(cardClose.querySelector("svg") && cardClose.getAttribute("aria-label") === "Bild schließen",
+      "Bonus card viewer is missing its accessible close icon");
+    assert(doc.activeElement === cardClose, "Close icon is not initially focused");
+    assert(cardDialog.querySelectorAll("button").length === 1 && !cardDialog.querySelector(".dialog-actions"),
+      "Bonus card viewer still has a footer close button");
+    const cardRect = cardDialog.getBoundingClientRect();
+    const closeRect = cardClose.getBoundingClientRect();
+    const viewportRect = cardDialog.querySelector(".item-photo-viewport").getBoundingClientRect();
+    assert(cardRect.width <= width && cardDialog.scrollWidth <= cardDialog.clientWidth,
+      `Bonus card viewer overflows at ${width}px`);
+    cardImage.click();
+    assert(cardDialog.open, "Clicking the bonus card image closed the viewer");
+    cardClose.click();
+    assert(!cardDialog.open, "Close icon did not close the bonus card viewer");
+    photoDialog.showModal();
+    assert(Math.abs(photoDialog.getBoundingClientRect().width - cardRect.width) < 1,
+      `Photo viewer widths differ at ${width}px`);
+    assert(Math.abs(doc.querySelector("#close-item-photo").getBoundingClientRect().width - closeRect.width) < 1,
+      "Photo viewer close icon sizes differ");
+    assert(Math.abs(photoViewport.getBoundingClientRect().height - viewportRect.height) < 1,
+      "Photo viewer image area heights differ");
+    photoDialog.close();
+  }
+  cardButton.click();
+  cardDialog.dispatchEvent(new win.MouseEvent("click", {bubbles: true}));
+  assert(!cardDialog.open, "Clicking the bonus card backdrop did not close the viewer");
+  results.push("PASS Bonus card viewer matches the article photo UI at 320/390/1280px and closes via icon or backdrop");
   document.querySelector("#results").textContent = results.join("\n");
 }
 runTests().catch(error => {

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Einkauf beenden · 8 Anordnungen</title>
+  <link rel="stylesheet" href="../../custom_components/einkaufszettel/www/app.css">
+  <style>
+    body { padding: 28px 16px 48px; }
+    .preview-header, .layout-gallery { width: min(100%, 1608px); margin-inline: auto; }
+    .preview-header h1 { margin: 0; font-size: clamp(24px, 4vw, 34px); }
+    .eyebrow { margin: 0 0 8px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .13em; }
+    .intro { max-width: 800px; margin: 12px 0 20px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .preview-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 24px; }
+    .preview-controls label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .preview-controls select { width: auto; padding: 8px; font-size: 13px; }
+    .preview-controls output { color: var(--muted); font-size: 12px; }
+    .layout-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 350px), 390px)); justify-content: center; gap: 16px; }
+    .layout-card { min-width: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
+    .layout-title { display: flex; align-items: center; gap: 10px; padding: 14px; border-bottom: 1px solid var(--line); }
+    .layout-title h2 { margin: 0; font-size: 14px; }
+    .layout-number { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: 1px solid var(--line); border-radius: 50%; font-size: 12px; color: var(--muted); }
+    .layout-preview { padding: 16px 12px; container-type: inline-size; }
+    .sample-heading { margin: 0 0 10px; font-size: 17px; font-weight: 700; }
+    .sample-row { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-bottom: 8px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: 14px; }
+    .sample-check { display: grid; place-items: center; width: 19px; height: 19px; border: 1px solid var(--muted); border-radius: 5px; font-size: 12px; }
+    .sample-name { flex: 1; text-decoration: line-through; }
+    .sample-quantity { font-size: 12px; }
+    .button-stage { display: flex; align-items: center; min-height: 110px; }
+    .button-stage .end-shopping-action { position: relative; flex-direction: row; justify-content: normal; gap: 10px; min-height: 66px; padding: 10px 12px; margin: 0; text-align: left; cursor: default; }
+    .button-stage .end-shopping-label { flex: 1; }
+    .button-stage .end-shopping-tail { position: static; }
+    .button-stage .end-shopping-action:hover { background: var(--end-shopping-bg); }
+    .layout-caption { min-height: 58px; margin: 0; padding: 12px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .layout-2 .end-shopping-label { order: -1; }
+    .layout-3 .end-shopping-action, .layout-4 .end-shopping-action, .layout-7 .end-shopping-action { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; }
+    .layout-3 .end-shopping-label, .layout-4 .end-shopping-label, .layout-7 .end-shopping-label { text-align: center; }
+    .side { display: flex; align-items: center; gap: 6px; }
+    .side-right { justify-self: end; }
+    .layout-3 .end-shopping-tail, .layout-4 .end-shopping-tail, .layout-7 .end-shopping-tail { margin-left: 4px; }
+    .layout-5 .end-shopping-action, .layout-6 .end-shopping-action, .layout-8 .end-shopping-action { flex-direction: column; justify-content: center; gap: 8px; min-height: 96px; padding-inline: 30px; }
+    .layout-5 .end-shopping-label, .layout-6 .end-shopping-label, .layout-8 .end-shopping-label { flex: none; text-align: center; }
+    .layout-5 .end-shopping-tail, .layout-6 .end-shopping-tail, .layout-8 .end-shopping-tail { position: absolute; right: 14px; top: calc(50% - 4px); }
+    .layout-6 .end-shopping-label, .layout-8 .end-shopping-label { order: -1; }
+    .layout-7 .label-stack { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .layout-7 .end-shopping-action { min-height: 96px; }
+    .layout-8 .end-shopping-sequence { width: 100%; justify-content: space-between; }
+    @container (max-width: 290px) {
+      .layout-3 .end-shopping-label, .layout-4 .end-shopping-label { max-width: 70px; white-space: normal; }
+      .layout-3 .end-shopping-action, .layout-4 .end-shopping-action { min-height: 80px; gap: 4px; }
+    }
+    @media (max-width: 420px) { body { padding: 22px 12px 36px; } }
+  </style>
+</head>
+<body>
+  <header class="preview-header">
+    <p class="eyebrow">DESIGNVORSCHAU · NUR DIE ANORDNUNG ÄNDERT SICH</p>
+    <h1>Einkauf beenden · 8 Varianten</h1>
+    <p class="intro">Gleicher Text, gleiche Wagen, gleicher Pfeil, gleiche Farben. Variante 1 zeigt den bisherigen Stand. Die anderen Varianten ordnen die vorhandenen Elemente neu an – mit Text links, mittig oder über beziehungsweise unter den Symbolen. Variante 5 ist in der App umgesetzt; diese Vergleichsbuttons lösen keine Aktion aus.</p>
+    <div class="preview-controls">
+      <label>Farbschema
+        <select id="preview-theme">
+          <option value="">Mono</option>
+          <option value="botanical">Botanical</option>
+          <option value="midnight-plum">Midnight Plum</option>
+          <option value="market-journal">Market Journal</option>
+          <option value="fresh-signal">Fresh Signal</option>
+          <option value="indigo-pocket">Indigo Pocket</option>
+        </select>
+      </label>
+      <output id="preview-status" role="status">Vorschau wird geladen …</output>
+    </div>
+  </header>
+  <main class="layout-gallery" id="layout-gallery"></main>
+  <script>
+    const variants = [
+      ["Bisher · Symbolgruppe links", "Die bisherige Anordnung als Referenz: beide Wagen und Pfeil links, danach der Text."],
+      ["Text links · Symbolgruppe rechts", "Text zuerst; die gesamte Wagenfolge sitzt rechts vor dem Chevron."],
+      ["Text mittig · Wagen außen", "Voller Wagen links, Text auf der Button-Mitte; Pfeil und leerer Wagen rechts."],
+      ["Text mittig · Übergang links", "Voller Wagen und Pfeil links; Text auf der Button-Mitte, leerer Wagen rechts."],
+      ["Symbolgruppe oben · Text unten", "Beide Zeilen sind zentriert. Die Wagenfolge steht zusammen über dem Text."],
+      ["Text oben · Symbolgruppe unten", "Die Beschriftung steht zentriert über der kompakten Wagenfolge."],
+      ["Text mit Pfeil mittig · Wagen außen", "Voller und leerer Wagen rahmen die Mitte ein. Der Pfeil steht direkt unter dem Text."],
+      ["Text oben · Symbole verteilt", "Zentrierter Text oben; darunter voller Wagen links, Pfeil mittig und leerer Wagen rechts."],
+    ];
+    document.querySelector("#preview-theme").addEventListener("change", event => {
+      document.body.dataset.theme = event.target.value;
+    });
+    async function renderLayouts() {
+      const response = await fetch("../../custom_components/einkaufszettel/www/app.html", {cache: "no-store"});
+      if (!response.ok) throw new Error(`App-Vorlage konnte nicht geladen werden: HTTP ${response.status}`);
+      const markup = new DOMParser().parseFromString(await response.text(), "text/html");
+      const template = markup.querySelector("#end-shopping-action-template");
+      if (!template) throw new Error("Die Vorlage für Einkauf beenden fehlt.");
+      const gallery = document.querySelector("#layout-gallery");
+      for (const [index, [title, caption]] of variants.entries()) {
+        const number = index + 1;
+        const card = document.createElement("article");
+        card.className = `layout-card layout-${number}`;
+        card.innerHTML = `<header class="layout-title"><span class="layout-number">${number}</span><h2>${title}</h2></header>
+          <div class="layout-preview">
+            <p class="sample-heading">Auf der Liste</p>
+            <div class="sample-row"><span class="sample-check" aria-hidden="true">✓</span><span class="sample-name">Milch</span><span class="sample-quantity">2 l</span></div>
+            <div class="sample-row"><span class="sample-check" aria-hidden="true">✓</span><span class="sample-name">Brot</span><span class="sample-quantity">1</span></div>
+            <div class="button-stage"></div>
+          </div><p class="layout-caption">${caption}</p>`;
+        const button = template.content.querySelector("button").cloneNode(true);
+        button.removeAttribute("aria-description");
+        const sequence = button.querySelector(".end-shopping-sequence");
+        const label = button.querySelector(".end-shopping-label");
+        const tail = button.querySelector(".end-shopping-tail");
+        if ([3, 4, 7].includes(number)) {
+          const full = sequence.querySelector(".end-shopping-cart-filled");
+          const arrow = sequence.querySelector(".end-shopping-arrow");
+          const empty = sequence.querySelector(".end-shopping-cart-empty");
+          const left = document.createElement("span");
+          const right = document.createElement("span");
+          left.className = "side";
+          right.className = "side side-right";
+          left.setAttribute("aria-hidden", "true");
+          right.setAttribute("aria-hidden", "true");
+          left.append(full);
+          right.append(empty, tail);
+          let center = label;
+          if (number === 3) right.prepend(arrow);
+          if (number === 4) left.append(arrow);
+          if (number === 7) {
+            center = document.createElement("span");
+            center.className = "label-stack";
+            arrow.setAttribute("aria-hidden", "true");
+            center.append(label, arrow);
+          }
+          button.replaceChildren(left, center, right);
+        }
+        card.querySelector(".button-stage").append(button);
+        gallery.append(card);
+      }
+      document.querySelector("#preview-status").textContent = "8 Varianten · echte App-Symbole · keine Aktion beim Anklicken";
+    }
+    renderLayouts().catch(error => {
+      document.querySelector("#preview-status").textContent = `Fehler: ${error.message}`;
+      console.error(error);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Supermarkt bearbeiten · 8 Katalog-Vorschläge</title>
+  <link rel="stylesheet" href="../../custom_components/einkaufszettel/www/app.css">
+  <style>
+    body { padding: 28px 16px 48px; }
+    .gallery-header, .gallery { width: min(100%,1632px); margin-inline: auto; }
+    .gallery-header h1 { margin: 0; font-size: clamp(24px,4vw,34px); }
+    .eyebrow { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+    .intro { max-width: 950px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 20px 0 26px; }
+    .controls label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .controls select { width: auto; padding: 8px; font-size: 13px; }
+    .controls span { color: var(--muted); font-size: 12px; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,350px),390px)); gap: 20px; justify-content: center; }
+    .design { min-width: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
+    .design-heading { display: flex; align-items: center; gap: 10px; padding: 14px; background: var(--surface); border-bottom: 1px solid var(--line); }
+    .design-heading h2 { margin: 0; font-size: 14px; }
+    .number { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); font-size: 12px; }
+    .phone { position: relative; display: flex; flex-direction: column; height: 820px; padding: 24px 24px 0; }
+    .phone-header { display: flex; align-items: center; gap: 12px; min-height: 80px; padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--line); flex: none; }
+    .phone-header h3 { min-width: 0; max-width: 185px; margin: 0; font-size: 22px; line-height: 24px; letter-spacing: -.04em; }
+    .icon-button { position: relative; display: grid; place-items: center; width: 34px; height: 34px; flex: none; padding: 0; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+    .icon-button::after { content: ""; position: absolute; inset: -5px; }
+    .info { border-radius: 50%; }
+    .info svg { width: 20px; height: 20px; }
+    .close { margin-left: auto; border-radius: 9px; background: var(--surface2); }
+    .close svg { width: 16px; height: 16px; }
+    .help { position: absolute; z-index: 3; top: 112px; left: 24px; right: 24px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); box-shadow: 0 10px 30px #0006; font-size: 13px; line-height: 1.6; }
+    .content { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 24px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+    .edit-form { display: flex; flex-direction: column; gap: 12px; }
+    .field { display: grid; gap: 7px; min-width: 0; color: var(--muted); font-size: 13px; }
+    .edit-form input.market-name, .catalog-select { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--input-text); font-size: 16px; }
+    .navigation { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--text); text-align: left; font-size: 14px; }
+    .navigation > span { flex: 1; min-width: 0; }
+    .chevron { width: 16px; height: 16px; flex: none; }
+    .navigation-group { display: grid; gap: 12px; margin-top: 12px; }
+    .catalog-area { display: grid; gap: 10px; margin-top: 12px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .catalog-title { margin: 0; font-size: 14px; font-weight: 650; }
+    .catalog-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .catalog-create { min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); background: transparent; color: var(--text); font-size: 13px; }
+    .catalog-area .new-name { min-height: 44px; padding: 10px; font-size: 16px; }
+    .catalog-examples { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .market-checkout-options { margin-top: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .management-form .market-checkout-option { min-height: 48px; padding: 8px 0; font-size: 14px; }
+    .danger-section { margin-top: 12px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .danger-section button { min-height: 44px; font-size: 16px; }
+    .phone-footer { display: flex; justify-content: flex-end; gap: 12px; flex: none; padding: 16px 0; border-top: 1px solid var(--line); }
+    .phone-footer button { min-width: 0; min-height: 44px; padding-inline: 12px; flex: 1; font-size: 16px; }
+    .caption { min-height: 80px; margin: 0; padding: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .feedback { margin: 0; padding-top: 12px; font-size: 12px; color: var(--success); line-height: 1.5; }
+    .closed { position: absolute; inset: 0; z-index: 4; display: grid; place-content: center; gap: 16px; padding: 24px; background: var(--bg); text-align: center; color: var(--muted); }
+    .closed p { margin: 0; line-height: 1.6; }
+    .v2 .catalog-area { border: 1px solid var(--line); border-radius: 10px; padding: 16px; background: var(--surface); }
+    .v2 .catalog-select { background: var(--bg); }
+    .v3 .catalog-area { order: -1; margin-top: 0; padding-top: 0; border-top: 0; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+    .v4 .catalog-area { border-left: 2px solid var(--accent); padding: 8px 0 8px 14px; border-top: 0; }
+    .v5 .catalog-details { padding: 0; border: 1px solid var(--line); border-radius: 10px; margin-top: 12px; background: var(--surface); }
+    .catalog-details summary { display: flex; align-items: center; gap: 12px; padding: 12px; min-height: 64px; cursor: pointer; list-style: none; }
+    .catalog-details summary::-webkit-details-marker { display: none; }
+    .catalog-details summary span { flex: 1; font-size: 14px; }
+    .catalog-details summary strong { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; font-weight: 400; }
+    .catalog-details[open] summary .chevron { transform: rotate(90deg); }
+    .v5 .catalog-area { margin: 0 12px; padding: 12px 0; }
+    .v6 .catalog-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; border: 0; margin: 0; padding: 0; }
+    .catalog-options legend { margin-bottom: 10px; }
+    .catalog-choice { display: flex; align-items: center; gap: 8px; padding: 10px 8px; min-height: 48px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); font-size: 13px; cursor: pointer; }
+    .catalog-choice:has(:checked) { border-color: var(--accent); background: var(--surface2); }
+    .edit-form .catalog-choice input { width: 16px; min-width: 16px; height: 16px; padding: 0; margin: 0; accent-color: var(--accent); }
+    .catalog-open { display: flex; align-items: center; gap: 12px; min-height: 68px; padding: 12px; text-align: left; }
+    .catalog-open span { flex: 1; }
+    .catalog-open small { display: block; color: var(--muted); font-size: 12px; margin-top: 6px; }
+    .v8 .catalog-area { grid-template-columns: minmax(0,1fr); padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); }
+    .catalog-picker { width: min(92vw,420px); }
+    .catalog-picker form { display: grid; gap: 12px; }
+    .catalog-picker label { font-size: 13px; color: var(--muted); }
+    .catalog-picker select { width: 100%; min-height: 48px; padding: 10px; font-size: 16px; }
+    @media(max-width:420px) { body { padding: 20px 12px 36px; } .phone { padding-inline: 18px; } .phone-header { gap: 10px; } .help { left: 18px; right: 18px; } }
+  </style>
+</head>
+<body>
+  <header class="gallery-header">
+    <p class="eyebrow">DESIGNVORSCHAU · KATALOG AM GESCHÄFT</p>
+    <h1>Supermarkt bearbeiten · 8 Vorschläge</h1>
+    <p class="intro">Das Geschäft bestimmt den Katalog: Kaufland und Lidl können „Supermarkt“ teilen, Toom und Obi „Baumarkt“. Die Vorschläge unterscheiden sich nur in Platzierung und Darstellung der neuen Option. Alle erlauben einen vorhandenen Katalog oder einen neuen eigenen Katalog. Bestehende Einstellungen bleiben erhalten. Nur lokale Beispieldaten – keine App- oder HA-Änderung.</p>
+    <div class="controls">
+      <label>Beispielgeschäft <select id="example"><option value="Kaufland">Kaufland</option><option value="Toom">Toom</option><option value="Aufgaben">Aufgaben</option></select></label>
+      <label>Farbschema <select id="theme"><option value="">Mono</option><option value="botanical">Botanical</option><option value="midnight-plum">Midnight Plum</option><option value="fresh-signal">Fresh Signal</option></select></label>
+      <span>Bedienbar: Katalogauswahl, neuer Katalog, Info, Schließen und Demo-Speichern.</span>
+    </div>
+  </header>
+  <main class="gallery"></main>
+  <dialog class="catalog-picker" aria-labelledby="picker-title">
+    <form method="dialog">
+      <h2 id="picker-title">Artikelkatalog auswählen</h2>
+      <label for="picker-select">Vorhandener Katalog oder eigener Katalog</label>
+      <select id="picker-select"></select>
+      <p class="catalog-note">Mehrere Geschäfte dürfen denselben Katalog verwenden.</p>
+      <div class="dialog-actions"><button value="cancel" class="secondary">Abbrechen</button><button value="apply" class="primary">Übernehmen</button></div>
+    </form>
+  </dialog>
+  <script>
+    const info = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".9" fill="currentColor" stroke="none"/></svg>';
+    const close = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';
+    const chevron = '<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>';
+    const catalogs = ["Supermarkt","Baumarkt","Aufgaben"];
+    const variants = [
+      ["Klassisches Auswahlfeld", "Artikelkatalog als normales Feld unter den bestehenden Navigationsbuttons. Die kleinste Erweiterung des bisherigen Menüs."],
+      ["Eigene Katalogkarte", "Eine ruhige Karte fasst Auswahl und Erklärung zusammen. Die neue Einstellung ist deutlich als eigener Bereich erkennbar."],
+      ["Katalog zuerst", "Die Katalogauswahl steht ganz oben vor dem Geschäftsnamen. Erst den Bereich festlegen, dann das Geschäft benennen."],
+      ["Dezente Seitenlinie", "Die Katalogzuordnung erhält eine schmale Akzentlinie statt einer zusätzlichen flächigen Karte."],
+      ["Aufklappbare Einstellung", "Der Katalogname bleibt im kompakten Kopf sichtbar. Auswahl und Erläuterung erscheinen beim Aufklappen."],
+      ["Direkte Auswahlkacheln", "Alle drei Beispielkataloge und „Eigener Katalog“ stehen als direkt auswählbare Kacheln nebeneinander."],
+      ["Auswahl in eigenem Dialog", "Ein Navigationsbutton zeigt den aktuellen Katalog. Die Auswahl öffnet sich in einem separaten Dialog."],
+      ["Katalog direkt beim Namen", "Die Katalogkarte steht unmittelbar unter dem Geschäftsnamen, noch vor Kategorien und Bonuskarte."],
+    ];
+    const picker = document.querySelector(".catalog-picker");
+    let pickerCard = null;
+    function options(select) {
+      select.replaceChildren(...[...catalogs, "Eigener Katalog …"].map((name,index) => {
+        const option = document.createElement("option");
+        option.value = index === catalogs.length ? "__new" : name;
+        option.textContent = name;
+        return option;
+      }));
+    }
+    function setCatalog(card, value) {
+      card.dataset.catalog = value;
+      for (const select of card.querySelectorAll(".catalog-select")) select.value = value;
+      for (const radio of card.querySelectorAll(".catalog-radio")) radio.checked = radio.value === value;
+      card.querySelector(".new-name-field").hidden = value !== "__new";
+      const text = value === "__new" ? card.querySelector(".new-name").value.trim() || "Eigener Katalog" : value;
+      for (const label of card.querySelectorAll(".current-catalog")) label.textContent = text;
+      const examples = {Supermarkt:"Butter · Batterien · Blumenerde", Baumarkt:"Schrauben · Holz · Blumenerde", Aufgaben:"Rasenmähen · Fenster putzen"};
+      card.querySelector(".catalog-examples").textContent = value === "__new"
+        ? "Neuer eigener Katalog für dieses Geschäft. Inhalt und Übernahme bestehender Daten sind noch festzulegen."
+        : `Beispielinhalt: ${examples[value]}`;
+      card.querySelector(".feedback").hidden = true;
+    }
+    for (const [index,[title,description]] of variants.entries()) {
+      const number = index + 1;
+      const card = document.createElement("article");
+      card.className = `design v${number}`;
+      card.innerHTML = `<header class="design-heading"><span class="number">${number}</span><h2>${title}</h2></header>
+        <section class="phone" aria-label="Vorschlag ${number}">
+          <header class="phone-header"><h3>Supermarkt bearbeiten</h3><button class="icon-button info" type="button" aria-label="Info zu Vorschlag ${number}" aria-expanded="false" aria-controls="help-${number}">${info}</button><button class="icon-button close" type="button" aria-label="Vorschlag ${number} schließen">${close}</button></header>
+          <div class="help" id="help-${number}" role="region" aria-label="Informationen" hidden>Dieses Geschäft verwendet den ausgewählten Artikelkatalog. Geschäfte mit demselben Katalog teilen Vorschläge, Kategoriezuordnungen und Artikelstatistik. „Supermarkt“ ist nicht auf Lebensmittel beschränkt. Ein eigener Katalog trennt die Inhalte, nicht die Benutzerrechte. Speichern ist hier nur eine Demo.</div>
+          <div class="content"><form class="management-form edit-form" id="market-form-${number}">
+            <label class="field name-field">Name<input class="market-name" value="Kaufland" required maxlength="100"></label>
+            <div class="navigation-group"><button class="navigation existing-nav" type="button" data-demo="Produktkategorien"><span>Produktkategorien für diesen Markt bearbeiten</span>${chevron}</button><button class="navigation existing-nav" type="button" data-demo="Bonuskarte / APP-Code"><span>Bonuskarten oder APP-Codes einbinden</span>${chevron}</button></div>
+            <section class="catalog-area" aria-label="Artikelkatalog">
+              <p class="catalog-title">Artikelkatalog</p>
+              <label class="field catalog-field">Verwendeter Katalog<select class="catalog-select" aria-label="Artikelkatalog für Vorschlag ${number}"></select></label>
+              <p class="catalog-note">Mit anderen Geschäften teilen oder einen eigenen Katalog verwenden.</p>
+              <label class="field new-name-field" hidden>Name des eigenen Katalogs<input class="new-name" maxlength="100" placeholder="z. B. Garten"></label>
+              <p class="catalog-examples"></p>
+            </section>
+            <div class="market-checkout-options"><label class="market-checkout-option"><span>Pfandbon Hinweis</span><input class="market-option-switch" type="checkbox" role="switch" checked></label><label class="market-checkout-option"><span>Anzeige Bonuskarte</span><input class="market-option-switch" type="checkbox" role="switch" checked></label></div>
+            <section class="danger-section"><button class="secondary danger-button existing-nav" type="button" data-demo="Löschen">Löschen</button></section>
+            <p class="feedback" role="status" hidden></p>
+          </form></div>
+          <footer class="phone-footer"><button class="secondary cancel" type="button">Abbrechen</button><button class="primary" type="submit" form="market-form-${number}">Speichern</button></footer>
+          <div class="closed" hidden><p>Vorschau geschlossen.<br>Keine App-Daten geändert.</p><button class="secondary reopen" type="button">Erneut öffnen</button></div>
+        </section><p class="caption">${description}</p>`;
+      const area = card.querySelector(".catalog-area");
+      const select = card.querySelector(".catalog-select");
+      options(select);
+      if (number === 5) {
+        const details = document.createElement("details");
+        details.className = "catalog-details";
+        details.innerHTML = `<summary><span>Artikelkatalog<strong class="current-catalog"></strong></span>${chevron}</summary>`;
+        area.before(details);
+        details.append(area);
+      }
+      if (number === 6) {
+        const fieldset = document.createElement("fieldset");
+        fieldset.className = "catalog-options";
+        fieldset.innerHTML = '<legend class="catalog-title">Verwendeter Katalog</legend>';
+        for (const [i,name] of [...catalogs, "Eigener Katalog"].entries()) {
+          const label = document.createElement("label");
+          label.className = "catalog-choice";
+          const radio = document.createElement("input");
+          radio.type = "radio"; radio.name = `catalog-${number}`; radio.className = "catalog-radio";
+          radio.value = i === catalogs.length ? "__new" : name;
+          radio.addEventListener("change", () => setCatalog(card,radio.value));
+          label.append(radio, document.createTextNode(name)); fieldset.append(label);
+        }
+        card.querySelector(".catalog-field").hidden = true;
+        card.querySelector(".catalog-title").after(fieldset);
+      }
+      if (number === 7) {
+        const open = document.createElement("button");
+        open.type = "button"; open.className = "navigation catalog-open";
+        open.innerHTML = `<span>Artikelkatalog<small class="current-catalog"></small></span>${chevron}`;
+        card.querySelector(".catalog-field").hidden = true;
+        area.prepend(open);
+        open.addEventListener("click", () => {
+          pickerCard = card;
+          options(document.querySelector("#picker-select"));
+          document.querySelector("#picker-select").value = card.dataset.catalog;
+          picker.showModal();
+        });
+      }
+      if (number === 8) card.querySelector(".name-field").after(area);
+      select.addEventListener("change", () => setCatalog(card,select.value));
+      card.querySelector(".new-name").addEventListener("input", event => {
+        event.target.setCustomValidity("");
+        setCatalog(card, "__new");
+      });
+      const infoButton = card.querySelector(".info"), help = card.querySelector(".help");
+      infoButton.addEventListener("click", () => {
+        help.hidden = !help.hidden;
+        infoButton.setAttribute("aria-expanded", String(!help.hidden));
+      });
+      card.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !help.hidden) {
+          help.hidden = true; infoButton.setAttribute("aria-expanded","false"); infoButton.focus();
+        }
+      });
+      function closePreview() {
+        help.hidden = true; infoButton.setAttribute("aria-expanded","false");
+        for (const el of card.querySelectorAll(".phone-header,.content,.phone-footer")) el.inert = true;
+        card.querySelector(".closed").hidden = false;
+        card.querySelector(".reopen").focus();
+      }
+      card.querySelector(".close").addEventListener("click", closePreview);
+      card.querySelector(".cancel").addEventListener("click", closePreview);
+      card.querySelector(".reopen").addEventListener("click", () => {
+        card.querySelector(".closed").hidden = true;
+        for (const el of card.querySelectorAll(".phone-header,.content,.phone-footer")) el.inert = false;
+        card.querySelector(".close").focus();
+      });
+      card.querySelector("form").addEventListener("submit", event => {
+        event.preventDefault();
+        const input = card.querySelector(".new-name");
+        if (card.dataset.catalog === "__new" && !input.value.trim()) {
+          input.setCustomValidity("Bitte gib einen Katalognamen ein."); input.reportValidity(); return;
+        }
+        const name = card.dataset.catalog === "__new" ? input.value.trim() : card.dataset.catalog;
+        const feedback = card.querySelector(".feedback");
+        feedback.textContent = `Demo: ${card.querySelector(".market-name").value} → ${name}. Keine Daten gespeichert.`;
+        feedback.hidden = false; feedback.scrollIntoView({block:"nearest"});
+      });
+      for (const button of card.querySelectorAll(".existing-nav")) button.addEventListener("click", () => {
+        const feedback = card.querySelector(".feedback");
+        feedback.textContent = `${button.dataset.demo}: bestehende Funktion, in dieser Vorschau nicht ausgeführt.`;
+        feedback.hidden = false; feedback.scrollIntoView({block:"nearest"});
+      });
+      setCatalog(card,"Supermarkt");
+      document.querySelector(".gallery").append(card);
+    }
+    picker.addEventListener("close", () => {
+      if (picker.returnValue === "apply" && pickerCard) setCatalog(pickerCard,document.querySelector("#picker-select").value);
+      pickerCard = null;
+    });
+    document.querySelector("#theme").addEventListener("change", event => document.body.dataset.theme = event.target.value);
+    document.querySelector("#example").addEventListener("change", event => {
+      const name = event.target.value;
+      for (const card of document.querySelectorAll(".design")) {
+        card.querySelector(".market-name").value = name;
+        card.querySelector(".new-name").value = "";
+        setCatalog(card, name === "Toom" ? "Baumarkt" : name === "Aufgaben" ? "Aufgaben" : "Supermarkt");
+      }
+    });
+  </script>
+</body>
+</html>

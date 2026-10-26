@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Supermarkt bearbeiten · Katalog-Clickdummy-Test</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Supermarkt bearbeiten" style="width:390px;height:844px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all(["app.html", "app.js"].map(file =>
+    fetch(base + file, {cache:"no-store"}).then(response => response.text())));
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document, saves = [];
+  const storage = {getItem: () => null, setItem() {}, removeItem() {}};
+  const api = win.Function("test", "localStorage",
+    script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+      entryId = "test"; busy = false;
+      supermarkets = [{id:"market",name:"Kaufland",category_ids:[]}];
+      categories = []; products = [];
+      saveCatalog = (...args) => test.saves.push(args);
+      const open = () => openCatalog("market-edit", supermarkets[0]);
+      open();
+      return {open, dirty: () => catalogDirty, state: () => JSON.stringify({supermarkets,categories,products})};
+    `)({saves}, storage);
+  const assert = (condition, message) => { if (!condition) throw Error(message); };
+  const results = [], original = api.state();
+  let details = doc.querySelector(".market-catalog-preview");
+  assert(details && !details.open, "Catalog option should initially be collapsed");
+  assert(details.querySelector(".market-catalog-current").textContent === "Gemeinsamer Artikelkatalog", "Actual catalog missing");
+  assert(details.previousElementSibling.classList.contains("category-navigation") &&
+    details.nextElementSibling.classList.contains("market-checkout-options"), "Option is not before checkout settings");
+  const info = doc.querySelector("#catalog-page .management-help-trigger");
+  assert(info.previousElementSibling.id === "catalog-title" && info.nextElementSibling.id === "catalog-close", "Info is not directly next to the title");
+  info.click();
+  assert(!doc.querySelector("#catalog-help-popover").hidden, "Existing title help stopped working");
+  info.click();
+  details.querySelector("summary").click();
+  assert(details.open, "Catalog option does not expand");
+  assert(details.querySelector(".market-catalog-notice").textContent.includes("nicht gespeichert"), "Clickdummy notice missing");
+  assert(details.querySelectorAll("p").length === 2, "Extra helper text remains");
+  const select = details.querySelector("select");
+  for (const value of ["supermarket","hardware","tasks","custom"]) {
+    select.value = value;
+    select.dispatchEvent(new win.Event("change"));
+    assert(!api.dirty(), "Dummy selection marks market dirty");
+    assert(details.querySelector(".market-catalog-current").textContent === "Gemeinsamer Artikelkatalog", "Dummy selection changed active catalog");
+  }
+  const name = details.querySelector("input");
+  assert(!name.hidden, "Custom catalog name field not shown");
+  name.value = "Garten";
+  name.dispatchEvent(new win.Event("input", {bubbles:true}));
+  assert(!api.dirty() && api.state() === original, "Dummy changed shared state");
+  details.closest("form").requestSubmit();
+  assert(saves.length === 1, "Normal save no longer works");
+  assert(JSON.stringify(saves[0]) === JSON.stringify(["save_supermarket", {
+    market_id:"market", name:"Kaufland", deposit_receipt_hint:true, show_bonus_card:true,
+  }, "markets"]), "Dummy values leaked into save payload");
+  results.push("PASS Expandable catalog selector, custom name and explicit notice; no state, dirty flag or save payload changes");
+  api.open();
+  details = doc.querySelector(".market-catalog-preview");
+  assert(!details.open && details.querySelector("select").value === "shared" &&
+    details.querySelector("input").value === "", "Dummy values persisted after reopening");
+  details.querySelector("summary").click();
+  for (const width of [320,390,430,900]) {
+    frame.style.width = `${width}px`;
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    const title = doc.querySelector("#catalog-title").getBoundingClientRect();
+    const icon = info.getBoundingClientRect();
+    assert(title.right <= icon.left, "Title overlaps info");
+    assert(doc.documentElement.scrollWidth <= win.innerWidth, "Page overflows");
+    assert(details.scrollWidth <= details.clientWidth, "Catalog option overflows");
+    assert(details.querySelector("select").getBoundingClientRect().height >= 48, "Selector touch target too small");
+    results.push(`PASS Expanded option and title/info layout at ${width}px`);
+  }
+  frame.style.width = "390px";
+  details.querySelector("summary").click();
+  doc.querySelector("#catalog-close").click();
+  assert(!doc.querySelector("#discard-changes").open, "Clickdummy caused a discard confirmation");
+  assert(doc.querySelector("#catalog-title").textContent === "Supermärkte", "Close did not return to markets");
+  results.push("PASS Dummy resets on reopening and does not interfere with close navigation");
+  api.open();
+  document.querySelector("#results").textContent = results.join("\n");
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent = "FAIL " + error.stack;
+  throw error;
+});
+</script>

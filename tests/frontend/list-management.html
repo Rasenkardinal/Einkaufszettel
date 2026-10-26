@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Listenverwaltung · UI- und Speichertests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Listenverwaltung" style="width:390px;height:740px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all(["app.html", "app.js"].map(file =>
+    fetch(base + file, {cache: "no-store"}).then(response => response.text())));
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document, calls = [];
+  const sources = [
+    {source_name:"Alexa Einkaufsliste", source_entity_id:"todo.alexa_einkaufsliste", name:"Zuhause", enabled:true, available:true},
+    {source_name:"HA Wochenende", source_entity_id:"todo.wochenende", name:"Wochenende", enabled:false, available:true},
+    {source_name:"Eine sehr lange Einkaufsliste für unsere Ferienwohnung", source_entity_id:"todo.eine_sehr_lange_quellkennung_fuer_die_ferienwohnung", name:"Ferienwohnung", enabled:true, available:false},
+  ];
+  const originalSources = sources.slice();
+  let failSources = false, failSave = false, releaseSave = null, reloads = 0;
+  const storage = {getItem: () => null, setItem() {}, removeItem() {}};
+  win.Function("test", "localStorage",
+    script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+      entryId = "test"; busy = false;
+      availableLists = [{entry_id:"test", name:"Einkauf"}];
+      loadRemoteLists = async () => test.reload();
+      sendCommand = test.send;
+    `)({
+      reload() { reloads++; },
+      async send(type, payload) {
+        calls.push({type, payload});
+        if (type.endsWith("/get_sources")) {
+          if (failSources) throw Error("Quellen konnten nicht geladen werden");
+          return sources;
+        }
+        if (type.endsWith("/configure_list")) {
+          if (failSave) throw Error("Speichern fehlgeschlagen");
+          await new Promise(resolve => releaseSave = resolve);
+          return {entry_id:"test"};
+        }
+        if (type.endsWith("/get_lists")) return [{entry_id:"test"}];
+        throw Error(`Unexpected command: ${type}`);
+      },
+    }, storage);
+  const assert = (condition, message) => { if (!condition) throw Error(message); };
+  const pause = () => new Promise(resolve => win.setTimeout(resolve, 0));
+  const waitFor = async predicate => {
+    for (let attempt = 0; attempt < 100 && !predicate(); attempt++) await pause();
+    assert(predicate(), "Timed out waiting for UI");
+  };
+  const results = [], page = doc.querySelector("#list-management");
+  doc.querySelector("#manage-lists").click();
+  await waitFor(() => doc.querySelectorAll(".source-list").length === 3);
+  const cards = [...doc.querySelectorAll(".source-list")];
+  assert(!page.hidden && doc.querySelector("main.app").hidden, "List management did not replace the shopping view");
+  assert(!page.querySelector(".management-back"), "Old back navigation remains");
+  assert(page.querySelector("#lists-back svg"), "Close icon missing");
+  const info = page.querySelector(".management-help-trigger"), help = doc.querySelector("#list-management-help-popover");
+  info.click();
+  assert(!help.hidden && info.getAttribute("aria-expanded") === "true", "Info did not open");
+  assert(help.textContent.includes("Alle angemeldeten Nutzer"), "Shared settings information missing");
+  info.dispatchEvent(new win.KeyboardEvent("keydown", {key:"Escape", bubbles:true}));
+  assert(help.hidden && doc.activeElement === info, "Escape did not close info and restore focus");
+  assert(cards[0].querySelector('[role="switch"]').checked && !cards[1].querySelector('[role="switch"]').checked, "Activation state not restored");
+  assert(cards[2].querySelector(".source-list-unavailable").textContent === "Quelle nicht verfügbar", "Unavailable source warning missing");
+  assert(cards[2].querySelector("small").textContent === sources[2].source_entity_id, "Source identifier changed");
+  results.push("PASS New header, info, close icon, source cards, switches and unavailable-source details");
+  for (const width of [320,390,430,900]) {
+    frame.style.width = `${width}px`;
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    const content = page.querySelector(".list-management-content");
+    const header = page.querySelector(".management-title-row");
+    const before = header.getBoundingClientRect().top;
+    content.scrollTop = content.scrollHeight;
+    assert(header.getBoundingClientRect().top === before, "Header scrolled with cards");
+    assert(content.scrollHeight > content.clientHeight, "Cards do not scroll separately");
+    assert(doc.documentElement.scrollWidth <= win.innerWidth, `Page overflows at ${width}px`);
+    for (const card of cards) {
+      assert(card.scrollWidth <= card.clientWidth, `Card overflows at ${width}px`);
+      const button = card.querySelector("button").getBoundingClientRect();
+      const input = card.querySelector('input[type="text"]').getBoundingClientRect();
+      assert(Math.abs(button.width - input.width) < 1, "Apply button does not fill the card");
+      assert(button.height >= 44 && input.height >= 48, "Touch targets too small");
+      assert(win.getComputedStyle(card).borderRadius === "10px", "Card style missing");
+    }
+    const title = page.querySelector("h1").getBoundingClientRect(), icon = info.getBoundingClientRect();
+    assert(title.right <= icon.left, "Title overlaps info");
+    content.scrollTop = 0;
+    results.push(`PASS Card layout, full-width buttons and fixed header at ${width}px`);
+  }
+  frame.style.width = "390px";
+  for (const [mode, theme] of [["dark","botanical"], ["light","porcelain-blue"]]) {
+    doc.body.dataset.colorMode = mode;
+    doc.body.dataset.theme = theme;
+    const cardStyle = win.getComputedStyle(cards[0]);
+    const inputStyle = win.getComputedStyle(cards[0].querySelector('input[type="text"]'));
+    const switchStyle = win.getComputedStyle(cards[0].querySelector('[role="switch"]'));
+    assert(cardStyle.backgroundColor !== inputStyle.backgroundColor, "Card and input are not visually separated");
+    assert(switchStyle.width === "42px" && switchStyle.height === "24px", "Shared switch sizing changed");
+    assert(cardStyle.backgroundColor !== "rgba(0, 0, 0, 0)", "Card has no themed background");
+    results.push(`PASS Theme-aware card, input and shared switch in ${mode} mode`);
+  }
+  delete doc.body.dataset.colorMode;
+  delete doc.body.dataset.theme;
+  const form = cards[1], alias = form.querySelector('input[type="text"]'), enabled = form.querySelector('[role="switch"]');
+  alias.value = "   ";
+  form.requestSubmit();
+  assert(!calls.some(call => call.type.endsWith("/configure_list")), "Blank alias was submitted");
+  alias.value = "  Wochenendkauf  ";
+  alias.dispatchEvent(new win.Event("input"));
+  enabled.checked = true;
+  enabled.dispatchEvent(new win.Event("change"));
+  assert(form.querySelector(".source-list-state").textContent === "Für die App aktiviert", "Switch caption not updated");
+  form.requestSubmit();
+  await waitFor(() => releaseSave);
+  assert(doc.querySelector("#source-lists").inert, "Cards not blocked during save");
+  const saved = calls.find(call => call.type.endsWith("/configure_list")).payload;
+  assert(saved.name === "Wochenendkauf" && saved.enabled === true && saved.source_entity_id === "todo.wochenende", "Save payload changed");
+  releaseSave();
+  await waitFor(() => doc.querySelector("#management-message").dataset.status === "success");
+  assert(reloads === 1 && !doc.querySelector("#source-lists").inert, "List refresh or save unlock missing");
+  results.push("PASS Blank name validation, trimmed alias, activation, per-list save, busy protection and list refresh");
+  failSave = true;
+  alias.value = "Entwurf";
+  form.requestSubmit();
+  await waitFor(() => doc.querySelector("#management-message").textContent === "Speichern fehlgeschlagen");
+  assert(alias.value === "Entwurf" && !doc.querySelector("#source-lists").inert, "Save failure lost draft or kept UI blocked");
+  results.push("PASS Save errors stay visible and retain editable drafts");
+  doc.querySelector("#lists-back").click();
+  assert(page.hidden && !doc.querySelector("main.app").hidden, "Close icon did not restore shopping view");
+  failSources = true;
+  doc.querySelector("#manage-lists").click();
+  await waitFor(() => doc.querySelector("#management-message").textContent === "Quellen konnten nicht geladen werden");
+  assert(doc.querySelectorAll(".source-list").length === 0, "Failed source load left stale cards");
+  failSources = false;
+  sources.length = 0;
+  doc.querySelector("#lists-back").click();
+  doc.querySelector("#manage-lists").click();
+  await waitFor(() => doc.querySelector("#management-message").textContent.includes("Keine HA-To-do-Listen"));
+  results.push("PASS Close navigation, load errors and empty-source guidance");
+  sources.push(...originalSources);
+  doc.querySelector("#lists-back").click();
+  doc.querySelector("#manage-lists").click();
+  await waitFor(() => doc.querySelectorAll(".source-list").length === 3);
+  document.querySelector("#results").textContent = results.join("\n");
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent = "FAIL " + error.stack;
+  throw error;
+});
+</script>

@@ -441,7 +441,7 @@ async function runTests() {
     bonusCardButton.click();
     assert(doc.querySelector("#bonus-card-dialog").open, "Bonus-card viewer did not open");
     assert(doc.querySelector("#bonus-card-dialog-image").src.includes("data:image/png;base64,"), "Viewer did not display the selected market image");
-    doc.querySelector("#bonus-card-dialog [value='close']").click();
+    doc.querySelector("#close-bonus-card").click();
     assert(!doc.querySelector("#bonus-card-dialog").open, "Bonus-card viewer did not close");
   });
   const waitForDeletionDialog = () => new Promise(resolve => {

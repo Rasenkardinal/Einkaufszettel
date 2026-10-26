@@ -15,6 +15,7 @@ const elements = {
   marketSelect: document.querySelector("#market-select"),
   marketBonusCard: document.querySelector("#market-bonus-card"),
   bonusCardDialog: document.querySelector("#bonus-card-dialog"),
+  closeBonusCard: document.querySelector("#close-bonus-card"),
   bonusCardDialogImage: document.querySelector("#bonus-card-dialog-image"),
   itemPhotoDialog: document.querySelector("#item-photo-dialog"),
   closeItemPhoto: document.querySelector("#close-item-photo"),
@@ -406,6 +407,11 @@ elements.marketBonusCard.addEventListener("click", () => {
   elements.bonusCardDialogImage.src = market.bonus_card;
   elements.bonusCardDialogImage.alt = `Bonuskarte oder APP-Code für ${market.name}`;
   elements.bonusCardDialog.showModal();
+});
+
+elements.closeBonusCard.addEventListener("click", () => elements.bonusCardDialog.close());
+elements.bonusCardDialog.addEventListener("click", event => {
+  if (event.target === elements.bonusCardDialog) elements.bonusCardDialog.close();
 });
 
 let itemPhotoZoom = { scale: 1, x: 0, y: 0 };
@@ -1547,6 +1553,54 @@ function renderCatalogPage() {
       }, "management-link category-navigation"));
     }
     if (isMarket) {
+      const catalogPreview = document.createElement("details");
+      catalogPreview.className = "market-catalog-preview";
+      const summary = document.createElement("summary");
+      const summaryText = document.createElement("span");
+      summaryText.textContent = "Artikelkatalog";
+      summaryText.append(paragraph("Gemeinsamer Artikelkatalog", "market-catalog-current"));
+      summary.append(summaryText, chevron());
+      const previewContent = document.createElement("div");
+      previewContent.className = "market-catalog-preview-content";
+      const previewNotice = paragraph(
+        "Noch ohne Funktion: Alle Einstellungen in diesem Feld bleiben bis zur Implementierung wirkungslos und werden nicht gespeichert.",
+        "market-catalog-notice",
+      );
+      previewNotice.id = "market-catalog-notice";
+      const catalogLabel = document.createElement("label");
+      catalogLabel.htmlFor = "market-catalog-preview";
+      catalogLabel.textContent = "Verwendeter Katalog";
+      const catalogSelect = document.createElement("select");
+      catalogSelect.id = "market-catalog-preview";
+      catalogSelect.setAttribute("aria-describedby", previewNotice.id);
+      for (const [value, text] of [
+        ["shared", "Gemeinsamer Artikelkatalog"],
+        ["supermarket", "Supermarkt"],
+        ["hardware", "Baumarkt"],
+        ["tasks", "Aufgaben"],
+        ["custom", "Eigener Katalog …"],
+      ]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = text;
+        catalogSelect.append(option);
+      }
+      const customLabel = document.createElement("label");
+      customLabel.htmlFor = "market-catalog-custom-name";
+      customLabel.textContent = "Name des eigenen Katalogs";
+      customLabel.hidden = true;
+      const customName = document.createElement("input");
+      customName.id = "market-catalog-custom-name";
+      customName.type = "text";
+      customName.maxLength = 100;
+      customName.hidden = true;
+      customName.setAttribute("aria-describedby", previewNotice.id);
+      catalogSelect.addEventListener("change", () => {
+        customLabel.hidden = customName.hidden = catalogSelect.value !== "custom";
+      });
+      previewContent.append(previewNotice, catalogLabel, catalogSelect, customLabel, customName);
+      catalogPreview.append(summary, previewContent);
+      form.append(catalogPreview);
       const options = document.createElement("div");
       options.className = "market-checkout-options";
       for (const [key, text] of [
@@ -3923,14 +3977,35 @@ elements.manageLists.addEventListener("click", async () => {
     for (const source of sources) {
       const form = document.createElement("form");
       form.className = "source-list";
+      const heading = document.createElement("div");
+      heading.className = "source-list-heading";
+      const sourceText = document.createElement("div");
+      sourceText.className = "source-list-text";
+      const sourceName = document.createElement("span");
+      sourceName.className = "source-list-name";
+      sourceName.textContent = source.source_name;
       const label = document.createElement("label");
+      label.className = "source-list-toggle";
       const enabled = document.createElement("input");
       enabled.type = "checkbox";
+      enabled.className = "market-option-switch";
+      enabled.setAttribute("role", "switch");
+      enabled.setAttribute("aria-label", `${source.source_name} für die App aktivieren`);
       enabled.checked = source.enabled;
-      label.append(enabled, document.createTextNode(source.source_name));
+      label.append(enabled);
       const details = document.createElement("small");
-      details.textContent = `${source.source_entity_id}${source.available ? "" : " – Quelle nicht verfügbar"}`;
+      details.textContent = source.source_entity_id;
+      const state = document.createElement("span");
+      state.className = "source-list-state";
+      const updateState = () => {
+        state.textContent = enabled.checked ? "Für die App aktiviert" : "Für die App deaktiviert";
+      };
+      enabled.addEventListener("change", updateState);
+      updateState();
+      sourceText.append(sourceName, details, state);
+      heading.append(sourceText, label);
       const nameLabel = document.createElement("label");
+      nameLabel.className = "source-list-alias";
       const alias = document.createElement("input");
       alias.type = "text";
       alias.value = source.name;
@@ -3942,7 +4017,9 @@ elements.manageLists.addEventListener("click", async () => {
       save.type = "submit";
       save.className = "primary";
       save.textContent = "Übernehmen";
-      form.append(label, details, nameLabel, save);
+      form.append(heading);
+      if (!source.available) form.append(paragraph("Quelle nicht verfügbar", "source-list-unavailable"));
+      form.append(nameLabel, save);
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         if (!alias.value.trim()) {

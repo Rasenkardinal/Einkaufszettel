@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Listen verwalten · 8 UI-Vorschläge</title>
+  <link rel="stylesheet" href="../../custom_components/einkaufszettel/www/app.css">
+  <style>
+    body { padding: 28px 16px 48px; }
+    .gallery-header, .gallery { width: min(100%, 1632px); margin-inline: auto; }
+    .gallery-header h1 { margin: 0; font-size: clamp(24px, 4vw, 34px); }
+    .eyebrow { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+    .intro { max-width: 900px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 20px 0 26px; }
+    .controls label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .controls select { width: auto; padding: 8px; font-size: 13px; }
+    .controls span { color: var(--muted); font-size: 12px; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,350px),390px)); gap: 20px; justify-content: center; }
+    .design { min-width: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
+    .design-heading { display: flex; align-items: center; gap: 10px; padding: 14px; background: var(--surface); border-bottom: 1px solid var(--line); }
+    .design-heading h2 { margin: 0; font-size: 14px; }
+    .number { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); font-size: 12px; }
+    .phone { position: relative; display: flex; flex-direction: column; height: 660px; padding: 24px 24px 0; }
+    .phone-header { display: flex; align-items: center; gap: 12px; min-height: 64px; flex: none; padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
+    .phone-header h3 { margin: 0; min-width: 0; font-size: 22px; line-height: 24px; letter-spacing: -.04em; }
+    .icon-button { position: relative; display: grid; place-items: center; width: 34px; height: 34px; flex: none; padding: 0; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+    .icon-button::after { content: ""; position: absolute; inset: -5px; }
+    .info-button { border-radius: 50%; }
+    .info-button svg { width: 20px; height: 20px; }
+    .close-button { margin-left: auto; border-radius: 9px; background: var(--surface2); }
+    .close-button svg { width: 16px; height: 16px; }
+    .icon-button:hover, .info-button[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+    .help { position: absolute; z-index: 2; top: 90px; left: 24px; right: 24px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); box-shadow: 0 10px 30px #0006; font-size: 13px; line-height: 1.6; }
+    .list-content { min-height: 0; flex: 1; overflow-y: auto; padding: 0 0 20px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+    .context { margin: 0 0 16px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .list-editor { display: grid; gap: 12px; min-width: 0; padding: 20px 0; border-top: 1px solid var(--line); }
+    .list-editor:first-of-type { border-top: 0; padding-top: 0; }
+    .source-heading { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+    .source-text { flex: 1; min-width: 0; }
+    .source-name { display: block; font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
+    .entity { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+    .state { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--muted); font-size: 11px; }
+    .state::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
+    .list-editor:has(.enable:checked) .state::before { background: var(--success); }
+    .unavailable { margin: 0; font-size: 12px; color: var(--error); }
+    .toggle { position: relative; display: flex; flex: none; align-items: center; width: 44px; height: 44px; }
+    .enable { appearance: none; -webkit-appearance: none; width: 42px; height: 24px; padding: 0; margin: 0; border: 1px solid var(--line); border-radius: 20px; background: var(--surface2); cursor: pointer; }
+    .enable::after { content: ""; display: block; width: 16px; height: 16px; margin: 3px; border-radius: 50%; background: var(--muted); }
+    .enable:checked { background: var(--accent); border-color: var(--accent); }
+    .enable:checked::after { margin-left: 21px; background: var(--accent-text); }
+    .enable:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+    .name-field { display: grid; gap: 7px; min-width: 0; font-size: 12px; color: var(--muted); }
+    .alias { min-width: 0; width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--input-text); font-size: 16px; }
+    .apply { min-height: 44px; justify-self: end; font-size: 14px; }
+    .feedback { margin: 0; color: var(--success); font-size: 12px; line-height: 1.5; }
+    .caption { min-height: 78px; margin: 0; padding: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .closed { position: absolute; inset: 0; display: grid; place-content: center; gap: 16px; padding: 24px; background: var(--bg); text-align: center; font-size: 14px; color: var(--muted); z-index: 3; }
+    .closed p { margin: 0; }
+    .v2 .list-editor, .v4 .list-editor { padding: 16px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+    .v2 .alias, .v4 .alias { background: var(--bg); }
+    .v2 .apply { width: 100%; }
+    .v3 .source-heading { flex-direction: row-reverse; }
+    .v3 .apply { justify-self: stretch; }
+    .v4 .group-label { margin: 18px 0 10px; color: var(--muted); font-size: 12px; font-weight: 650; }
+    .v4 .group-label:first-of-type { margin-top: 0; }
+    .list-disclosure { margin-bottom: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+    .list-disclosure summary { display: flex; align-items: center; gap: 10px; min-height: 70px; padding: 12px; cursor: pointer; list-style: none; }
+    .list-disclosure summary::-webkit-details-marker { display: none; }
+    .chevron { width: 16px; height: 16px; flex: none; color: var(--muted); }
+    .list-disclosure[open] .chevron { transform: rotate(90deg); }
+    .v5 .list-editor { margin: 0 12px; padding: 12px 0 16px; border-top: 1px solid var(--line); }
+    .v6 .list-editor { grid-template-columns: minmax(0,1fr) auto; gap: 10px; }
+    .v6 .source-heading, .v6 .unavailable, .v6 .feedback { grid-column: 1 / -1; }
+    .v6 .apply { align-self: end; min-height: 48px; padding-inline: 12px; }
+    .v7 .list-editor { border: 0; border-left: 2px solid var(--line); padding: 4px 0 4px 14px; margin-bottom: 24px; }
+    .v7 .list-editor:has(.enable:checked) { border-left-color: var(--accent); }
+    .v7 .apply { justify-self: start; }
+    .v8 .list-editor { padding: 16px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 10px; }
+    .v8 .name-field { order: -1; }
+    .v8 .alias { font-size: 18px; font-weight: 650; }
+    .v8 .source-name { font-size: 13px; font-weight: 500; color: var(--muted); }
+    .v8 .source-heading { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+    .v8 .apply { width: 100%; }
+    @media (max-width: 420px) {
+      body { padding: 20px 12px 36px; }
+      .phone { padding-inline: 18px; }
+      .phone-header { gap: 10px; }
+      .phone-header h3 { max-width: 135px; }
+      .help { left: 18px; right: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="gallery-header">
+    <p class="eyebrow">DESIGNVORSCHAU · VERWALTUNG</p>
+    <h1>Listen verwalten · 8 Vorschläge</h1>
+    <p class="intro">Neue Verwaltungsköpfe mit Schließkreuz und Infoicon statt Zurückpfeil. Variante 2 ist in der App umgesetzt. Alle Entwürfe enthalten dieselben Funktionen: HA-Liste aktivieren, App-Namen bearbeiten und je Liste übernehmen. Quellname, technische Kennung und fehlende Verfügbarkeit bleiben erkennbar. Nur Beispieldaten – keine Verbindung zu Home Assistant.</p>
+    <div class="controls">
+      <label>Farbschema <select id="theme"><option value="">Mono</option><option value="botanical">Botanical</option><option value="midnight-plum">Midnight Plum</option><option value="market-journal">Market Journal</option><option value="fresh-signal">Fresh Signal</option></select></label>
+      <span>Infoicon, Schließkreuz, Schalter und Übernehmen sind als Demo bedienbar. Jede Ansicht scrollt separat.</span>
+    </div>
+  </header>
+  <main class="gallery"></main>
+  <script>
+    const info = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".9" fill="currentColor" stroke="none"/></svg>';
+    const close = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';
+    const chevron = '<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>';
+    const sources = [
+      {source: "Alexa Einkaufsliste", entity: "todo.alexa_einkaufsliste", alias: "Zuhause", enabled: true, available: true},
+      {source: "HA Wochenende", entity: "todo.wochenende", alias: "Wochenende", enabled: false, available: true},
+      {source: "Alexa Ferienwohnung", entity: "todo.alexa_ferienwohnung", alias: "Ferienwohnung", enabled: true, available: false},
+    ];
+    const variants = [
+      ["Ruhige Trennlinien", "Am nächsten an den neuen Verwalten-Menüs: freie Flächen, gemeinsame Kanten und graue Trenner zwischen den Listen."],
+      ["Einzelne Listenkarten", "Jede Quelle bildet eine eigene Karte. Der Übernehmen-Button nutzt die ganze Breite; die Inhalte sind klar getrennt."],
+      ["Aktivierung zuerst", "Der Schalter sitzt links direkt neben der Quelle. Name und breite Aktion folgen darunter – eine klare Lesereihenfolge."],
+      ["Nach Aktivierung gruppiert", "Aktive und inaktive Listen stehen in getrennten Gruppen. Die Zuordnung entspricht dem zuletzt übernommenen Demo-Stand."],
+      ["Aufklappbare Quellen", "Kompakte Quellenübersicht. Ein Tippen auf den Kopf öffnet App-Name, Aktivierung und Übernehmen; mehrere Listen können offen sein."],
+      ["Kompakte Bearbeitung", "App-Name und Übernehmen stehen nebeneinander. Alle Quellen benötigen weniger Höhe, ohne Funktionen auszublenden."],
+      ["Aktive Listen mit Seitenlinie", "Eine schmale Linie verbindet die Felder einer Quelle. Aktivierte Listen erhalten eine dezente Akzentlinie statt großer Karten."],
+      ["App-Name im Vordergrund", "Der bearbeitbare App-Name kommt zuerst. Quellname, technische Kennung und Aktivierung folgen darunter in einer ruhigen Karte."],
+    ];
+    function updateState(form) {
+      const checked = form.querySelector(".enable").checked;
+      form.querySelector(".state").textContent = checked ? "Für die App aktiviert" : "Für die App deaktiviert";
+    }
+    function createForm(source, number, index) {
+      const form = document.createElement("form");
+      form.className = "list-editor";
+      form.innerHTML = `<div class="source-heading"><div class="source-text"><span class="source-name">${source.source}</span><span class="entity">${source.entity}</span><span class="state"></span></div>
+        <label class="toggle"><input class="enable" type="checkbox" aria-label="${source.source} für die App aktivieren" ${source.enabled ? "checked" : ""}></label></div>
+        ${source.available ? "" : '<p class="unavailable">Quelle nicht verfügbar</p>'}
+        <label class="name-field">App-Name<input class="alias" type="text" value="${source.alias}" maxlength="100" required></label>
+        <button class="primary apply" type="submit">Übernehmen</button><p class="feedback" role="status" hidden></p>`;
+      form.querySelector(".alias").setAttribute("aria-label", `App-Name für ${source.source}, Vorschlag ${number}`);
+      updateState(form);
+      form.querySelector(".enable").addEventListener("change", () => updateState(form));
+      form.querySelector(".alias").addEventListener("input", event => event.target.setCustomValidity(""));
+      form.addEventListener("submit", event => {
+        event.preventDefault();
+        const alias = form.querySelector(".alias");
+        if (!alias.value.trim()) {
+          alias.setCustomValidity("Bitte gib einen App-Namen ein.");
+          alias.reportValidity();
+          return;
+        }
+        const feedback = form.querySelector(".feedback");
+        feedback.hidden = false;
+        feedback.textContent = "Demo: übernommen. Keine HA-Daten geändert.";
+        if (number === 4) {
+          const group = form.querySelector(".enable").checked ? "active" : "inactive";
+          form.closest(".list-content").querySelector(`[data-group="${group}"]`).append(form);
+        }
+      });
+      if (number !== 5) return form;
+      const details = document.createElement("details");
+      details.className = "list-disclosure";
+      details.open = index === 0;
+      const summary = document.createElement("summary");
+      summary.innerHTML = `<span class="source-text"><span class="source-name">${source.source}</span><span class="entity">${source.enabled ? "Aktiviert" : "Deaktiviert"} · ${source.available ? source.alias : "Quelle nicht verfügbar"}</span></span>${chevron}`;
+      form.querySelector(".enable").addEventListener("change", event => {
+        summary.querySelector(".entity").textContent = `${event.target.checked ? "Aktiviert" : "Deaktiviert"} · ${source.available ? form.querySelector(".alias").value : "Quelle nicht verfügbar"}`;
+      });
+      details.append(summary, form);
+      return details;
+    }
+    for (const [index, [title, description]] of variants.entries()) {
+      const number = index + 1;
+      const card = document.createElement("article");
+      card.className = `design v${number}`;
+      card.innerHTML = `<header class="design-heading"><span class="number">${number}</span><h2>${title}</h2></header>
+        <section class="phone" aria-label="Vorschlag ${number}: ${title}">
+          <header class="phone-header"><h3>Listen verwalten</h3><button class="icon-button info-button" type="button" aria-label="Info zu Listen verwalten, Vorschlag ${number}" aria-expanded="false" aria-controls="help-${number}">${info}</button><button class="icon-button close-button" type="button" aria-label="Vorschlag ${number} schließen">${close}</button></header>
+          <div class="help" id="help-${number}" role="region" aria-label="Informationen zu Listen verwalten" hidden>HA-Listen für die App auswählen und kurz benennen. Alexa- und HA-Namen bleiben unverändert. Alle angemeldeten Nutzer können diese Änderungen für alle Nutzer vornehmen. Änderungen werden je Liste mit Übernehmen gespeichert. Dies ist nur eine lokale Design-Demo.</div>
+          <div class="list-content"><p class="context">HA-Listen für die App</p></div>
+          <div class="closed" hidden><p>Vorschau geschlossen.<br>Die App bleibt unverändert.</p><button class="secondary reopen" type="button">Vorschau erneut öffnen</button></div>
+        </section><p class="caption">${description}</p>`;
+      const content = card.querySelector(".list-content");
+      if (number === 4) {
+        content.insertAdjacentHTML("beforeend", '<p class="group-label">Aktiviert</p><div data-group="active"></div><p class="group-label">Deaktiviert</p><div data-group="inactive"></div>');
+      }
+      sources.forEach((source, sourceIndex) => {
+        const target = number === 4 ? content.querySelector(`[data-group="${source.enabled ? "active" : "inactive"}"]`) : content;
+        target.append(createForm(source, number, sourceIndex));
+      });
+      const trigger = card.querySelector(".info-button"), help = card.querySelector(".help");
+      trigger.addEventListener("click", () => {
+        help.hidden = !help.hidden;
+        trigger.setAttribute("aria-expanded", String(!help.hidden));
+      });
+      const overlay = card.querySelector(".closed");
+      card.querySelector(".close-button").addEventListener("click", () => {
+        help.hidden = true;
+        trigger.setAttribute("aria-expanded", "false");
+        overlay.hidden = false;
+        card.querySelector(".phone-header").inert = true;
+        content.inert = true;
+        overlay.querySelector("button").focus();
+      });
+      card.querySelector(".reopen").addEventListener("click", () => {
+        overlay.hidden = true;
+        card.querySelector(".phone-header").inert = false;
+        content.inert = false;
+        card.querySelector(".close-button").focus();
+      });
+      card.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !help.hidden) {
+          help.hidden = true;
+          trigger.setAttribute("aria-expanded", "false");
+          trigger.focus();
+          event.stopPropagation();
+        }
+      });
+      document.querySelector(".gallery").append(card);
+    }
+    document.querySelector("#theme").addEventListener("change", event => {
+      document.body.dataset.theme = event.target.value;
+    });
+  </script>
+</body>
+</html>
