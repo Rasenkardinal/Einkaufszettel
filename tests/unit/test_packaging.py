@@ -87,7 +87,7 @@ def test_web_app_assets_are_versioned_and_precached():
     assert 'id="app-version"' in html
     for asset in assets:
         assert f'"{asset}"' in worker
-    assert "einkaufszettel-shell-v80" in worker
+    assert "einkaufszettel-shell-v81" in worker
     assert ".then(() => self.skipWaiting())" in worker
     script = (webapp / "app.js").read_text(encoding="utf-8")
     assert "serviceWorkerRegistration.update()" in script

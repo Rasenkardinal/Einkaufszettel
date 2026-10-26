@@ -320,13 +320,14 @@ const initial = productEditor ? [
   {id:"name",type:"name",text:"REWE",x:40,y:120,w:350,h:48},
   {id:"categories",type:"link",text:"Produktkategorien für diesen Markt bearbeiten",x:40,y:200,w:350,h:56},
   {id:"bonus",type:"link",text:"Bonuskarten oder APP-Codes einbinden",x:40,y:268,w:350,h:56},
-  {id:"catalog",type:"catalog",text:"Artikelkatalog · Gemeinsamer Artikelkatalog",x:40,y:336,w:350,h:64},
-  {id:"line-options",type:"line",text:"Trennlinie Einstellungen",x:40,y:424,w:350,h:8},
-  {id:"receipt",type:"toggle",text:"Pfandbon Hinweis",x:40,y:448,w:350,h:48},
-  {id:"card",type:"toggle",text:"Anzeige Bonuskarte",x:40,y:496,w:350,h:48},
-  {id:"line-delete",type:"line",text:"Trennlinie Löschen",x:40,y:568,w:350,h:8},
+  {id:"catalog",type:"catalog",text:"Artikelkatalog · Supermarkt",x:40,y:336,w:350,h:64},
+  {id:"line-options",type:"line",text:"Trennlinie Einstellungen",x:40,y:424,w:350,h:1},
+  {id:"receipt",type:"toggle",text:"Pfandbon Hinweis",x:40,y:436,w:350,h:48},
+  {id:"line-card-option",type:"line",text:"Trennlinie zwischen Einstellungen",x:40,y:496,w:350,h:1},
+  {id:"card",type:"toggle",text:"Anzeige Bonuskarte",x:40,y:508,w:350,h:48},
+  {id:"line-delete",type:"line",text:"Trennlinie Löschen",x:40,y:568,w:350,h:1},
   {id:"remove",type:"danger",text:"Löschen",x:40,y:592,w:106,h:44},
-  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:660,w:350,h:8},
+  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:660,w:350,h:1},
   {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:684,w:114,h:44},
   {id:"submit",type:"primary",text:"Speichern",x:276,y:684,w:114,h:44},
   {id:"note",type:"note",text:"Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.",x:40,y:736,w:350,h:44,deleted:true}
@@ -614,9 +615,22 @@ $("grid").onchange=()=>$("stage").classList.toggle("grid",$("grid").checked);
 function validate(value){
  if(value&&value.version===1&&value.menu===menuId&&Array.isArray(value.nodes)){
   const addingCatalog=menuId==="market-edit"&&!value.nodes.some(item=>item.id==="catalog");
-  const additions=initial.filter(node=>["help","line-title","line-options",...(marketsEditor?["cancel"]:[]),...(addingCatalog?["catalog"]:[])].includes(node.id)&&!value.nodes.some(item=>item.id===node.id));
+  const additions=initial.filter(node=>["help","line-title","line-options",...(marketsEditor?["cancel"]:[]),...(menuId==="market-edit"?["line-card-option"]:[]),...(addingCatalog?["catalog"]:[])].includes(node.id)&&!value.nodes.some(item=>item.id===node.id));
   const nodes=clone(value.nodes);
-  if(addingCatalog)for(const node of nodes)if(node.y>=initial.find(item=>item.id==="catalog").y)node.y+=initial.find(item=>item.id==="catalog").h;
+  const catalogNode=nodes.find(item=>item.id==="catalog");
+  if(menuId==="market-edit"&&catalogNode?.text==="Artikelkatalog · Gemeinsamer Artikelkatalog")catalogNode.text="Artikelkatalog · Supermarkt";
+  if(addingCatalog)for(const node of nodes)if(node.y>=initial.find(item=>item.id==="catalog").y)node.y+=initial.find(item=>item.id==="catalog").h+12;
+  const addingSwitchDivider=menuId==="market-edit"&&!nodes.some(item=>item.id==="line-card-option");
+  if(addingSwitchDivider)nodes.push(clone(initial.find(item=>item.id==="line-card-option")));
+  const settingLine=nodes.find(item=>item.id==="line-options");
+  const receipt=nodes.find(item=>item.id==="receipt");
+  const switchDivider=nodes.find(item=>item.id==="line-card-option");
+  const card=nodes.find(item=>item.id==="card");
+  const deleteLine=nodes.find(item=>item.id==="line-delete");
+  if(addingSwitchDivider&&settingLine&&receipt&&switchDivider&&card&&deleteLine){
+   receipt.y=Math.round((settingLine.y+settingLine.h/2+switchDivider.y+switchDivider.h/2)/2-receipt.h/2);
+   card.y=Math.round((switchDivider.y+switchDivider.h/2+deleteLine.y+deleteLine.h/2)/2-card.h/2);
+  }
   value={...value,nodes:[...nodes,...clone(additions)]};
  }
  if(!value||value.version!==1||value.menu!==menuId||!Number.isInteger(value.theme)||!themes[value.theme]||![320,360,390,430].includes(value.width)||!Number.isFinite(value.height)||value.height<300||value.height>2000||!Array.isArray(value.nodes)||value.nodes.length!==initial.length)throw Error("Ungültiger Editor-Entwurf.");

@@ -1558,7 +1558,8 @@ function renderCatalogPage() {
       const summary = document.createElement("summary");
       const summaryText = document.createElement("span");
       summaryText.textContent = "Artikelkatalog";
-      summaryText.append(paragraph("Gemeinsamer Artikelkatalog", "market-catalog-current"));
+      const currentCatalog = paragraph("Supermarkt", "market-catalog-current");
+      summaryText.append(currentCatalog);
       summary.append(summaryText, chevron());
       const previewContent = document.createElement("div");
       previewContent.className = "market-catalog-preview-content";
@@ -1567,24 +1568,40 @@ function renderCatalogPage() {
         "market-catalog-notice",
       );
       previewNotice.id = "market-catalog-notice";
-      const catalogLabel = document.createElement("label");
-      catalogLabel.htmlFor = "market-catalog-preview";
+      const picker = document.createElement("div");
+      picker.className = "category-picker market-catalog-picker-control";
+      const catalogLabel = document.createElement("p");
+      catalogLabel.className = "market-catalog-picker-label";
+      catalogLabel.id = "market-catalog-picker-label";
       catalogLabel.textContent = "Verwendeter Katalog";
-      const catalogSelect = document.createElement("select");
-      catalogSelect.id = "market-catalog-preview";
-      catalogSelect.setAttribute("aria-describedby", previewNotice.id);
-      for (const [value, text] of [
-        ["shared", "Gemeinsamer Artikelkatalog"],
+      const pickerValue = document.createElement("span");
+      pickerValue.id = "market-catalog-picker-value";
+      pickerValue.textContent = "Supermarkt";
+      const trigger = button("", () => {}, "category-picker-trigger");
+      trigger.id = "market-catalog-picker-trigger";
+      trigger.setAttribute("role", "combobox");
+      trigger.setAttribute("aria-labelledby", `${catalogLabel.id} ${pickerValue.id}`);
+      trigger.setAttribute("aria-expanded", "false");
+      trigger.setAttribute("aria-haspopup", "listbox");
+      trigger.setAttribute("aria-controls", "market-catalog-picker-options");
+      trigger.setAttribute("aria-describedby", previewNotice.id);
+      trigger.append(pickerValue, chevron("category-picker-arrow", true));
+      const flyout = document.createElement("div");
+      flyout.id = "market-catalog-picker-flyout";
+      flyout.className = "category-picker-flyout";
+      flyout.hidden = true;
+      const listbox = document.createElement("div");
+      listbox.id = "market-catalog-picker-options";
+      listbox.className = "category-options";
+      listbox.setAttribute("role", "listbox");
+      listbox.setAttribute("aria-labelledby", catalogLabel.id);
+      const catalogChoices = [
         ["supermarket", "Supermarkt"],
         ["hardware", "Baumarkt"],
         ["tasks", "Aufgaben"],
         ["custom", "Eigener Katalog …"],
-      ]) {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = text;
-        catalogSelect.append(option);
-      }
+      ];
+      let selectedCatalog = "supermarket";
       const customLabel = document.createElement("label");
       customLabel.htmlFor = "market-catalog-custom-name";
       customLabel.textContent = "Name des eigenen Katalogs";
@@ -1595,10 +1612,88 @@ function renderCatalogPage() {
       customName.maxLength = 100;
       customName.hidden = true;
       customName.setAttribute("aria-describedby", previewNotice.id);
-      catalogSelect.addEventListener("change", () => {
-        customLabel.hidden = customName.hidden = catalogSelect.value !== "custom";
+      const updateCatalogName = () => {
+        const name = selectedCatalog === "custom"
+          ? customName.value.trim() || "Eigener Katalog"
+          : catalogChoices.find(([value]) => value === selectedCatalog)[1];
+        pickerValue.textContent = name;
+        currentCatalog.textContent = name;
+      };
+      const optionButtons = catalogChoices.map(([value, text]) => {
+        const option = button("", () => {
+          selectedCatalog = value;
+          customLabel.hidden = customName.hidden = value !== "custom";
+          optionButtons.forEach(candidate => {
+            const selected = candidate.dataset.catalogValue === value;
+            candidate.setAttribute("aria-selected", String(selected));
+            candidate.tabIndex = selected ? 0 : -1;
+          });
+          updateCatalogName();
+          closePicker(true);
+        }, "category-option");
+        option.type = "button";
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", String(value === selectedCatalog));
+        option.tabIndex = value === selectedCatalog ? 0 : -1;
+        option.dataset.catalogValue = value;
+        const name = document.createElement("span");
+        name.className = "category-option-name";
+        name.textContent = text;
+        const check = document.createElement("span");
+        check.className = "category-option-check";
+        check.textContent = "✓";
+        check.setAttribute("aria-hidden", "true");
+        option.append(name, check);
+        listbox.append(option);
+        return option;
       });
-      previewContent.append(previewNotice, catalogLabel, catalogSelect, customLabel, customName);
+      function closePicker(focusTrigger = false) {
+        flyout.hidden = true;
+        trigger.setAttribute("aria-expanded", "false");
+        document.removeEventListener("pointerdown", handleOutsidePointerDown);
+        if (focusTrigger) trigger.focus();
+      }
+      function handleOutsidePointerDown(event) {
+        if (!picker.contains(event.target)) closePicker();
+      }
+      function openPicker() {
+        flyout.hidden = false;
+        trigger.setAttribute("aria-expanded", "true");
+        document.addEventListener("pointerdown", handleOutsidePointerDown);
+        (optionButtons.find(option => option.dataset.catalogValue === selectedCatalog) || optionButtons[0])?.focus();
+      }
+      trigger.addEventListener("click", () => {
+        if (flyout.hidden) openPicker();
+        else closePicker();
+      });
+      trigger.addEventListener("keydown", event => {
+        if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) {
+          event.preventDefault();
+          if (flyout.hidden) openPicker();
+        }
+      });
+      listbox.addEventListener("keydown", event => {
+        const currentIndex = optionButtons.indexOf(document.activeElement);
+        let nextIndex;
+        if (event.key === "ArrowDown") nextIndex = Math.min(optionButtons.length - 1, currentIndex + 1);
+        else if (event.key === "ArrowUp") nextIndex = Math.max(0, currentIndex - 1);
+        else if (event.key === "Home") nextIndex = 0;
+        else if (event.key === "End") nextIndex = optionButtons.length - 1;
+        else if (event.key === "Escape") {
+          event.preventDefault();
+          closePicker(true);
+          return;
+        } else if (event.key === "Tab") {
+          closePicker();
+          return;
+        } else return;
+        event.preventDefault();
+        optionButtons[nextIndex]?.focus();
+      });
+      customName.addEventListener("input", updateCatalogName);
+      flyout.append(listbox);
+      picker.append(catalogLabel, trigger, flyout);
+      previewContent.append(previewNotice, picker, customLabel, customName);
       catalogPreview.append(summary, previewContent);
       form.append(catalogPreview);
       const options = document.createElement("div");
