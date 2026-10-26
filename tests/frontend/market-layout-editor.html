@@ -36,6 +36,10 @@ h1 { font-size: 24px; }
 .node .x { display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--surface2); color: var(--muted); }
 .x svg { width: 16px; height: 16px; }
 .node .management-link { display: flex; align-items: center; gap: 16px; padding: 10px 12px; min-height: 0; font-size: 13px; }
+.node .catalog { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font-size: 14px; }
+.catalog-label { display: block; }
+.catalog-current { display: block; margin: 4px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.catalog-chevron { width: 16px; height: 16px; flex: none; }
 .node .category-choice { width: 100%; height: 100%; margin: 0; }
 .node .category-choice input { flex: none; }
 .link-label { flex: 1; min-width: 0; }
@@ -316,15 +320,16 @@ const initial = productEditor ? [
   {id:"name",type:"name",text:"REWE",x:40,y:120,w:350,h:48},
   {id:"categories",type:"link",text:"Produktkategorien für diesen Markt bearbeiten",x:40,y:200,w:350,h:56},
   {id:"bonus",type:"link",text:"Bonuskarten oder APP-Codes einbinden",x:40,y:268,w:350,h:56},
-  {id:"line-options",type:"line",text:"Trennlinie Einstellungen",x:40,y:348,w:350,h:8},
-  {id:"receipt",type:"toggle",text:"Pfandbon Hinweis",x:40,y:372,w:350,h:48},
-  {id:"card",type:"toggle",text:"Anzeige Bonuskarte",x:40,y:420,w:350,h:48},
-  {id:"line-delete",type:"line",text:"Trennlinie Löschen",x:40,y:492,w:350,h:8},
-  {id:"remove",type:"danger",text:"Löschen",x:40,y:516,w:106,h:44},
-  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:584,w:350,h:8},
-  {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:608,w:114,h:44},
-  {id:"submit",type:"primary",text:"Speichern",x:276,y:608,w:114,h:44},
-  {id:"note",type:"note",text:"Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.",x:40,y:660,w:350,h:44,deleted:true}
+  {id:"catalog",type:"catalog",text:"Artikelkatalog · Gemeinsamer Artikelkatalog",x:40,y:336,w:350,h:64},
+  {id:"line-options",type:"line",text:"Trennlinie Einstellungen",x:40,y:424,w:350,h:8},
+  {id:"receipt",type:"toggle",text:"Pfandbon Hinweis",x:40,y:448,w:350,h:48},
+  {id:"card",type:"toggle",text:"Anzeige Bonuskarte",x:40,y:496,w:350,h:48},
+  {id:"line-delete",type:"line",text:"Trennlinie Löschen",x:40,y:568,w:350,h:8},
+  {id:"remove",type:"danger",text:"Löschen",x:40,y:592,w:106,h:44},
+  {id:"line-actions",type:"line",text:"Trennlinie Aktionen",x:40,y:660,w:350,h:8},
+  {id:"cancel",type:"secondary",text:"Abbrechen",x:150,y:684,w:114,h:44},
+  {id:"submit",type:"primary",text:"Speichern",x:276,y:684,w:114,h:44},
+  {id:"note",type:"note",text:"Offline-Kopie auf diesem Gerät · Änderungen werden in Home Assistant gespeichert.",x:40,y:736,w:350,h:44,deleted:true}
 ];
 initial.splice(3,0,{id:"line-title",type:"line",text:"Trennlinie unter dem Titel",x:40,y:88,w:350,h:8});
 const compactTitleWidths={
@@ -418,10 +423,19 @@ function render(){
  for(const node of state.nodes.filter(node=>!node.deleted)){
   const box=document.createElement("div");box.className="node"+(selection.has(node.id)?" selected":"");box.dataset.id=node.id;
   Object.assign(box.style,{left:node.x+"px",top:node.y+"px",width:node.w+"px",height:node.h+"px"});
-  let visual=document.createElement(node.type==="title"?"h2":node.type==="note"?"p":["name","line","context","category","image","frame"].includes(node.type)?"div":"button");
+  let visual=document.createElement(node.type==="title"?"h2":node.type==="note"?"p":["name","line","context","category","image","frame","catalog"].includes(node.type)?"div":"button");
   if(visual.tagName==="BUTTON")visual.type="button";
-  visual.className="visual "+({title:"",close:"x",help:"info",name:"name",context:"context",image:"card-preview",category:"category-order-row",choice:"category-choice",link:"management-link",toggle:"toggle",note:"note",line:"line",danger:"secondary danger-button",primary:"primary",secondary:"secondary"}[node.type]);
+  visual.className="visual "+({title:"",close:"x",help:"info",name:"name",context:"context",image:"card-preview",category:"category-order-row",choice:"category-choice",link:"management-link",catalog:"catalog",toggle:"toggle",note:"note",line:"line",danger:"secondary danger-button",primary:"primary",secondary:"secondary"}[node.type]);
   visual.textContent=node.text;
+  if(node.type==="catalog"){
+   const [title,current]=node.text.split(" · ",2);
+   const label=document.createElement("span");label.className="catalog-label";label.textContent=title;
+   const subtitle=document.createElement("span");subtitle.className="catalog-current";subtitle.textContent=current||"";
+   const text=document.createElement("span");text.className="link-label";text.append(label,subtitle);
+   const chevron=document.createElementNS("http://www.w3.org/2000/svg","svg");chevron.setAttribute("viewBox","0 0 24 24");chevron.setAttribute("fill","none");chevron.setAttribute("stroke","currentColor");chevron.setAttribute("stroke-width","2");chevron.setAttribute("stroke-linecap","round");chevron.setAttribute("stroke-linejoin","round");chevron.setAttribute("aria-hidden","true");chevron.classList.add("catalog-chevron");
+   const path=document.createElementNS("http://www.w3.org/2000/svg","path");path.setAttribute("d","m9 18 6-6-6-6");chevron.append(path);
+   visual.replaceChildren(text,chevron);
+  }
   if(productEditor&&menuId!=="product-compare"&&(node.id==="rename"||node.id==="merge"||node.id==="statistics"||/^(rename|merge|statistics)-\d+$/.test(node.id)))visual.classList.add("product-outline-action");
   if(node.type==="frame"){visual.className="visual product-frame";visual.textContent="";}
   if(node.type==="close"){visual.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';visual.setAttribute("aria-label",node.text);}
@@ -599,8 +613,11 @@ $("theme").onchange=()=>edit(()=>state.theme=Number($("theme").value));
 $("grid").onchange=()=>$("stage").classList.toggle("grid",$("grid").checked);
 function validate(value){
  if(value&&value.version===1&&value.menu===menuId&&Array.isArray(value.nodes)){
-  const additions=initial.filter(node=>["help","line-title","line-options",...(marketsEditor?["cancel"]:[])].includes(node.id)&&!value.nodes.some(item=>item.id===node.id));
-  value={...value,nodes:[...value.nodes,...clone(additions)]};
+  const addingCatalog=menuId==="market-edit"&&!value.nodes.some(item=>item.id==="catalog");
+  const additions=initial.filter(node=>["help","line-title","line-options",...(marketsEditor?["cancel"]:[]),...(addingCatalog?["catalog"]:[])].includes(node.id)&&!value.nodes.some(item=>item.id===node.id));
+  const nodes=clone(value.nodes);
+  if(addingCatalog)for(const node of nodes)if(node.y>=initial.find(item=>item.id==="catalog").y)node.y+=initial.find(item=>item.id==="catalog").h;
+  value={...value,nodes:[...nodes,...clone(additions)]};
  }
  if(!value||value.version!==1||value.menu!==menuId||!Number.isInteger(value.theme)||!themes[value.theme]||![320,360,390,430].includes(value.width)||!Number.isFinite(value.height)||value.height<300||value.height>2000||!Array.isArray(value.nodes)||value.nodes.length!==initial.length)throw Error("Ungültiger Editor-Entwurf.");
  const ids=new Set();

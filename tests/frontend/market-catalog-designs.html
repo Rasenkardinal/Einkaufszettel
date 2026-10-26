@@ -65,11 +65,10 @@
     .catalog-details summary strong { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; font-weight: 400; }
     .catalog-details[open] summary .chevron { transform: rotate(90deg); }
     .v5 .catalog-area { margin: 0 12px; padding: 12px 0; }
-    .v6 .catalog-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; border: 0; margin: 0; padding: 0; }
-    .catalog-options legend { margin-bottom: 10px; }
-    .catalog-choice { display: flex; align-items: center; gap: 8px; padding: 10px 8px; min-height: 48px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); font-size: 13px; cursor: pointer; }
-    .catalog-choice:has(:checked) { border-color: var(--accent); background: var(--surface2); }
-    .edit-form .catalog-choice input { width: 16px; min-width: 16px; height: 16px; padding: 0; margin: 0; accent-color: var(--accent); }
+    .v6 .catalog-picker-control { display: grid; gap: 8px; }
+    .v6 .catalog-picker-label { margin: 0; color: var(--muted); font-size: 13px; }
+    .v6 .category-picker-trigger { min-height: 48px; border-radius: 10px; background: var(--surface); font-size: 16px; }
+    .v6 .category-option { min-height: 48px; font-size: 16px; }
     .catalog-open { display: flex; align-items: center; gap: 12px; min-height: 68px; padding: 12px; text-align: left; }
     .catalog-open span { flex: 1; }
     .catalog-open small { display: block; color: var(--muted); font-size: 12px; margin-top: 6px; }
@@ -113,7 +112,7 @@
       ["Katalog zuerst", "Die Katalogauswahl steht ganz oben vor dem Geschäftsnamen. Erst den Bereich festlegen, dann das Geschäft benennen."],
       ["Dezente Seitenlinie", "Die Katalogzuordnung erhält eine schmale Akzentlinie statt einer zusätzlichen flächigen Karte."],
       ["Aufklappbare Einstellung", "Der Katalogname bleibt im kompakten Kopf sichtbar. Auswahl und Erläuterung erscheinen beim Aufklappen."],
-      ["Direkte Auswahlkacheln", "Alle drei Beispielkataloge und „Eigener Katalog“ stehen als direkt auswählbare Kacheln nebeneinander."],
+      ["App-Auswahl", "Der Katalog wird über denselben aufklappbaren Auswahl-Picker wie andere App-Auswahlen gewählt – ohne Radiobuttons."],
       ["Auswahl in eigenem Dialog", "Ein Navigationsbutton zeigt den aktuellen Katalog. Die Auswahl öffnet sich in einem separaten Dialog."],
       ["Katalog direkt beim Namen", "Die Katalogkarte steht unmittelbar unter dem Geschäftsnamen, noch vor Kategorien und Bonuskarte."],
     ];
@@ -130,7 +129,15 @@
     function setCatalog(card, value) {
       card.dataset.catalog = value;
       for (const select of card.querySelectorAll(".catalog-select")) select.value = value;
-      for (const radio of card.querySelectorAll(".catalog-radio")) radio.checked = radio.value === value;
+      for (const option of card.querySelectorAll(".catalog-picker-option")) {
+        const selected = option.dataset.catalogValue === value;
+        option.setAttribute("aria-selected", String(selected));
+        option.tabIndex = selected ? 0 : -1;
+      }
+      const pickerValue = card.querySelector(".catalog-picker-value");
+      if (pickerValue) pickerValue.textContent = value === "__new"
+        ? card.querySelector(".new-name").value.trim() || "Eigener Katalog"
+        : value;
       card.querySelector(".new-name-field").hidden = value !== "__new";
       const text = value === "__new" ? card.querySelector(".new-name").value.trim() || "Eigener Katalog" : value;
       for (const label of card.querySelectorAll(".current-catalog")) label.textContent = text;
@@ -167,7 +174,7 @@
         </section><p class="caption">${description}</p>`;
       const area = card.querySelector(".catalog-area");
       const select = card.querySelector(".catalog-select");
-      options(select);
+      if (number !== 6) options(select);
       if (number === 5) {
         const details = document.createElement("details");
         details.className = "catalog-details";
@@ -176,20 +183,115 @@
         details.append(area);
       }
       if (number === 6) {
-        const fieldset = document.createElement("fieldset");
-        fieldset.className = "catalog-options";
-        fieldset.innerHTML = '<legend class="catalog-title">Verwendeter Katalog</legend>';
-        for (const [i,name] of [...catalogs, "Eigener Katalog"].entries()) {
-          const label = document.createElement("label");
-          label.className = "catalog-choice";
-          const radio = document.createElement("input");
-          radio.type = "radio"; radio.name = `catalog-${number}`; radio.className = "catalog-radio";
-          radio.value = i === catalogs.length ? "__new" : name;
-          radio.addEventListener("change", () => setCatalog(card,radio.value));
-          label.append(radio, document.createTextNode(name)); fieldset.append(label);
-        }
-        card.querySelector(".catalog-field").hidden = true;
-        card.querySelector(".catalog-title").after(fieldset);
+        select.remove();
+        const pickerArea = document.createElement("div");
+        pickerArea.className = "category-picker catalog-picker-control";
+        const pickerLabel = document.createElement("p");
+        pickerLabel.className = "catalog-picker-label";
+        pickerLabel.id = `catalog-picker-label-${number}`;
+        pickerLabel.textContent = "Verwendeter Katalog";
+        const value = document.createElement("span");
+        value.className = "catalog-picker-value";
+        value.id = `catalog-picker-value-${number}`;
+        const trigger = document.createElement("button");
+        trigger.type = "button";
+        trigger.className = "category-picker-trigger";
+        trigger.setAttribute("role", "combobox");
+        trigger.setAttribute("aria-labelledby", `${pickerLabel.id} ${value.id}`);
+        trigger.setAttribute("aria-expanded", "false");
+        trigger.setAttribute("aria-haspopup", "listbox");
+        trigger.setAttribute("aria-controls", `catalog-picker-options-${number}`);
+        const arrow = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        arrow.setAttribute("viewBox", "0 0 24 24");
+        arrow.setAttribute("fill", "none");
+        arrow.setAttribute("stroke", "currentColor");
+        arrow.setAttribute("stroke-width", "2");
+        arrow.setAttribute("stroke-linecap", "round");
+        arrow.setAttribute("stroke-linejoin", "round");
+        arrow.setAttribute("aria-hidden", "true");
+        arrow.classList.add("chevron", "category-picker-arrow");
+        const arrowPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        arrowPath.setAttribute("d", "m6 9 6 6 6-6");
+        arrow.append(arrowPath);
+        trigger.append(value, arrow);
+        const flyout = document.createElement("div");
+        flyout.className = "category-picker-flyout";
+        flyout.hidden = true;
+        const listbox = document.createElement("div");
+        listbox.id = `catalog-picker-options-${number}`;
+        listbox.className = "category-options";
+        listbox.setAttribute("role", "listbox");
+        listbox.setAttribute("aria-labelledby", pickerLabel.id);
+        const catalogValues = [...catalogs, "__new"];
+        const optionButtons = catalogValues.map((catalogValue, index) => {
+          const option = document.createElement("button");
+          option.type = "button";
+          option.className = "category-option catalog-picker-option";
+          option.dataset.catalogValue = catalogValue;
+          option.setAttribute("role", "option");
+          option.setAttribute("aria-selected", "false");
+          option.tabIndex = -1;
+          const name = document.createElement("span");
+          name.className = "category-option-name";
+          name.textContent = index === catalogs.length ? "Eigener Katalog …" : catalogValue;
+          const check = document.createElement("span");
+          check.className = "category-option-check";
+          check.textContent = "✓";
+          check.setAttribute("aria-hidden", "true");
+          option.append(name, check);
+          option.addEventListener("click", () => {
+            setCatalog(card, catalogValue);
+            closePicker(true);
+          });
+          listbox.append(option);
+          return option;
+        });
+        flyout.append(listbox);
+        pickerArea.append(pickerLabel, trigger, flyout);
+        area.insertBefore(pickerArea, card.querySelector(".new-name-field"));
+        const closePicker = (focusTrigger = false) => {
+          flyout.hidden = true;
+          trigger.setAttribute("aria-expanded", "false");
+          document.removeEventListener("pointerdown", handleOutsidePointerDown);
+          if (focusTrigger) trigger.focus();
+        };
+        const handleOutsidePointerDown = event => {
+          if (!pickerArea.contains(event.target)) closePicker();
+        };
+        const openPicker = () => {
+          flyout.hidden = false;
+          trigger.setAttribute("aria-expanded", "true");
+          document.addEventListener("pointerdown", handleOutsidePointerDown);
+          (optionButtons.find(option => option.dataset.catalogValue === card.dataset.catalog) || optionButtons[0])?.focus();
+        };
+        trigger.addEventListener("click", () => {
+          if (flyout.hidden) openPicker();
+          else closePicker();
+        });
+        trigger.addEventListener("keydown", event => {
+          if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) {
+            event.preventDefault();
+            if (flyout.hidden) openPicker();
+          }
+        });
+        listbox.addEventListener("keydown", event => {
+          const currentIndex = optionButtons.indexOf(document.activeElement);
+          let nextIndex;
+          if (event.key === "ArrowDown") nextIndex = Math.min(optionButtons.length - 1, currentIndex + 1);
+          else if (event.key === "ArrowUp") nextIndex = Math.max(0, currentIndex - 1);
+          else if (event.key === "Home") nextIndex = 0;
+          else if (event.key === "End") nextIndex = optionButtons.length - 1;
+          else if (event.key === "Escape") {
+            event.preventDefault();
+            closePicker(true);
+            return;
+          } else if (event.key === "Tab") {
+            closePicker();
+            return;
+          } else return;
+          event.preventDefault();
+          optionButtons[nextIndex]?.focus();
+        });
       }
       if (number === 7) {
         const open = document.createElement("button");
@@ -205,7 +307,7 @@
         });
       }
       if (number === 8) card.querySelector(".name-field").after(area);
-      select.addEventListener("change", () => setCatalog(card,select.value));
+      if (select.isConnected) select.addEventListener("change", () => setCatalog(card,select.value));
       card.querySelector(".new-name").addEventListener("input", event => {
         event.target.setCustomValidity("");
         setCatalog(card, "__new");
