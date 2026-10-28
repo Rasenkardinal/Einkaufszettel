@@ -35,10 +35,12 @@ async function runTests() {
           {key:"bier",name:"Bier",category_id:null,usage:{a:{added:3,last_added:150,weeks:{}}}},
           ...Array.from({length:12},(_,i)=>({key:"brot "+i,name:"Brot "+i,category_id:null}))
         ];
+        applyCatalog({supermarkets:[],categories,products});
         cacheCatalog(); updateModeView(); render();
       },
       queue:()=>readQueue(null),
       state:()=>({items:currentItems,products}),
+      setItems:items=>{currentItems=items;render();},
       correctUsage:(key,count)=>{
         const product=products.find(product=>product.key===key);
         product.usage_adjustment=(product.usage_adjustment||0)+count-productUsageCount(product);
@@ -119,7 +121,68 @@ async function runTests() {
     assert(!commonItemsDialog.open && (await api.queue()).length===0,"Cancel added selected articles");
     results.push("PASS Plus opens ranked checkbox lists with the selected underlined tabs and cancel preserves the list");
     function type(text) { input.focus(); input.value=text; input.dispatchEvent(new win.Event("input",{bubbles:true})); }
-    const names = () => [...list.children].map(option=>option.textContent);
+    const names = () => [...list.querySelectorAll(".product-suggestion-name")].map(option=>option.textContent);
+    const baseline = {};
+    for (const kind of ["frequent", "recent", "regular"]) {
+      doc.querySelector("#open-common-items").click();
+      commonItemsDialog.querySelector('[data-common-items-type="'+kind+'"]').click();
+      baseline[kind] = frequentNames().join("|");
+      doc.querySelector("#cancel-common-items").click();
+    }
+    api.setItems([
+      {uid:"existing-bier",summary:"Bier",status:"needs_action",metadata:{}},
+      {uid:"completed-butter",summary:"Butter",status:"completed",metadata:{}},
+      {uid:"other-catalog",summary:"Bananen",status:"needs_action",metadata:{catalog_id:"hardware"}},
+    ]);
+    type("b");
+    assert(names()[0]==="Bier" && names()[1]==="Butter","Existing low-frequency search result is not at the top");
+    assert(list.firstChild.disabled && list.firstChild.getAttribute("aria-disabled")==="true","Existing search result is selectable");
+    assert(list.firstChild.querySelector(".on-list-badge").textContent==="Auf der Liste","Status badge missing");
+    assert(list.firstChild.getBoundingClientRect().top < list.lastChild.getBoundingClientRect().top &&
+      list.getBoundingClientRect().bottom <= input.getBoundingClientRect().top,
+      "Existing search result is not farthest from the bottom input");
+    input.dispatchEvent(new win.KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true,cancelable:true}));
+    assert(input.getAttribute("aria-activedescendant")===list.children[1].id,"Keyboard did not skip existing article");
+    input.dispatchEvent(new win.KeyboardEvent("keydown",{key:"ArrowUp",bubbles:true,cancelable:true}));
+    assert(input.getAttribute("aria-activedescendant")===list.lastChild.id,"Reverse keyboard navigation did not skip existing article");
+    type("Bier");
+    input.dispatchEvent(new win.KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true,cancelable:true}));
+    assert(!input.hasAttribute("aria-activedescendant"),"All-disabled results received keyboard selection");
+    list.firstChild.click();
+    assert((await api.queue()).length===0,"Existing result added a duplicate");
+    for (const kind of ["frequent", "recent", "regular"]) {
+      doc.querySelector("#open-common-items").click();
+      commonItemsDialog.querySelector('[data-common-items-type="'+kind+'"]').click();
+      assert(frequentNames().join("|")===baseline[kind],"Existing status changed "+kind+" ranking");
+      if (kind!=="regular") {
+        const existing=doc.querySelector(".common-item-option.already-on-list");
+        assert(existing.querySelector("input").disabled && existing.querySelector(".on-list-mark"),"Existing quick choice is selectable or missing check");
+        assert(existing.textContent.includes("Auf der Liste"),"Quick choice status missing");
+      }
+      doc.querySelector("#cancel-common-items").click();
+    }
+    doc.querySelector("#open-common-items").click();
+    for (const width of [320,390,430]) {
+      frame.style.width=width+"px";
+      for (const mode of ["dark","light"]) {
+        doc.body.dataset.colorMode=mode;
+        doc.body.dataset.theme=mode==="light" ? "porcelain-blue" : "mono";
+        await pause();
+        const existing=doc.querySelector(".common-item-option.already-on-list");
+        const badge=existing.querySelector(".on-list-badge").getBoundingClientRect();
+        const row=existing.getBoundingClientRect();
+        assert(badge.right<=row.right && badge.left>=row.left,"Existing status badge overflows at "+width+" in "+mode);
+        assert(doc.documentElement.scrollWidth<=win.innerWidth,"Existing quick choices overflow at "+width);
+      }
+    }
+    doc.body.dataset.colorMode="dark";doc.body.dataset.theme="mono";
+    frame.style.width="390px";await pause();
+    doc.querySelector('#common-items-list input[aria-label="Bananen"]').click();
+    api.setItems([{uid:"incoming",summary:"Bananen",status:"needs_action",metadata:{}}]);
+    assert(doc.querySelector("#add-common-items").disabled,"Live sync left an existing article selected");
+    doc.querySelector("#cancel-common-items").click();
+    api.setItems([]);
+    results.push("PASS Existing search results stay at the top, cannot be added and are skipped by keyboard; quick-choice statistical positions stay unchanged; completed/other-catalog items remain available; live sync clears stale selections");
     type("B");
     assert(names().slice(0,3).join("|")==="Butter|Bananen|Bier","Frequency/recency ordering wrong");
     assert(list.children.length===15,"Matches were truncated instead of scrollable");
@@ -137,8 +200,8 @@ async function runTests() {
     assert(input.value==="" && doc.activeElement===input && list.hidden,"Input/focus not ready for next item");
     results.push("PASS Keyboard selection immediately adds a durable offline article with category and retains input focus");
     type("b");
-    assert(!names().includes("Butter"),"Already-open product suggested");
-    const option=list.firstChild;
+    assert(names()[0]==="Butter" && list.firstChild.disabled,"Already-open product missing or selectable");
+    const option=[...list.children].find(option=>!option.disabled);
     option.dispatchEvent(new win.PointerEvent("pointerdown",{button:0,bubbles:true,cancelable:true}));
     option.click(); option.click();
     await pause();

@@ -249,17 +249,11 @@ async def _reconcile(hass, entry) -> None:
             if _normalized_name(item.summary) == name
             and not state["creates"].get(item.uid, {}).get("local_only")
         ]
-        completed = [item for item in matches if item.status == "completed"]
         unique_incoming = (
             sum(_normalized_name(item.summary) == name for item in unlinked) == 1
         )
-        if (
-            source.uid not in state["source"]
-            and unique_incoming
-            and len(completed) == 1
-            and not any(item.status == "needs_action" for item in matches)
-        ):
-            old = completed[0]
+        if source.uid not in state["source"] and unique_incoming and len(matches) == 1:
+            old = matches[0]
             if old.source_uid:
                 state["source"][old.source_uid]["superseded"] = True
             reopened = replace(

@@ -2971,6 +2971,10 @@ function render() {
       : "Liste ist auf diesem Gerät gespeichert.";
   setBusy(busy);
   renderProductSuggestions();
+  if (elements.commonItemsDialog.open) {
+    if (entryId !== commonItemsListId) closeCommonItems();
+    else renderCommonItems();
+  }
 }
 
 function drawSyncSpinner(seconds) {
@@ -4290,6 +4294,28 @@ function closeProductSuggestions() {
   suggestionIndex = -1;
 }
 
+function openProductKeys() {
+  return new Set(currentItems
+    .filter(item => item.status === "needs_action" &&
+      (item.metadata?.catalog_id || "supermarket") === activeCatalogId)
+    .map(item => canonicalProductKey(item.summary)));
+}
+
+function onListMark() {
+  const mark = document.createElement("span");
+  mark.className = "on-list-mark";
+  mark.textContent = "✓";
+  mark.setAttribute("aria-hidden", "true");
+  return mark;
+}
+
+function onListBadge() {
+  const badge = document.createElement("span");
+  badge.className = "on-list-badge";
+  badge.textContent = "Auf der Liste";
+  return badge;
+}
+
 function renderProductSuggestions() {
   if (document.activeElement !== elements.newItem || elements.addForm.hidden || busy || !entryId) {
     closeProductSuggestions();
@@ -4300,7 +4326,7 @@ function renderProductSuggestions() {
     closeProductSuggestions();
     return;
   }
-  const open = new Set(currentItems.filter(item => item.status === "needs_action").map(item => canonicalProductKey(item.summary)));
+  const open = openProductKeys();
   const pending = new Map();
   for (const operation of pendingOperations) {
     if (operation.type !== "add_item" ||
@@ -4315,13 +4341,26 @@ function renderProductSuggestions() {
     return { added: (stored?.added || 0) + (local?.added || 0),
       last: Math.max(stored?.last_added || 0, local?.last_added || 0) };
   };
-  suggestionMatches = products.filter(product => product.key.startsWith(query) && !open.has(product.key))
-    .sort((a, b) => rank(b).added - rank(a).added || rank(b).last - rank(a).last || nameOrder.compare(a.name, b.name));
+  suggestionMatches = products.filter(product => product.key.startsWith(query))
+    .sort((a, b) => Number(open.has(b.key)) - Number(open.has(a.key)) ||
+      rank(b).added - rank(a).added || rank(b).last - rank(a).last || nameOrder.compare(a.name, b.name));
   suggestionIndex = -1;
   elements.newItem.removeAttribute("aria-activedescendant");
   elements.productSuggestions.replaceChildren();
   suggestionMatches.forEach((product, index) => {
     const option = button(product.name, () => addSuggestedProduct(product.name), "product-suggestion");
+    const name = document.createElement("span");
+    name.className = "product-suggestion-name";
+    name.textContent = product.name;
+    option.replaceChildren(name);
+    if (open.has(product.key)) {
+      option.disabled = true;
+      option.classList.add("already-on-list");
+      option.setAttribute("aria-disabled", "true");
+      option.setAttribute("aria-label", `${product.name}, bereits auf der Liste`);
+      option.prepend(onListMark());
+      option.append(onListBadge());
+    }
     option.id = `product-suggestion-${index}`;
     option.setAttribute("role", "option");
     option.setAttribute("aria-selected", "false");
@@ -4341,7 +4380,7 @@ async function addSuggestedProduct(name) {
   const listId = entryId;
   const identity = `${listId}:${canonicalProductKey(summary)}`;
   if (!summary || busy || addingProducts.has(identity)) return false;
-  if (currentItems.some(item => item.status === "needs_action" && canonicalProductKey(item.summary) === canonicalProductKey(summary))) {
+  if (openProductKeys().has(canonicalProductKey(summary))) {
     closeProductSuggestions();
     showError(new Error(`„${summary}“ steht bereits offen auf der Liste.`));
     return false;
@@ -4386,11 +4425,7 @@ function productUsageForList(product, listId) {
 }
 
 function commonItemsForCurrentList() {
-  const open = new Set(currentItems
-    .filter(item => item.status === "needs_action")
-    .map(item => canonicalProductKey(item.summary)));
   const ranked = products
-    .filter(product => !open.has(product.key))
     .map(product => ({
       product,
       usage: productUsageForList(product, commonItemsListId),
@@ -4432,15 +4467,20 @@ function renderCommonItems() {
   });
   elements.commonItemsListTitle.textContent = titles[commonItemsType];
   const ranked = commonItemsForCurrentList();
+  const open = openProductKeys();
+  commonItemsSelection = new Set([...commonItemsSelection].filter(key => !open.has(key)));
   elements.commonItemsListCount.textContent = `${ranked.length} Artikel`;
   elements.commonItemsList.replaceChildren();
   for (const { product, usage, totalUsage } of ranked) {
+    const present = open.has(product.key);
     const label = document.createElement("label");
-    label.className = "common-item-option";
+    label.className = `common-item-option${present ? " already-on-list" : ""}`;
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = commonItemsSelection.has(product.key);
-    checkbox.setAttribute("aria-label", product.name);
+    checkbox.disabled = present;
+    checkbox.hidden = present;
+    checkbox.setAttribute("aria-label", present ? `${product.name}, bereits auf der Liste` : product.name);
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) commonItemsSelection.add(product.key);
       else commonItemsSelection.delete(product.key);
@@ -4453,7 +4493,10 @@ function renderCommonItems() {
     frequency.className = "common-item-frequency";
     if (commonItemsType === "regular") frequency.textContent = `${usage.weeks.size} Wochen`;
     else if (commonItemsType === "frequent" && totalUsage) frequency.textContent = `${totalUsage}×`;
-    label.append(checkbox, name, frequency);
+    label.append(checkbox);
+    if (present) label.append(onListMark());
+    label.append(name, frequency);
+    if (present) label.append(onListBadge());
     elements.commonItemsList.append(label);
   }
   elements.commonItemsEmpty.hidden = ranked.length > 0;
@@ -4541,10 +4584,13 @@ elements.newItem.addEventListener("keydown", event => {
     if (elements.productSuggestions.hidden) renderProductSuggestions();
     if (!suggestionMatches.length || elements.productSuggestions.hidden) return;
     event.preventDefault();
-    suggestionIndex = event.key === "ArrowDown"
-      ? (suggestionIndex + 1) % suggestionMatches.length
-      : (suggestionIndex <= 0 ? suggestionMatches.length : suggestionIndex) - 1;
     const options = [...elements.productSuggestions.children];
+    const available = options.map((option, index) => option.disabled ? -1 : index).filter(index => index >= 0);
+    if (!available.length) return;
+    const current = available.indexOf(suggestionIndex);
+    suggestionIndex = event.key === "ArrowDown"
+      ? available[(current + 1) % available.length]
+      : available[(current < 0 ? available.length - 1 : current - 1 + available.length) % available.length];
     options.forEach((option, index) => option.setAttribute("aria-selected", String(index === suggestionIndex)));
     elements.newItem.setAttribute("aria-activedescendant", options[suggestionIndex].id);
     options[suggestionIndex].scrollIntoView({ block: "nearest" });

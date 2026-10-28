@@ -2852,19 +2852,107 @@ async def test_alexa_readd_reuses_completed_item_and_retires_old_identity(
     assert not any(service != "get_items" for service, _ in ctx.calls)
 
 
+@pytest.mark.parametrize("catalog_id", ["supermarket", "hardware"])
+@pytest.mark.parametrize("linked", [False, True])
+async def test_alexa_readd_reuses_unique_open_item(
+    integration, monkeypatch, catalog_id, linked
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    if not linked:
+        ctx.remote.clear()
+        await ctx.protocol.apply_operation(
+            ctx.data, "delete-original", "delete_item", ctx.data.items[0].uid, {}
+        )
+        await ctx.protocol.apply_operation(
+            ctx.data, "add-local", "add_item", "local", {"summary": "Haferflocken"}
+        )
+    else:
+        ctx.remote[0]["summary"] = "Haferflocken"
+        await ctx.source.synchronize_source(env.hass, env.entry)
+    uid = ctx.data.items[0].uid
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "metadata",
+        "update_item",
+        uid,
+        {
+            "metadata": {
+                "catalog_id": catalog_id,
+                "quantity": "2",
+                "note": "bio",
+            },
+            "description": "Behalten",
+        },
+    )
+    before_catalog = deepcopy(
+        await env.stores["einkaufszettel.supermarkets"].async_load()
+    )
+    ctx.remote.append(
+        {"uid": "new-oats", "summary": "  HAFERFLOCKEN  ", "status": "needs_action"}
+    )
+    for _ in range(2):
+        await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.source_error is None
+    assert len(ctx.data.items) == 1
+    item = ctx.data.items[0]
+    assert (item.uid, item.source_uid, item.status) == (uid, "new-oats", "needs_action")
+    assert item.metadata == {
+        "catalog_id": catalog_id,
+        "quantity": "2",
+        "note": "bio",
+    }
+    assert item.description == "Behalten"
+    if linked:
+        assert ctx.data.sync["source"]["a"]["superseded"] is True
+    assert not any(service != "get_items" for service, _ in ctx.calls)
+    assert (
+        await env.stores["einkaufszettel.supermarkets"].async_load() == before_catalog
+    )
+    env.store.async_load.return_value = env.store.async_save.call_args.args[0]
+    await env.package.async_setup_entry(env.hass, env.entry)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert env.entry.runtime_data.items == [item]
+    await ctx.protocol.apply_operation(
+        env.entry.runtime_data, "complete", "update_item", uid, {"status": "completed"}
+    )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert (
+        next(value for value in ctx.remote if value["uid"] == "new-oats")["status"]
+        == "completed"
+    )
+    assert len(env.entry.runtime_data.items) == 1
+
+
 @pytest.mark.parametrize(
-    "case", ["open", "multiple_completed", "multiple_new", "different_name"]
+    "case",
+    [
+        "multiple_open",
+        "mixed_status",
+        "multiple_completed",
+        "multiple_new",
+        "different_name",
+    ],
 )
-async def test_source_readd_never_guesses_ambiguous_or_open_match(
+async def test_source_readd_never_guesses_ambiguous_match(
     integration, monkeypatch, case
 ):
     env = integration
     ctx = await sync_environment(env, monkeypatch)
     await ctx.source.synchronize_source(env.hass, env.entry)
-    if case != "open":
+    if case != "multiple_open":
         ctx.remote[0]["status"] = "completed"
     if case == "multiple_completed":
         ctx.data.items.append(env.model.ShoppingItem("other", "Milch", "completed"))
+    if case in ("multiple_open", "mixed_status"):
+        await ctx.protocol.apply_operation(
+            ctx.data,
+            "add-other",
+            "add_item",
+            "other",
+            {"summary": "Milch", "metadata": {"catalog_id": "hardware"}},
+        )
     await ctx.source.synchronize_source(env.hass, env.entry)
     before = len(ctx.data.items)
     ctx.remote.append(
@@ -2881,13 +2969,15 @@ async def test_source_readd_never_guesses_ambiguous_or_open_match(
     assert ctx.data.items[0].source_uid == "a"
 
 
+@pytest.mark.parametrize("completed", [False, True])
 async def test_source_readd_failed_save_leaves_old_mapping_intact(
-    integration, monkeypatch
+    integration, monkeypatch, completed
 ):
     env = integration
     ctx = await sync_environment(env, monkeypatch)
     await ctx.source.synchronize_source(env.hass, env.entry)
-    ctx.remote[0]["status"] = "completed"
+    if completed:
+        ctx.remote[0]["status"] = "completed"
     await ctx.source.synchronize_source(env.hass, env.entry)
     ctx.remote.append({"uid": "new", "summary": "Milch", "status": "needs_action"})
     env.store.async_save.side_effect = OSError("disk full")

@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bereits auf der Liste · Im bestehenden App-Design</title>
+<link rel="stylesheet" href="../../custom_components/einkaufszettel/www/app.css">
+<style>
+body { padding: 28px 16px 60px; }
+.preview-header, .gallery { max-width: 1660px; margin-inline: auto; }
+.preview-header h1 { font-size: 30px; margin-bottom: 12px; }
+.preview-header p { color: var(--muted); font-size: 14px; line-height: 1.65; max-width: 960px; }
+.preview-controls { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0 28px; }
+.preview-controls button { border: 1px solid var(--line); background: var(--surface2); color: var(--text); border-radius: 9px; min-height: 44px; padding: 10px 14px; }
+.gallery { display: grid; gap: 28px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 730px), 1fr)); align-items: start; }
+.variant { min-width: 0; border-top: 1px solid var(--line); padding-top: 20px; }
+.variant h2 { font-size: 18px; margin: 0 0 8px; }
+.description { min-height: 42px; color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0 0 16px; }
+.screens { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.screen { min-width: 0; }
+.screen > p { margin: 0 0 9px; color: var(--muted); font-size: 12px; }
+iframe { display: block; width: 100%; height: 680px; border: 1px solid var(--line); border-radius: 0; background: var(--bg); }
+#preview-status { color: var(--muted); font-size: 12px; }
+@media (max-width: 720px) { .screens { grid-template-columns: 1fr; } iframe { height: 650px; } .description { min-height: 0; } }
+</style>
+</head>
+<body>
+<header class="preview-header">
+  <h1>Bereits auf der Liste · im App-Design</h1>
+  <p>Alle acht Varianten verwenden das <strong>Original-Markup und die unveränderte CSS-Datei der App</strong>:
+    links die Suche am unteren Bildschirmrand, rechts die bestehende Vollbildauswahl „Artikel hinzufügen“.
+    Nur die Kennzeichnung bereits vorhandener Artikel kommt hinzu. Butter und Haferflocken stehen offen auf der Liste –
+    sie sind nicht erledigt. Keine Verbindung zu Home Assistant.</p>
+  <div class="preview-controls">
+    <button id="theme" type="button" aria-pressed="false">Helle Ansicht</button>
+    <button id="reset" type="button">Alle Beispiele zurücksetzen</button>
+  </div>
+  <p id="preview-status" role="status">Originalansichten werden geladen …</p>
+</header>
+<main class="gallery"></main>
+<script>
+const variants = [
+  ["Dezent ausgegraut", "Die Originalzeile wird zurückgenommen; „Auf der Liste“ erklärt den Zustand ausdrücklich."],
+  ["Haken + Status-Pille · Empfehlung", "Bestehende Zeilen und Abstände bleiben erhalten. Nur Haken und kleine Status-Pille werden ergänzt."],
+  ["Status unter dem Namen", "Ein kurzer Hinweis mit Menge unter dem Produktnamen. Nur vorhandene Zeilen werden etwas höher."],
+  ["Getrennte Gruppen", "Die vorhandenen Zeilen werden in „Noch hinzufügen“ und „Bereits auf der Liste“ gegliedert."],
+  ["Menge direkt sichtbar", "Statt nur eines Status zeigt die Zeile auch die bereits geplante Menge."],
+  ["Kontur statt Füllung", "Vorhandene Artikel sind im bestehenden Zeilenrahmen weniger flächig, mit textlicher Kennzeichnung."],
+  ["Kompakter Kreis-Haken", "Ein kleiner Kreis-Haken ersetzt die Auswahl bei vorhandenen Artikeln. Eine Legende erklärt den Unterschied."],
+  ["Vorhandenen Artikel ansehen", "„Ansehen“ zeigt die vorhandene Menge und Kategorie. Erneutes Hinzufügen bleibt ausgeschlossen."],
+];
+const products = [
+  {name:"Butter",count:28,weeks:12,recent:5,quantity:"2 Packungen",category:"Kühlregal"},
+  {name:"Haferflocken",count:21,weeks:10,recent:4,quantity:"1 Packung",category:"Frühstück"},
+  {name:"Buttermilch",count:15,weeks:8,recent:3,quantity:"1 Flasche",category:"Kühlregal"},
+  {name:"Butterkäse",count:9,weeks:5,recent:2,quantity:"1 Packung",category:"Kühlregal"},
+  {name:"Brot",count:18,weeks:9,recent:1,quantity:"1 Stück",category:"Backwaren"},
+];
+const featureCSS = `
+  .preview-name { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .preview-status { flex:none; color:var(--muted); font-size:10px; white-space:nowrap; }
+  .preview-detail { display:block; font-size:11px; font-weight:400; color:var(--muted); margin-top:3px; white-space:normal; }
+  .preview-mark { flex:none; display:grid; place-items:center; width:21px; height:21px; color:var(--muted); font-size:14px; }
+  .product-suggestion { display:flex; align-items:center; gap:8px; }
+  .product-suggestion:disabled { opacity:1; }
+  .preview-on-list { cursor:default; }
+  .preview-on-list input:disabled { opacity:1; }
+  .preview-on-list .common-item-name { color:inherit; }
+  .preview-group, .preview-legend { padding:8px 12px; color:var(--muted); font-size:11px; margin:0; }
+  .v1 .preview-on-list { color:var(--muted); background:var(--surface); }
+  .v1 .preview-on-list .common-item-name { font-weight:400; }
+  .v2 .preview-on-list .preview-status { border:1px solid color-mix(in srgb,var(--success) 40%,var(--line)); color:var(--success); background:color-mix(in srgb,var(--success) 8%,var(--surface)); border-radius:999px; padding:3px 6px; }
+  .v2 .preview-on-list .preview-mark { color:var(--success); }
+  .v3 .preview-on-list { border-left:3px solid var(--success); }
+  .v3 .preview-on-list .preview-detail { color:var(--success); }
+  .v3 .product-suggestion.preview-on-list, .v5 .product-suggestion.preview-on-list, .v8 .product-suggestion.preview-on-list { height:auto; min-height:54px; }
+  .v4 .preview-on-list { background:var(--surface); color:var(--muted); }
+  .v5 .preview-status { border:1px solid var(--line); border-radius:999px; padding:3px 6px; color:var(--text); }
+  .v6 .preview-on-list { background:var(--bg); color:var(--muted); }
+  .v6 .common-item-option.preview-on-list { border-color:var(--muted); }
+  .v6 .preview-status { border:1px solid var(--line); padding:3px 5px; border-radius:3px; }
+  .v7 .preview-on-list .preview-mark { border:1px solid var(--success); border-radius:50%; color:var(--success); }
+  .v7 .preview-on-list { color:var(--muted); }
+  .v8 .preview-on-list { cursor:pointer; }
+  .v8 .preview-status { color:var(--text); text-decoration:underline; text-underline-offset:3px; }
+  #preview-feedback { margin:0; padding:10px 17px; color:var(--muted); font-size:12px; line-height:1.5; }
+  .search-feedback { position:fixed; top:180px; left:20px; right:20px; background:var(--surface); border:1px solid var(--line); border-radius:10px; }
+`;
+const states = [];
+let light = false;
+function applyTheme(doc) {
+  doc.body.dataset.colorMode = light ? "light" : "dark";
+  doc.body.dataset.theme = light ? "porcelain-blue" : "mono";
+}
+async function initialize() {
+  const base = new URL("../../custom_components/einkaufszettel/www/", location.href);
+  const response = await fetch(new URL("app.html", base));
+  if (!response.ok) throw new Error(`App-Markup nicht lesbar: ${response.status}`);
+  const source = new DOMParser().parseFromString(await response.text(), "text/html");
+  const style = `<base href="${base.href}"><link rel="stylesheet" href="app.css"><style>${featureCSS}</style>`;
+  const topbar = source.querySelector(".topbar").outerHTML;
+  const form = source.querySelector("#add-form").outerHTML;
+  const dialog = source.querySelector("#common-items-dialog").outerHTML;
+  for (const [index, [title, description]] of variants.entries()) {
+    const number = index + 1;
+    const card = document.createElement("section");
+    card.className = "variant";
+    card.innerHTML = `<h2>${String(number).padStart(2,"0")} · ${title}</h2><p class="description">${description}</p><div class="screens"></div>`;
+    document.querySelector(".gallery").append(card);
+    const state = {open:new Set(["Butter","Haferflocken"]),selected:new Set(),renderers:[]};
+    states.push(state);
+    for (const common of [false,true]) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "screen";
+      wrapper.innerHTML = `<p>${common ? "Artikelauswahl · Original-Vollbilddialog" : "Planungsmodus · Original-Suchfeld"}</p>`;
+      const frame = document.createElement("iframe");
+      frame.title = `Variante ${number} · ${common ? "Artikelauswahl" : "Suche"}`;
+      const loaded = new Promise(resolve => frame.onload = resolve);
+      frame.srcdoc = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${style}</head><body data-theme="mono" class="v${number}">${
+        common ? dialog : `<main class="app planning-mode">${topbar}<section class="list-heading"><h2>Auf der Liste</h2><span>2 Artikel</span></section><ul class="items"><li class="item"><input type="checkbox" aria-label="Butter erledigt"><span>Butter</span></li><li class="item"><input type="checkbox" aria-label="Haferflocken erledigt"><span>Haferflocken</span></li></ul>${form}</main>`
+      }</body></html>`;
+      wrapper.append(frame);
+      card.querySelector(".screens").append(wrapper);
+      await loaded;
+      const doc = frame.contentDocument;
+      applyTheme(doc);
+      let sort = "count";
+      const feedback = doc.createElement("p");
+      feedback.id = "preview-feedback";
+      feedback.setAttribute("role","status");
+      feedback.setAttribute("aria-live","polite");
+      if (common) {
+        doc.querySelector("#common-items-dialog").show();
+        doc.querySelector(".common-items-footer").before(feedback);
+        doc.querySelector("#close-common-items").onclick = () => feedback.textContent = "Dies ist eine dauerhaft geöffnete Designvorschau.";
+        doc.querySelector("#cancel-common-items").onclick = () => {state.selected.clear();render();};
+        for (const tab of doc.querySelectorAll("[data-common-items-type]")) {
+          tab.onclick = () => {
+            sort = {frequent:"count",recent:"recent",regular:"weeks"}[tab.dataset.commonItemsType];
+            for (const other of doc.querySelectorAll("[role=tab]")) other.setAttribute("aria-selected",String(other===tab));
+            doc.querySelector("#common-items-list-title").textContent = {count:"Häufigste Artikel",recent:"Kürzlich hinzugefügt",weeks:"Regelmäßig hinzugefügt"}[sort];
+            render();
+          };
+        }
+        doc.querySelector("#add-common-items").onclick = () => {
+          const names = [...state.selected];
+          for (const name of names) state.open.add(name);
+          state.selected.clear();
+          for (const update of state.renderers) update();
+          feedback.textContent = `${names.join(", ")} hinzugefügt – nur in dieser Vorschau.`;
+        };
+      } else {
+        doc.querySelector("#list-name").textContent = "Einkaufsliste";
+        doc.querySelector(".sync-actions").classList.remove("syncing");
+        doc.querySelector("#new-item").value = "Butter";
+        doc.querySelector("#new-item").oninput = () => render();
+        doc.querySelector("#add-form").onsubmit = event => event.preventDefault();
+        doc.querySelector("#open-common-items").onclick = () => {card.querySelectorAll("iframe")[1].scrollIntoView({behavior:"smooth",block:"center"});};
+        feedback.className = "search-feedback";
+        feedback.hidden = true;
+        doc.body.append(feedback);
+        for (const checkbox of doc.querySelectorAll(".items input")) checkbox.disabled = true;
+      }
+      function makeRow(product) {
+        const present = state.open.has(product.name);
+        const row = doc.createElement(common ? "label" : "button");
+        row.className = (common ? "common-item-option" : "product-suggestion") + (present ? " preview-on-list" : "");
+        row.dataset.product = product.name;
+        if (!common) {row.type="button";row.disabled=present && number!==8;}
+        row.setAttribute("aria-label",`${product.name}${present ? ", bereits auf der Liste" : ""}`);
+        if (common && !present) {
+          const checkbox=doc.createElement("input");
+          checkbox.type="checkbox";
+          checkbox.checked=state.selected.has(product.name);
+          checkbox.setAttribute("aria-label",`${product.name} auswählen`);
+          checkbox.onchange=()=>{
+            if(checkbox.checked) state.selected.add(product.name); else state.selected.delete(product.name);
+            render();
+          };
+          row.append(checkbox);
+        } else if (present) {
+          const mark=doc.createElement("span");
+          mark.className="preview-mark";mark.textContent="✓";mark.setAttribute("aria-hidden","true");row.append(mark);
+        }
+        const name=doc.createElement("span");
+        name.className=common ? "common-item-name" : "preview-name";
+        name.textContent=product.name;
+        if(present && [3,5,8].includes(number)) {
+          const detail=doc.createElement("span");detail.className="preview-detail";
+          detail.textContent=number===3 ? `Auf der Liste · ${product.quantity}` : number===8 ? `Auf der Liste · ${product.category}` : "Bereits auf der Liste";
+          name.append(detail);
+        }
+        row.append(name);
+        if(common) {
+          const frequency=doc.createElement("span");frequency.className="common-item-frequency";
+          frequency.textContent=sort==="weeks" ? `${product.weeks} Wochen` : sort==="recent" ? `vor ${6-product.recent} T.` : `${product.count}×`;
+          row.append(frequency);
+        }
+        if(present && ![3,7].includes(number)) {
+          const status=doc.createElement("span");status.className="preview-status";
+          status.textContent=number===5 ? product.quantity : number===8 ? "Ansehen ›" : "Auf der Liste";
+          row.append(status);
+        }
+        if(present && number===8) {
+          if(common) {row.tabIndex=0;row.setAttribute("role","button");row.onkeydown=event=>{if(["Enter"," "].includes(event.key)){event.preventDefault();row.click();}};}
+          row.onclick=()=>{feedback.hidden=false;feedback.textContent=`${product.name}: ${product.quantity} · ${product.category}. Bereits offen auf der Einkaufsliste. Kein neuer Eintrag.`;};
+        } else if(!common && !present) {
+          row.onclick=()=>{state.open.add(product.name);for(const update of state.renderers)update();};
+        }
+        return row;
+      }
+      function render() {
+        const container=doc.querySelector(common ? "#common-items-list" : "#product-suggestions");
+        container.replaceChildren();
+        let matches=common ? [...products].sort((a,b)=>b[sort]-a[sort]) : products.filter(product=>product.name.toLocaleLowerCase("de").startsWith(doc.querySelector("#new-item").value.trim().toLocaleLowerCase("de")))
+          .sort((a,b)=>Number(state.open.has(b.name))-Number(state.open.has(a.name)) || b.count-a.count);
+        if(number===7) {const legend=doc.createElement("p");legend.className="preview-legend";legend.textContent="✓ Bereits auf der Liste · keine erneute Auswahl";container.append(legend);}
+        if(number===4) {
+          for(const present of [false,true]) {
+            const group=matches.filter(product=>state.open.has(product.name)===present);
+            if(!group.length)continue;
+            const heading=doc.createElement("p");heading.className="preview-group";heading.textContent=present ? "Bereits auf der Liste" : "Noch hinzufügen";
+            container.append(heading,...group.map(makeRow));
+          }
+        } else container.append(...matches.map(makeRow));
+        if(common) {
+          doc.querySelector("#common-items-list-count").textContent=`${products.length} Artikel`;
+          doc.querySelector("#common-items-selection").textContent=state.selected.size ? `${state.selected.size} ausgewählt` : "";
+          doc.querySelector("#add-common-items").disabled=!state.selected.size;
+        } else {
+          container.hidden=!matches.length;
+          doc.querySelector("#new-item").setAttribute("aria-expanded",String(!!matches.length));
+          doc.querySelector(".list-heading span").textContent=`${state.open.size} Artikel`;
+          const list=doc.querySelector(".items");list.replaceChildren();
+          for(const name of state.open) {
+            const li=doc.createElement("li");li.className="item";
+            const main=doc.createElement("div");main.className="item-main";
+            const check=doc.createElement("input");check.type="checkbox";check.disabled=true;check.setAttribute("aria-label",`${name} erledigt`);
+            const label=doc.createElement("button");label.type="button";label.className="item-name";
+            const title=doc.createElement("span");title.className="item-title";title.textContent=name;
+            label.append(title);main.append(check,label);li.append(main);list.append(li);
+          }
+        }
+      }
+      state.renderers.push(render);
+      render();
+    }
+  }
+  document.querySelector("#preview-status").textContent="8 Varianten · 16 Originalansichten geladen. Suche und Artikelauswahl sind je Variante miteinander verbunden.";
+}
+document.querySelector("#theme").onclick=event=>{
+  light=!light;
+  event.currentTarget.textContent=light ? "Dunkle Ansicht" : "Helle Ansicht";
+  event.currentTarget.setAttribute("aria-pressed",String(light));
+  for(const frame of document.querySelectorAll("iframe"))applyTheme(frame.contentDocument);
+};
+document.querySelector("#reset").onclick=()=>{
+  for(const state of states) {
+    state.open=new Set(["Butter","Haferflocken"]);state.selected.clear();
+    for(const render of state.renderers)render();
+  }
+};
+initialize().catch(error=>{
+  document.querySelector("#preview-status").textContent=`Vorschau konnte nicht geladen werden: ${error.message}`;
+  console.error(error);
+});
+</script>
+</body>
+</html>
