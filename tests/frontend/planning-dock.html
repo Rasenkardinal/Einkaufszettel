@@ -19,7 +19,8 @@ async function runTests() {
   Object.defineProperty(win, "visualViewport", {configurable: true, value: viewport});
   const api = win.Function(script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
     entryId = "test"; busy = false;
-    products = [{key:"butter",name:"Butter"},{key:"buttermilch",name:"Buttermilch"}];
+    products = [{key:"butter",name:"Butter",category_id:null},{key:"buttermilch",name:"Buttermilch",category_id:null}];
+    applyCatalog({supermarkets:[],categories:[],products});
     return {
       planning(value) { planningMode = value; updateModeView(); setBusy(false); },
       fitPlanningDock,

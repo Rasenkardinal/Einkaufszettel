@@ -122,6 +122,26 @@ async function runTests() {
     results.push("PASS Plus opens ranked checkbox lists with the selected underlined tabs and cancel preserves the list");
     function type(text) { input.focus(); input.value=text; input.dispatchEvent(new win.Event("input",{bubbles:true})); }
     const names = () => [...list.querySelectorAll(".product-suggestion-name")].map(option=>option.textContent);
+    for (const mode of ["dark","light"]) {
+      doc.body.dataset.colorMode=mode;
+      doc.body.dataset.theme=mode==="light" ? "porcelain-blue" : "mono";
+      for (const query of ["","b","no-match"]) {
+        type(query);
+        const backdrop=win.getComputedStyle(doc.body,"::before");
+        assert(backdrop.content!=="none" && backdrop.backgroundColor==="rgba(0, 0, 0, 0.5)","Search background is not dimmed for "+mode+" / "+query);
+        assert(Number(backdrop.zIndex)<Number(win.getComputedStyle(doc.querySelector("#add-form")).zIndex),"Search dock is covered by dimming");
+        assert(backdrop.pointerEvents==="none","Dimming blocks existing pointer interactions");
+      }
+      input.blur();
+      assert(win.getComputedStyle(doc.body,"::before").content==="none","Dimming remains after leaving search");
+      type("b");
+      doc.querySelector("#open-common-items").click();
+      input.focus();
+      assert(win.getComputedStyle(doc.body,"::before").content==="none","Dialog has an additional search backdrop");
+      doc.querySelector("#cancel-common-items").click();
+    }
+    doc.body.dataset.colorMode="dark";doc.body.dataset.theme="mono";
+    results.push("PASS Search background dims by 50% for empty input, matches and no matches in dark/light mode; dock stays above it, blur removes it and dialogs do not double-dim");
     const baseline = {};
     for (const kind of ["frequent", "recent", "regular"]) {
       doc.querySelector("#open-common-items").click();

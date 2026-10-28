@@ -307,6 +307,7 @@ body[data-color-mode="light"] .dot.online { background: var(--success); }
 body[data-color-mode="light"] .dot.pending { background: #8b6516; }
 .app.planning-mode { padding-bottom: calc(var(--planning-dock-height, 84px) + 24px); }
 body:not([data-theme]), body[data-theme="mono"] { --dock-line: #595959; --dock-input-bg: #141414; }
+body:has(.add-form:not([hidden]):focus-within):not(:has(dialog[open]))::before { content: ""; position: fixed; inset: 0; z-index: 19; background: rgb(0 0 0 / .5); pointer-events: none; }
 .add-form { position: fixed; z-index: 20; bottom: var(--planning-dock-offset, 0px); left: 50%; transform: translateX(-50%); width: min(100%, 700px); display: flex; gap: 8px; margin: 0; padding: 12px clamp(16px, 5vw, 32px) calc(16px + max(12px, env(safe-area-inset-bottom))); border-top: 1px solid var(--dock-line); background: var(--dock-bg); }
 .add-form.keyboard-open { padding-bottom: 12px; }
 .product-suggestions { position: absolute; bottom: calc(100% + 6px); left: clamp(16px, 5vw, 32px); right: clamp(16px, 5vw, 32px); z-index: 15; max-height: min(442px, var(--planning-suggestion-height, 50dvh)); overflow-y: auto; overscroll-behavior: contain; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 -12px 28px #0008; }

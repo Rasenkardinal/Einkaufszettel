@@ -8,6 +8,8 @@ Wird ein bereits vorhandener Artikel erneut per Alexa hinzugefügt, verwendet de
 
 Bereits offene Artikel bleiben in Suchvorschlägen und der Artikel-Schnellauswahl sichtbar: Ein grüner Haken und **Auf der Liste** kennzeichnen sie; sie lassen sich nicht erneut auswählen. In den Suchvorschlägen steht diese Gruppe unabhängig von der Häufigkeit ganz oben, also am weitesten vom unteren Suchfeld entfernt. In **Häufigste**, **Kürzlich** und **Regelmäßig** bleibt dagegen die jeweilige statistische Sortierung unverändert. Der Status berücksichtigt den aktuellen Artikelkatalog; abgehakte Artikel können wieder hinzugefügt werden.
 
+Bei fokussierter Eingabe-/Suchleiste wird der Hintergrund wie beim Dreipunktmenü mit 50 % Schwarz abgedunkelt. Eingabeleiste und Suchvorschläge bleiben unverändert hell. Die Abdunkelung gilt auch bei leerer Eingabe oder ohne Suchtreffer und endet beim Verlassen des Eingabefelds. In Dialogen und bei ausgeblendeter Eingabeleiste gibt es keine zusätzliche Abdunkelung.
+
 ## Funktionsumfang
 
 Alle angemeldeten HA-Nutzer können Listen, Kategorien, Supermärkte und den Artikelkatalog in der App verwalten; HA-Administratorrechte sind dafür nicht erforderlich. Änderungen einschließlich Löschungen gelten für alle Nutzer. Die Einrichtung der Integration und die technische HA-Konfiguration bleiben davon unberührt.
