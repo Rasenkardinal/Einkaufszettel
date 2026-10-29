@@ -634,6 +634,7 @@ function loadMarketSelection() {
 }
 
 function loadCachedSupermarkets() {
+  applyCatalog({ supermarkets: [] });
   try {
     const catalog = localStorage.getItem(CATALOG_KEY);
     if (catalog) applyCatalog(JSON.parse(catalog));
@@ -4690,10 +4691,19 @@ async function start() {
   elements.openAppBrowser.hidden = false;
   try {
     database = await openDatabase();
-    loadCachedSupermarkets();
     availableLists = (await readCachedLists())
       .filter((list) => list.enabled !== false)
       .map(({ entry_id, name }) => ({ entry_id, name }));
+  } catch (error) {
+    finishStartupConnection();
+    showError(error);
+    updateConnection("offline", "Die lokal gespeicherten Listen konnten nicht geladen werden.");
+    elements.connectionLabel.textContent = "Lokaler Speicher nicht verfügbar";
+    setBusy(false);
+    return;
+  }
+  try {
+    loadCachedSupermarkets();
     if (!availableLists.some((list) => list.entry_id === entryId)) {
       entryId = availableLists[0]?.entry_id || null;
     }
@@ -4729,7 +4739,10 @@ async function start() {
   } catch (error) {
     finishStartupConnection();
     showError(error);
-    elements.connectionLabel.textContent = "Lokaler Speicher nicht verfügbar";
+    updateConnection("offline", "Die App konnte nicht vollständig gestartet werden. Bitte erneut laden.");
+    elements.connectionLabel.textContent = "App konnte nicht gestartet werden";
+  } finally {
+    setBusy(false);
   }
 }
 

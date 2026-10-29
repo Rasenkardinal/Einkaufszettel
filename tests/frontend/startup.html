@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Startup regression tests</title>
+<pre id="results">Running...</pre>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all(["app.html", "app.js"].map(file =>
+    fetch(base + file, {cache: "no-store"}).then(response => response.text())));
+  const results = [];
+  const assert = (condition, message) => { if (!condition) throw Error(message); };
+  const catalogKey = "einkaufszettel.catalog";
+  const marketsKey = "einkaufszettel.supermarkets";
+  const selectionKey = "einkaufszettel.supermarket.test";
+  const catalog = {
+    catalog_id: "hardware",
+    supermarkets: [{id: "diy", name: "Baumarkt", catalog_id: "hardware"}],
+    catalogs: {
+      supermarket: {id: "supermarket", name: "Supermarkt", categories: [], products: []},
+      hardware: {
+        id: "hardware", name: "Baumarkt", categories: [{id: "tools", name: "Werkzeug"}],
+        products: [{key: "hammer", name: "Hammer", category_id: "tools"}],
+      },
+      tasks: {id: "tasks", name: "Aufgaben", categories: [], products: []},
+    },
+  };
+  async function test(name, options, check) {
+    const frame = document.createElement("iframe");
+    frame.hidden = true;
+    document.body.append(frame);
+    const loaded = new Promise(resolve => frame.onload = resolve);
+    frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+      .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+    await loaded;
+    const win = frame.contentWindow;
+    const databaseName = `einkaufszettel-startup-test-${crypto.randomUUID()}`;
+    const values = new Map(Object.entries(options.storage || {}));
+    const storage = {
+      getItem: key => {
+        if (options.catalogReadFailure && key === catalogKey) {
+          throw new win.DOMException("Catalog storage denied", "SecurityError");
+        }
+        return values.get(key) ?? null;
+      },
+      setItem: (key, value) => values.set(key, value),
+      removeItem: key => values.delete(key),
+    };
+    const environment = {connections: 0, options};
+    let api;
+    try {
+      api = win.Function("test", "localStorage", "navigator", "indexedDB",
+        script.replace('const STORAGE_NAME = "einkaufszettel-offline-v1";',
+          `const STORAGE_NAME = ${JSON.stringify(databaseName)};`)
+          .replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+          entryId = null;
+          window.removeEventListener("pageshow", resumeConnection);
+          connect = () => {
+            test.connections++;
+            finishStartupConnection();
+            updateConnection(pendingOperations.length ? "pending" : "offline");
+          };
+          if (test.options.renderFailure) {
+            renderListSelection = () => { throw new Error("Rendering failed"); };
+          }
+          if (test.options.readFailure) {
+            readCachedLists = async () => { throw new Error("Database read failed"); };
+          }
+          return {
+            start,
+            seed: async () => {
+              database = await openDatabase();
+              await storeRequest("lists", "put", {
+                entry_id: "test", name: "Einkauf", items: [
+                  {uid: "saved", summary: "Hammer", status: "needs_action",
+                    metadata: {catalog_id: "hardware", category_id: "tools"}}
+                ]
+              });
+              await storeRequest("operations", "put", {
+                id: "pending", entry_id: "test", created_at: 1, type: "add_item",
+                uid: "local", summary: "Nagel", metadata: {catalog_id: "hardware"}
+              });
+              database.close();
+            },
+            state: () => ({catalogs, supermarkets, activeCatalogId, selectedMarket,
+              currentItems, pendingOperations, busy,
+              message: elements.message.textContent, label: elements.connectionLabel.textContent,
+              status: elements.syncActions.dataset.status}),
+            stored: async () => ({lists: await readCachedLists(), queue: await readQueue(null)}),
+            close: () => { finishStartupConnection(); database?.close(); }
+          };
+        `)(environment, storage, {onLine: true}, options.databaseFailure
+          ? {open() { throw new win.DOMException("Storage denied", "SecurityError"); }}
+          : win.indexedDB);
+      if (options.seed) await api.seed();
+      await api.start();
+      await check(api.state(), environment, api, values);
+      results.push(`PASS ${name}`);
+    } finally {
+      api?.close();
+      frame.remove();
+      await new Promise((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(databaseName);
+        request.onsuccess = resolve;
+        request.onerror = () => reject(request.error);
+        request.onblocked = () => reject(Error("Test database is still open"));
+      });
+    }
+  }
+  await test("First start without any cached data reaches connection", {}, (state, env) => {
+    assert(env.connections === 1 && !state.busy && !state.message,
+      `Fresh startup failed (${env.connections} connections): ${JSON.stringify(state)}`);
+    assert(Object.keys(state.catalogs).join() === "supermarket,hardware,tasks", "Default catalogs missing");
+    assert(state.activeCatalogId === "supermarket" &&
+      state.catalogs.supermarket.products.length === 0, "Default catalog is not empty");
+    assert(state.label !== "Lokaler Speicher nicht verfügbar", "False storage error");
+  });
+  await test("Legacy supermarket cache migrates to standard catalogs", {
+    storage: {[marketsKey]: JSON.stringify([{id: "shop", name: "Laden"}])},
+  }, (state, env) => {
+    assert(env.connections === 1 && !state.message, "Legacy startup failed");
+    assert(state.supermarkets[0].name === "Laden" && state.catalogs.hardware, "Legacy data lost");
+  });
+  await test("Cached catalog and market retain saved items and pending operations", {
+    seed: true,
+    storage: {[catalogKey]: JSON.stringify(catalog), [selectionKey]: "diy"},
+  }, async (state, env, api) => {
+    assert(env.connections === 1 && !state.message, "Cached startup failed");
+    assert(state.activeCatalogId === "hardware" && state.selectedMarket === "diy", "Market catalog lost");
+    assert(state.currentItems.some(item => item.uid === "saved" && item.summary === "Hammer") &&
+      state.currentItems.some(item => item.summary === "Nagel"), "Saved or queued item lost");
+    assert(state.pendingOperations.length === 1 && state.status === "pending", "Pending state lost");
+    const stored = await api.stored();
+    assert(stored.lists.length === 1 && stored.queue[0].id === "pending", "Stored data modified");
+  });
+  await test("Lists without a catalog cache still load pending changes", {
+    seed: true,
+  }, async (state, env, api) => {
+    assert(env.connections === 1 && !state.message && state.pendingOperations.length === 1,
+      "Missing catalog prevented loading local changes");
+    const stored = await api.stored();
+    assert(stored.queue[0].id === "pending" && stored.lists[0].items[0].uid === "saved",
+      "Missing catalog changed stored data");
+  });
+  await test("Unreadable catalog storage does not block the list database or connection", {
+    seed: true, catalogReadFailure: true,
+  }, async (state, env, api) => {
+    assert(env.connections === 1 && !state.busy && state.message === "Catalog storage denied",
+      "Catalog storage error stopped startup or was hidden");
+    assert(state.catalogs.supermarket && state.label !== "Lokaler Speicher nicht verfügbar",
+      "Catalog storage error was confused with list database failure");
+    assert(state.pendingOperations.length === 1, "Pending changes were not loaded");
+    const stored = await api.stored();
+    assert(stored.queue[0].id === "pending" && stored.lists[0].items[0].uid === "saved",
+      "Catalog storage error changed stored data");
+  });
+  for (const [name, value] of [
+    ["Malformed JSON", "{broken"],
+    ["Invalid catalog structure", JSON.stringify({supermarkets: [], catalogs: {}})],
+  ]) {
+    await test(`${name} reports an error but continues connecting`, {
+      seed: true, storage: {[catalogKey]: value},
+    }, async (state, env, api, values) => {
+      assert(env.connections === 1 && !state.busy && state.message, "Cache error stopped startup or was hidden");
+      assert(state.catalogs.supermarket && state.label !== "Lokaler Speicher nicht verfügbar",
+        "Cache error was misclassified");
+      assert(values.get(catalogKey) === value, "Invalid cache silently overwritten");
+      const stored = await api.stored();
+      assert(stored.queue[0].id === "pending", "Recovery deleted pending operations");
+    });
+  }
+  for (const option of ["databaseFailure", "readFailure"]) {
+    await test(`${option} is reported as unavailable local storage`, {
+      [option]: true,
+    }, (state, env) => {
+      assert(env.connections === 0 && !state.busy && state.message, "Database failure hidden");
+      assert(state.status === "offline" && state.label === "Lokaler Speicher nicht verfügbar",
+        "Database failure not identified");
+    });
+  }
+  await test("A non-storage startup failure does not blame local storage", {
+    renderFailure: true,
+  }, (state, env) => {
+    assert(env.connections === 0 && !state.busy && state.message === "Rendering failed",
+      "Startup failure hidden or controls still busy");
+    assert(state.status === "offline" && state.label === "App konnte nicht gestartet werden",
+      "Unrelated failure misclassified as storage error");
+  });
+  return results;
+}
+runTests().then(results => {
+  document.querySelector("#results").textContent = `${results.join("\n")}\n\n${results.length} tests passed`;
+  document.body.dataset.result = "passed";
+}).catch(error => {
+  document.querySelector("#results").textContent = error.stack;
+  document.body.dataset.result = "failed";
+});
+</script>
+</html>
