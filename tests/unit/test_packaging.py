@@ -61,6 +61,11 @@ def test_hacs_metadata_and_integration_layout():
         encoding="utf-8"
     )
     app_html = (webapp / "app.html").read_text(encoding="utf-8")
+    default_theme_color = re.search(
+        r'<meta name="theme-color" content="([^"]+)"', app_html
+    ).group(1)
+    assert web_manifest["theme_color"] == default_theme_color == "#141414"
+    assert web_manifest["background_color"] == default_theme_color
     assert 'class="brand-icon" src="./icon.svg"' in app_html
     assert "open-app-browser" in app_html
     assert 'id="list-select"' in app_html
@@ -89,7 +94,7 @@ def test_web_app_assets_are_versioned_and_precached():
     assert 'id="app-version"' in html
     for asset in assets:
         assert f'"{asset}"' in worker
-    assert "einkaufszettel-shell-v86" in worker
+    assert "einkaufszettel-shell-v87" in worker
     assert ".then(() => self.skipWaiting())" in worker
     script = (webapp / "app.js").read_text(encoding="utf-8")
     assert "serviceWorkerRegistration.update()" in script
