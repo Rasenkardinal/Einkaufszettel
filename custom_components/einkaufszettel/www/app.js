@@ -76,7 +76,6 @@ const elements = {
   endShoppingDialog: document.querySelector("#end-shopping-confirm"),
   endShoppingCancel: document.querySelector("#cancel-end-shopping"),
   endShoppingConfirm: document.querySelector("#end-shopping-confirm-button"),
-  empty: document.querySelector("#empty"),
   message: document.querySelector("#message"),
   resolveSyncConflicts: document.querySelector("#resolve-sync-conflicts"),
   syncConflicts: document.querySelector("#sync-conflicts"),
@@ -2951,7 +2950,6 @@ function render() {
     const categoryId = categories.some(c => c.id === item.metadata?.category_id) ? item.metadata.category_id : "";
     groupLists.get(categoryId).append(row);
   }
-  elements.empty.hidden = currentItems.length > 0;
   if (!planningMode) {
     const endShoppingItem = elements.endShoppingTemplate.content.cloneNode(true);
     const endShoppingAction = endShoppingItem.querySelector(".end-shopping-action");

@@ -68,6 +68,8 @@ def test_hacs_metadata_and_integration_layout():
     assert 'id="setup"' in app_html
     assert 'id="manage-lists"' in app_html
     assert 'id="list-management"' in app_html
+    assert 'id="empty"' not in app_html
+    assert "Diese App-Liste ist leer." not in app_html
 
 
 def test_web_app_assets_are_versioned_and_precached():
@@ -87,7 +89,7 @@ def test_web_app_assets_are_versioned_and_precached():
     assert 'id="app-version"' in html
     for asset in assets:
         assert f'"{asset}"' in worker
-    assert "einkaufszettel-shell-v85" in worker
+    assert "einkaufszettel-shell-v86" in worker
     assert ".then(() => self.skipWaiting())" in worker
     script = (webapp / "app.js").read_text(encoding="utf-8")
     assert "serviceWorkerRegistration.update()" in script
