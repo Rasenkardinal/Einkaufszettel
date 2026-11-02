@@ -53,6 +53,9 @@ async function runTests() {
       removeItem: key => storage.delete(key),
     });
   const dialog = doc.querySelector("#move-item"), confirm = doc.querySelector("#confirm-move-item");
+  assert(win.getComputedStyle(dialog).display === "none", "Closed dialog is visible");
+  assert(win.getComputedStyle(dialog).position === "fixed" &&
+    win.getComputedStyle(dialog).inset === "0px", "Dialog positioning changes when entering the modal layer");
   const swipe = (dx,dy=0,cancel=false) => {
     const row = doc.querySelector(".item");
     row.dispatchEvent(new win.PointerEvent("pointerdown", {pointerId:7,button:0,clientX:140,clientY:100,bubbles:true}));
@@ -264,9 +267,41 @@ async function runTests() {
   assert(options.scrollTop > 20, "Dragging near the edge did not scroll the list");
   pointer("pointercancel",drag.row,drag.x,drag.y);
   assert(listOrder().startsWith("target-0,target-1"), "Cancelling auto-scroll drag changed the default");
-  doc.querySelector("#cancel-move-item").click();
-  await waitFor(() => !dialog.open);
+  await closeDialog();
   results.push("PASS Long target lists scroll internally and long names wrap");
+  const nextFrame = () => new Promise(resolve => win.requestAnimationFrame(resolve));
+  for (const theme of ["mono", "porcelain-blue"]) {
+    api.setTheme(theme);
+    for (const [width, height] of [[320,568],[390,844],[1024,768]]) {
+      frame.style.width = width + "px";
+      frame.style.height = height + "px";
+      await nextFrame();
+      await api.openMoveItem("one");
+      const initial = dialog.getBoundingClientRect();
+      const assertCentered = () => {
+        const rect = dialog.getBoundingClientRect();
+        assert(Math.abs(rect.left + rect.width / 2 - win.innerWidth / 2) <= 1 &&
+          Math.abs(rect.top + rect.height / 2 - win.innerHeight / 2) <= 1,
+          `Dialog is not centered at ${width}x${height} (${theme})`);
+        assert(Math.abs(rect.left - initial.left) <= 1 && Math.abs(rect.top - initial.top) <= 1,
+          "Dialog jumps after opening");
+        assert(rect.top >= 0 && rect.bottom <= win.innerHeight && rect.left >= 0 && rect.right <= win.innerWidth,
+          "Dialog extends beyond the viewport");
+      };
+      assertCentered();
+      for (let sample = 0; sample < 3; sample++) {
+        await nextFrame();
+        assertCentered();
+      }
+      assert(doc.activeElement.id === "close-move-item", "Opening focus changed");
+      await closeDialog();
+      assert(win.getComputedStyle(dialog).display === "none", "Closing left a visible dialog");
+    }
+  }
+  frame.style.width = "390px";
+  frame.style.height = "844px";
+  api.setTheme("mono");
+  results.push("PASS Dialog opens centered without frame-to-frame jumps at phone and desktop sizes in both themes");
   api.setLists([{entry_id:"a",name:"ALDI"},{entry_id:"b",name:"REWE"},
     {entry_id:"c",name:"dm"},{entry_id:"d",name:"Wochenmarkt"},{entry_id:"e",name:"Baumarkt"}]);
   await api.openMoveItem("one");

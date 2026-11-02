@@ -411,7 +411,7 @@ dialog::backdrop { background: #000a; }
 dialog form { display: grid; gap: 12px; }
 dialog h2, dialog p { margin: 0; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
-#move-item { width: min(92vw, 390px); max-height: calc(100dvh - 32px); }
+#move-item { position: fixed; inset: 0; margin: auto; width: min(92vw, 390px); max-height: calc(100dvh - 32px); }
 #move-item-form { gap: 16px; }
 .move-item-header { display: flex; align-items: flex-start; gap: 12px; }
 .move-item-header h2 { flex: 1; min-width: 0; font-size: 19px; line-height: 1.3; }
