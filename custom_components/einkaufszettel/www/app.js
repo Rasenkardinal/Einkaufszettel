@@ -2905,6 +2905,7 @@ async function openMoveItem(uid, listId = entryId) {
   if (!item) throw new Error("Der Artikel ist nicht mehr auf dieser Liste.");
   cancelMoveListSort?.();
   movingItem = { uid, listId };
+  const openingItem = movingItem;
   elements.moveItemDescription.textContent = [
     [item.summary, item.metadata?.quantity].filter(Boolean).join(" · "),
     `Aktuell auf „${elements.listName.textContent}“ · Zielliste auswählen`,
@@ -2913,7 +2914,7 @@ async function openMoveItem(uid, listId = entryId) {
   elements.moveItemOptions.replaceChildren();
   setMessage(elements.moveItemMessage, "");
   const cachedLists = await readCachedLists();
-  if (entryId !== listId || movingItem?.uid !== uid) return;
+  if (entryId !== listId || movingItem !== openingItem) return;
   let storedOrder = [];
   try {
     storedOrder = readMoveListOrder(listId);
@@ -2943,16 +2944,20 @@ async function openMoveItem(uid, listId = entryId) {
       count.textContent = `${openCount} ${openCount === 1 ? "offener Artikel" : "offene Artikel"} · zuletzt gespeichert`;
       label.append(count);
     }
-    elements.moveItemOptions.scrollTop = 0;
-    initializeMoveListSorting(listId, storedOrder);
     option.append(input, label);
     elements.moveItemOptions.append(option);
   }
+  elements.moveItemOptions.scrollTop = 0;
+  initializeMoveListSorting(listId, storedOrder);
   if (!elements.moveItemOptions.childElementCount) {
     setMessage(elements.moveItemMessage, "Keine andere Liste verfügbar. Aktiviere eine weitere Liste unter „Listen verwalten“.");
   }
+  elements.moveItem.classList.add("opening");
   elements.moveItem.showModal();
   document.querySelector("#close-move-item").focus({ preventScroll: true });
+  // Let the modal layer render once before revealing it on Android Chrome.
+  await new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)));
+  if (movingItem === openingItem && elements.moveItem.open) elements.moveItem.classList.remove("opening");
 }
 
 for (const id of ["close-move-item", "cancel-move-item"]) {
@@ -2968,6 +2973,7 @@ elements.moveItem.addEventListener("keydown", event => {
 });
 elements.moveItem.addEventListener("close", () => {
   if (elements.moveItem.open) return;
+  elements.moveItem.classList.remove("opening");
   cancelMoveListSort?.();
   movingItem = null;
 });

@@ -63,7 +63,7 @@ async function runTests() {
     row.dispatchEvent(new win.PointerEvent(cancel?"pointercancel":"pointerup", {pointerId:7,clientX:140+dx,clientY:100+dy,bubbles:true}));
   };
   swipe(100);
-  await waitFor(() => dialog.open);
+  await waitFor(() => dialog.open && !dialog.classList.contains("opening"));
   assert(doc.querySelector("#move-item-title").textContent === "Auf andere Liste verschieben", "Wrong dialog title");
   assert(doc.querySelectorAll(".move-item-option").length === 2, "Current list offered as destination");
   assert(confirm.disabled, "Move enabled without a destination");
@@ -316,6 +316,49 @@ async function runTests() {
   assert(listOrder().startsWith("target-0,target-1"), "Cancelling auto-scroll drag changed the default");
   await closeDialog();
   results.push("PASS Long target lists scroll internally and long names wrap");
+  const nativeFrame = win.requestAnimationFrame;
+  const pendingFrames = [];
+  win.requestAnimationFrame = callback => { pendingFrames.push(callback); return 0; };
+  const assertPreparing = () => {
+    assert(dialog.open && win.getComputedStyle(dialog).opacity === "0" &&
+      win.getComputedStyle(dialog, "::backdrop").opacity === "0",
+      "Modal or backdrop is visible before its first render completes");
+    assert(win.getComputedStyle(dialog).pointerEvents === "none", "Preparing dialog accepts pointer input");
+  };
+  try {
+    const opening = api.openMoveItem("one");
+    await waitFor(() => dialog.open);
+    assertPreparing();
+    assert(pendingFrames.length === 1, "Opening did not schedule its initial render");
+    pendingFrames.shift()(performance.now());
+    assertPreparing();
+    assert(pendingFrames.length === 1, "Dialog was revealed before an intervening render");
+    pendingFrames.shift()(performance.now());
+    await opening;
+    assert(win.getComputedStyle(dialog).opacity === "1" &&
+      win.getComputedStyle(dialog, "::backdrop").opacity === "1", "Prepared dialog or backdrop stayed transparent");
+    assert(doc.activeElement.id === "close-move-item", "Preparing the dialog lost focus");
+    await closeDialog();
+
+    const interrupted = api.openMoveItem("one");
+    await waitFor(() => dialog.open);
+    pendingFrames.shift()(performance.now());
+    await closeDialog();
+    const reopened = api.openMoveItem("one");
+    await waitFor(() => dialog.open);
+    pendingFrames.shift()(performance.now());
+    await interrupted;
+    assertPreparing();
+    pendingFrames.shift()(performance.now());
+    assertPreparing();
+    pendingFrames.shift()(performance.now());
+    await reopened;
+    assert(win.getComputedStyle(dialog).opacity === "1", "Reopened dialog stayed hidden");
+    await closeDialog();
+  } finally {
+    win.requestAnimationFrame = nativeFrame;
+  }
+  results.push("PASS Modal and backdrop remain transparent through the first render; closing/reopening cannot reveal an unprepared dialog");
   const nextFrame = () => new Promise(resolve => win.requestAnimationFrame(resolve));
   for (const theme of ["mono", "porcelain-blue"]) {
     api.setTheme(theme);
@@ -327,6 +370,7 @@ async function runTests() {
       const initial = dialog.getBoundingClientRect();
       const assertCentered = () => {
         const rect = dialog.getBoundingClientRect();
+        assert(win.getComputedStyle(dialog).opacity === "1", "Prepared dialog is not visible");
         assert(Math.abs(rect.left + rect.width / 2 - win.innerWidth / 2) <= 1 &&
           Math.abs(rect.top + rect.height / 2 - win.innerHeight / 2) <= 1,
           `Dialog is not centered at ${width}x${height} (${theme})`);

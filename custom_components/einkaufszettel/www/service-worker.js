@@ -1,8 +1,8 @@
-const CACHE_NAME = "einkaufszettel-shell-v91";
+const CACHE_NAME = "einkaufszettel-shell-v92";
 const APP_FILES = [
   "./app.html",
-  "./app.css?v=0.4.61",
-  "./app.js?v=0.4.61",
+  "./app.css?v=0.4.62",
+  "./app.js?v=0.4.62",
   "./manifest.json",
   "./icon.svg",
   "./icon-192.png",
