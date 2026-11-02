@@ -344,7 +344,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .message[data-status="success"], #management-message[data-status="success"], #design-message[data-status="success"] { color: var(--success); }
 .message[data-status="error"], #management-message[data-status="error"], #design-message[data-status="error"] { color: var(--error); }
 .message[data-status="info"], #management-message[data-status="info"], #design-message[data-status="info"] { color: var(--muted); }
-.items { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.items { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; overflow-x: clip; }
 .item { min-height: 58px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); color: var(--input-text); touch-action: pan-y; transition: transform .18s ease, opacity .18s ease; }
 .item.swiping { transition: none; }
 .item.swipe-removing { transform: translateX(-100%); opacity: 0; }

@@ -60,8 +60,23 @@ async function runTests() {
     const row = doc.querySelector(".item");
     row.dispatchEvent(new win.PointerEvent("pointerdown", {pointerId:7,button:0,clientX:140,clientY:100,bubbles:true}));
     row.dispatchEvent(new win.PointerEvent("pointermove", {pointerId:7,clientX:140+dx,clientY:100+dy,bubbles:true,cancelable:true}));
+    assert(doc.documentElement.scrollWidth <= win.innerWidth &&
+      doc.body.scrollWidth <= win.innerWidth, "Swiping expands the page beyond the viewport");
     row.dispatchEvent(new win.PointerEvent(cancel?"pointercancel":"pointerup", {pointerId:7,clientX:140+dx,clientY:100+dy,bubbles:true}));
   };
+  for (const width of [320,390,430]) {
+    frame.style.width = width + "px";
+    for (const dx of [100,330,-330]) swipe(dx,0,true);
+  }
+  frame.style.width = "390px";
+  const itemList = doc.querySelector(".items"), scrollSpacer = doc.createElement("li");
+  scrollSpacer.style.height = "1200px";
+  itemList.append(scrollSpacer);
+  win.scrollTo(0,200);
+  assert(win.scrollY > 0 && itemList.scrollTop === 0, "Swipe clipping prevents normal vertical page scrolling");
+  scrollSpacer.remove();
+  win.scrollTo(0,0);
+  results.push("PASS Wide swipes never expand the page horizontally at phone widths; vertical page scrolling remains available");
   swipe(100);
   await waitFor(() => dialog.open && !dialog.classList.contains("opening"));
   assert(doc.querySelector("#move-item-title").textContent === "Auf andere Liste verschieben", "Wrong dialog title");
