@@ -6,6 +6,7 @@ const DOMAIN = "einkaufszettel";
 const DESIGN_KEY = "einkaufszettel.design";
 const MARKETS_KEY = "einkaufszettel.supermarkets";
 const MARKET_SELECTION_PREFIX = "einkaufszettel.supermarket.";
+const MOVE_LIST_ORDER_PREFIX = "einkaufszettel.move_list_order.";
 const CATALOG_KEY = "einkaufszettel.catalog";
 const MODE_KEY = "einkaufszettel.mode";
 
@@ -2707,11 +2708,180 @@ elements.endShoppingConfirm.addEventListener("click", () => {
 
 let movingItem = null;
 let savingMove = false;
+let cancelMoveListSort;
+
+function readMoveListOrder(listId) {
+  const stored = localStorage.getItem(MOVE_LIST_ORDER_PREFIX + listId);
+  if (stored === null) return [];
+  const order = JSON.parse(stored);
+  if (!Array.isArray(order) || order.some(id => typeof id !== "string" || !id) ||
+      new Set(order).size !== order.length) {
+    throw new Error("Die gespeicherte Listenreihenfolge ist ungültig.");
+  }
+  return order;
+}
+
+function initializeMoveListSorting(listId, storedOrder) {
+  cancelMoveListSort?.();
+  const list = elements.moveItemOptions;
+  const controller = new AbortController();
+  const { signal } = controller;
+  let drag;
+  let frame;
+  let suppressClickUntil = 0;
+  const order = () => [...list.children].map(row => row.querySelector("input").value);
+  function restore(ids) {
+    const rows = new Map([...list.children].map(row => [row.querySelector("input").value, row]));
+    for (const id of ids) list.append(rows.get(id));
+  }
+  function save(previous) {
+    const ids = order();
+    if (ids.every((id, index) => id === previous[index])) return;
+    try {
+      const merged = [...ids, ...storedOrder.filter(id => !ids.includes(id))];
+      localStorage.setItem(MOVE_LIST_ORDER_PREFIX + listId, JSON.stringify(merged));
+      storedOrder = merged;
+    } catch (error) {
+      restore(previous);
+      const message = new Error(`Die Listenreihenfolge konnte auf diesem Gerät nicht gespeichert werden: ${error.message}`);
+      setMessage(elements.moveItemMessage, message.message);
+      showError(message);
+    }
+  }
+  function positionRow() {
+    if (!drag?.active) return;
+    const target = [...list.children].filter(row => row !== drag.row).find(row => {
+      const rect = row.getBoundingClientRect();
+      return drag.y < rect.top + rect.height / 2;
+    });
+    if (drag.row.nextElementSibling !== (target || null)) list.insertBefore(drag.row, target || null);
+  }
+  function scrollAtEdge(timestamp) {
+    if (!drag?.active) return;
+    const elapsed = Math.min(timestamp - (drag.time || timestamp), 32);
+    drag.time = timestamp;
+    const rect = list.getBoundingClientRect();
+    const edge = Math.min(48, rect.height / 4);
+    const direction = drag.y < rect.top + edge ? -Math.min(1, (rect.top + edge - drag.y) / edge)
+      : drag.y > rect.bottom - edge ? Math.min(1, (drag.y - rect.bottom + edge) / edge) : 0;
+    if (direction && drag.x >= rect.left && drag.x <= rect.right) {
+      list.scrollTop += direction * elapsed * .65;
+      positionRow();
+    }
+    frame = window.requestAnimationFrame(scrollAtEdge);
+  }
+  function finish(cancelled = false) {
+    if (!drag) return;
+    const previous = drag;
+    drag = undefined;
+    window.clearTimeout(previous.timer);
+    window.cancelAnimationFrame(frame);
+    if (previous.active) {
+      suppressClickUntil = performance.now() + 700;
+      if (cancelled) restore(previous.order);
+      else save(previous.order);
+    }
+    if (previous.type !== "touch" && list.hasPointerCapture(previous.id)) list.releasePointerCapture(previous.id);
+  }
+  function begin(event, id, type, x, y) {
+    const row = event.target.closest(".move-item-option");
+    if (!row || drag || savingMove || (type !== "touch" && event.button !== 0)) return;
+    suppressClickUntil = 0;
+    drag = { row, id, type, x, y, startX: x, startY: y, order: order(), active: false };
+    drag.timer = window.setTimeout(() => {
+      if (!drag || !elements.moveItem.open) return;
+      drag.active = true;
+      suppressClickUntil = Infinity;
+      if (type !== "touch") list.setPointerCapture(id);
+      frame = window.requestAnimationFrame(scrollAtEdge);
+    }, 500);
+  }
+  function move(event, id, x, y) {
+    if (!drag || drag.id !== id) return;
+    drag.x = x;
+    drag.y = y;
+    if (!drag.active) {
+      if (Math.hypot(x - drag.startX, y - drag.startY) >= 10) finish(true);
+      return;
+    }
+    event.preventDefault();
+    positionRow();
+  }
+  list.addEventListener("pointerdown", event => {
+    if (event.pointerType === "touch" || event.isPrimary === false) return;
+    begin(event, event.pointerId, event.pointerType, event.clientX, event.clientY);
+  }, { signal });
+  window.addEventListener("pointermove", event => {
+    if (event.pointerType !== "touch") move(event, event.pointerId, event.clientX, event.clientY);
+  }, { signal, passive: false });
+  window.addEventListener("pointerup", event => {
+    if (drag?.type !== "touch" && drag?.id === event.pointerId) finish();
+  }, { signal });
+  window.addEventListener("pointercancel", event => {
+    if (drag?.type !== "touch" && drag?.id === event.pointerId) finish(true);
+  }, { signal });
+  list.addEventListener("lostpointercapture", event => {
+    if (drag?.type !== "touch" && drag?.id === event.pointerId) finish(true);
+  }, { signal });
+  list.addEventListener("touchstart", event => {
+    if (event.touches.length !== 1) {
+      finish(true);
+      return;
+    }
+    const touch = event.changedTouches[0];
+    begin(event, touch.identifier, "touch", touch.clientX, touch.clientY);
+  }, { signal, passive: true });
+  list.addEventListener("touchmove", event => {
+    if (drag?.type !== "touch") return;
+    const touch = [...event.changedTouches].find(value => value.identifier === drag.id);
+    if (touch) move(event, touch.identifier, touch.clientX, touch.clientY);
+  }, { signal, passive: false });
+  list.addEventListener("touchend", event => {
+    if (drag?.type === "touch" && [...event.changedTouches].some(touch => touch.identifier === drag.id)) {
+      if (drag.active) event.preventDefault();
+      finish();
+    }
+  }, { signal, passive: false });
+  list.addEventListener("touchcancel", () => finish(true), { signal });
+  list.addEventListener("click", event => {
+    if (performance.now() >= suppressClickUntil) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, { signal, capture: true });
+  list.addEventListener("contextmenu", event => event.preventDefault(), { signal });
+  list.addEventListener("dragstart", event => event.preventDefault(), { signal });
+  window.addEventListener("keydown", event => {
+    if (!drag?.active) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.key === "Escape") finish(true);
+  }, { signal, capture: true });
+  list.addEventListener("keydown", event => {
+    if (!event.altKey || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+    const row = event.target.closest(".move-item-option");
+    if (!row || savingMove) return;
+    event.preventDefault();
+    const previous = order();
+    const sibling = event.key === "ArrowUp" ? row.previousElementSibling : row.nextElementSibling;
+    if (!sibling) return;
+    list.insertBefore(row, event.key === "ArrowUp" ? sibling : sibling.nextElementSibling);
+    save(previous);
+    row.querySelector("input").focus({ preventScroll: true });
+  }, { signal });
+  for (const type of ["blur", "pagehide"]) window.addEventListener(type, () => finish(true), { signal });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) finish(true); }, { signal });
+  cancelMoveListSort = () => {
+    finish(true);
+    controller.abort();
+    cancelMoveListSort = undefined;
+  };
+}
 
 async function openMoveItem(uid, listId = entryId) {
   if (listId !== entryId || elements.moveItem.open) return;
   const item = currentItems.find(value => value.uid === uid);
   if (!item) throw new Error("Der Artikel ist nicht mehr auf dieser Liste.");
+  cancelMoveListSort?.();
   movingItem = { uid, listId };
   elements.moveItemDescription.textContent = [
     [item.summary, item.metadata?.quantity].filter(Boolean).join(" · "),
@@ -2722,12 +2892,24 @@ async function openMoveItem(uid, listId = entryId) {
   setMessage(elements.moveItemMessage, "");
   const cachedLists = await readCachedLists();
   if (entryId !== listId || movingItem?.uid !== uid) return;
-  for (const list of availableLists.filter(value => value.entry_id !== listId)) {
+  let storedOrder = [];
+  try {
+    storedOrder = readMoveListOrder(listId);
+  } catch (error) {
+    setMessage(elements.moveItemMessage, `Die Listenreihenfolge konnte nicht geladen werden: ${error.message}`);
+    showError(error);
+  }
+  const targets = availableLists.filter(value => value.entry_id !== listId);
+  const rank = new Map(storedOrder.map((id, index) => [id, index]));
+  targets.sort((a, b) => (rank.get(a.entry_id) ?? storedOrder.length) - (rank.get(b.entry_id) ?? storedOrder.length));
+  for (const list of targets) {
     const option = document.createElement("label");
     option.className = "move-item-option";
     const input = document.createElement("input");
     input.type = "radio";
     input.name = "move-target";
+    input.setAttribute("aria-keyshortcuts", "Alt+ArrowUp Alt+ArrowDown");
+    input.setAttribute("aria-description", "Zum Sortieren lange drücken und verschieben oder Alt und Pfeil hoch beziehungsweise runter drücken.");
     input.value = list.entry_id;
     input.addEventListener("change", () => { elements.confirmMoveItem.disabled = false; });
     const label = document.createElement("span");
@@ -2739,6 +2921,8 @@ async function openMoveItem(uid, listId = entryId) {
       count.textContent = `${openCount} ${openCount === 1 ? "offener Artikel" : "offene Artikel"} · zuletzt gespeichert`;
       label.append(count);
     }
+    elements.moveItemOptions.scrollTop = 0;
+    initializeMoveListSorting(listId, storedOrder);
     option.append(input, label);
     elements.moveItemOptions.append(option);
   }
@@ -2760,7 +2944,11 @@ elements.moveItem.addEventListener("keydown", event => {
   event.preventDefault();
   if (!savingMove) elements.moveItem.close();
 });
-elements.moveItem.addEventListener("close", () => { movingItem = null; });
+elements.moveItem.addEventListener("close", () => {
+  if (elements.moveItem.open) return;
+  cancelMoveListSort?.();
+  movingItem = null;
+});
 elements.moveItemForm.addEventListener("submit", event => {
   event.preventDefault();
   if (savingMove) return;

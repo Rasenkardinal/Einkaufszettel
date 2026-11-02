@@ -14,6 +14,14 @@ async function runTests() {
     .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
   await new Promise(resolve => frame.onload = resolve);
   const win = frame.contentWindow, doc = win.document, operations = [], results = [];
+  const nativeCapture = {
+    setPointerCapture: win.Element.prototype.setPointerCapture,
+    hasPointerCapture: win.Element.prototype.hasPointerCapture,
+  };
+  win.Element.prototype.setPointerCapture = () => {};
+  win.Element.prototype.hasPointerCapture = () => false;
+  const storage = new Map();
+  let storageBlocked = false;
   const assert = (value, message) => { if (!value) throw Error(message); };
   const waitFor = async predicate => {
     const deadline = performance.now() + 2000;
@@ -34,11 +42,16 @@ async function runTests() {
         metadata:{quantity:"2 Stück",catalog_id:"supermarket",image:"data:image/png;base64,test"},description:"reif",due:"2026-11-03"}];
       render();
       return {openMoveItem, setLists: lists => {availableLists=lists;}, render,
+        setSource: id => {entryId=id;},
         setBusy: value => {busy=value;}, setTheme: applyDesign,
         removeItem: () => {currentItems=[];}, resetItem: () => {
           currentItems=[{uid:"one",summary:"Tomaten",status:"needs_action",metadata:{quantity:"2 Stück"}}];render();
         }};
-    `)({operations}, {getItem: () => null, setItem() {}, removeItem() {}});
+    `)({operations}, {
+      getItem: key => storage.get(key) ?? null,
+      setItem(key, value) { if (storageBlocked) throw Error("Storage blocked"); storage.set(key, value); },
+      removeItem: key => storage.delete(key),
+    });
   const dialog = doc.querySelector("#move-item"), confirm = doc.querySelector("#confirm-move-item");
   const swipe = (dx,dy=0,cancel=false) => {
     const row = doc.querySelector(".item");
@@ -122,12 +135,135 @@ async function runTests() {
   assert(operations[1].type === "delete_item" && !dialog.open, "Left swipe no longer deletes");
   results.push("PASS Left swipe still queues deletion");
   api.render();
+  const sortingLists = [{entry_id:"a",name:"ALDI"},{entry_id:"b",name:"REWE"},
+    {entry_id:"c",name:"dm"},{entry_id:"d",name:"Wochenmarkt"}];
+  api.setLists(sortingLists);
+  const listOrder = () => [...doc.querySelectorAll(".move-item-option input")].map(input => input.value).join(",");
+  const closeDialog = async () => {
+    const closed = new Promise(resolve => dialog.addEventListener("close", resolve, {once:true}));
+    doc.querySelector("#cancel-move-item").click();
+    await closed;
+  };
+  const pointer = (type, row, x, y) => row.dispatchEvent(new win.PointerEvent(type, {
+    pointerId:41,pointerType:"mouse",button:0,clientX:x,clientY:y,bubbles:true,cancelable:true,isPrimary:true,
+  }));
+  const startDrag = async (id, hold=true) => {
+    const row = doc.querySelector(`.move-item-option:has(input[value="${id}"])`);
+    const rect = row.getBoundingClientRect();
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+    pointer("pointerdown",row,x,y);
+    if (hold) await new Promise(resolve => setTimeout(resolve,550));
+    return {row,x,y};
+  };
+  const dragToTop = drag => {
+    pointer("pointermove",drag.row,drag.x,doc.querySelector(".move-item-option").getBoundingClientRect().top+2);
+  };
+  await api.openMoveItem("one");
+  assert(listOrder() === "b,c,d", "Initial target order changed");
+  let drag = await startDrag("d",false);
+  dragToTop(drag);
+  pointer("pointerup",drag.row,drag.x,drag.y);
+  assert(listOrder() === "b,c,d", "Movement before long press reordered lists");
+  drag = await startDrag("d");
+  dragToTop(drag);
+  assert(listOrder() === "d,b,c", "Long press did not enable sorting");
+  pointer("pointerup",drag.row,drag.x,drag.y);
+  drag.row.click();
+  assert(confirm.disabled && !doc.querySelector("#move-item input:checked"), "Dragging selected a target");
+  assert(JSON.parse(storage.get("einkaufszettel.move_list_order.a")).join(",") === "d,b,c", "Order not saved on drop");
+  await closeDialog();
+  await api.openMoveItem("one");
+  assert(listOrder() === "d,b,c", "Reopening did not restore order");
+  assert(!doc.querySelector(".move-item-option button,.move-item-option svg,.move-grip"), "Sorting added visual controls");
+  results.push("PASS Long press sorts without controls or selection; dropping saves the default");
+
+  drag = await startDrag("c");
+  dragToTop(drag);
+  pointer("pointercancel",drag.row,drag.x,drag.y);
+  assert(listOrder() === "d,b,c", "Pointer cancellation did not roll back order");
+  drag = await startDrag("c");
+  dragToTop(drag);
+  doc.querySelector("#close-move-item").dispatchEvent(new win.KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
+  assert(dialog.open && listOrder() === "d,b,c", "Escape should cancel sorting, not close the dialog");
+  assert(JSON.parse(storage.get("einkaufszettel.move_list_order.a")).join(",") === "d,b,c", "Cancelled order was saved");
+  await closeDialog();
+  results.push("PASS Pointer cancellation and Escape restore the previous order");
+
+  api.setSource("b");
+  await api.openMoveItem("one");
+  assert(listOrder() === "a,c,d", "Order leaked into another source list");
+  drag = await startDrag("d");
+  dragToTop(drag);
+  pointer("pointerup",drag.row,drag.x,drag.y);
+  await closeDialog();
+  api.setSource("a");
+  api.setLists([...sortingLists,{entry_id:"e",name:"Neue Liste"}].filter(list=>list.entry_id!=="b"));
+  await api.openMoveItem("one");
+  assert(listOrder() === "d,c,e", "Unavailable targets or new list changed saved order");
+  await closeDialog();
+  api.setLists(sortingLists);
+  await api.openMoveItem("one");
+  assert(listOrder() === "d,b,c", "Returning target lost its order");
+  await closeDialog();
+  results.push("PASS Orders are source-specific; missing targets are skipped and new targets appended");
+
+  await api.openMoveItem("one");
+  storageBlocked = true;
+  drag = await startDrag("c");
+  dragToTop(drag);
+  pointer("pointerup",drag.row,drag.x,drag.y);
+  assert(listOrder() === "d,b,c", "Failed save did not roll back");
+  assert(doc.querySelector("#move-item-message").textContent.includes("nicht gespeichert"), "Save failure not visible");
+  storageBlocked = false;
+  await closeDialog();
+  storage.set("einkaufszettel.move_list_order.a",'["b","b"]');
+  await api.openMoveItem("one");
+  assert(listOrder() === "b,c,d" && doc.querySelector("#move-item-message").textContent.includes("nicht geladen"), "Corrupt order silently accepted");
+  await closeDialog();
+  storage.set("einkaufszettel.move_list_order.a",'["d","b","c"]');
+  results.push("PASS Storage failures are explicit and unsaved reorders are rolled back");
+
+  await api.openMoveItem("one");
+  doc.querySelector('#move-item input[value="c"]').dispatchEvent(new win.KeyboardEvent("keydown", {
+    key:"ArrowUp",altKey:true,bubbles:true,cancelable:true,
+  }));
+  assert(listOrder() === "d,c,b", "Keyboard sorting failed");
+  await closeDialog();
+  await api.openMoveItem("one");
+  assert(listOrder() === "d,c,b", "Keyboard order not persisted");
+  const touchRow = doc.querySelector('.move-item-option:has(input[value="b"])');
+  const rect = touchRow.getBoundingClientRect();
+  const touchEvent = (type,y) => {
+    const touch = new win.Touch({identifier:52,target:touchRow,clientX:rect.left+30,clientY:y});
+    return touchRow.dispatchEvent(new win.TouchEvent(type,{
+      bubbles:true,cancelable:true,changedTouches:[touch],touches:type==="touchend"?[]:[touch],
+    }));
+  };
+  touchEvent("touchstart",rect.top+30);
+  await new Promise(resolve => setTimeout(resolve,550));
+  assert(!touchEvent("touchmove",doc.querySelector(".move-item-option").getBoundingClientRect().top+2), "Active touch drag allowed scrolling");
+  touchRow.dispatchEvent(new win.PointerEvent("lostpointercapture", {
+    pointerId:52,pointerType:"touch",bubbles:true,
+  }));
+  assert(listOrder() === "b,d,c", "Implicit touch capture loss cancelled the active touch drag");
+  touchEvent("touchend",rect.top+30);
+  assert(listOrder() === "b,d,c", "Touch long press did not reorder");
+  await closeDialog();
+  assert(operations.length === 2, "Sorting queued an article operation");
+  results.push("PASS Keyboard and touch sorting persist without moving the article");
+
   api.setLists([{entry_id:"a",name:"ALDI"},
     ...Array.from({length:18},(_,i)=>({entry_id:"target-"+i,name:"Sehr langer Name einer Einkaufsliste "+i}))]);
   await api.openMoveItem("one");
   const options = doc.querySelector("#move-item-options");
   assert(options.scrollHeight > options.clientHeight, "Long target list does not scroll internally");
   assert(dialog.scrollWidth === dialog.clientWidth, "Long list names overflow horizontally");
+  drag = await startDrag("target-0");
+  pointer("pointermove",drag.row,drag.x,options.getBoundingClientRect().bottom-2);
+  await new Promise(resolve => setTimeout(resolve,250));
+  assert(options.scrollTop > 20, "Dragging near the edge did not scroll the list");
+  pointer("pointercancel",drag.row,drag.x,drag.y);
+  assert(listOrder().startsWith("target-0,target-1"), "Cancelling auto-scroll drag changed the default");
   doc.querySelector("#cancel-move-item").click();
   await waitFor(() => !dialog.open);
   results.push("PASS Long target lists scroll internally and long names wrap");
@@ -135,6 +271,7 @@ async function runTests() {
     {entry_id:"c",name:"dm"},{entry_id:"d",name:"Wochenmarkt"},{entry_id:"e",name:"Baumarkt"}]);
   await api.openMoveItem("one");
   doc.querySelector('#move-item input[value="b"]').click();
+  Object.assign(win.Element.prototype, nativeCapture);
   document.querySelector("#results").textContent = results.join("\n");
   document.body.dataset.result = "passed";
 }
