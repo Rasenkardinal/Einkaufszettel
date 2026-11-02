@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Artikel verschieben · Dialog- und Gestentests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Verschieben-Dialog" style="width:390px;height:844px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all(["app.html", "app.js"].map(file =>
+    fetch(base + file, {cache:"no-store"}).then(response => response.text())));
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document, operations = [], results = [];
+  const assert = (value, message) => { if (!value) throw Error(message); };
+  const waitFor = async predicate => {
+    const deadline = performance.now() + 2000;
+    while (!predicate()) {
+      if (performance.now() > deadline) throw Error("Timed out waiting for dialog action");
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  };
+  const api = win.Function("test", "localStorage",
+    script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+      entryId = "a"; busy = false; authenticated = false;
+      categories = []; supermarkets = []; products = [];
+      availableLists = [{entry_id:"a",name:"ALDI"},{entry_id:"b",name:"REWE"},{entry_id:"c",name:"dm"}];
+      elements.listName.textContent = "ALDI";
+      readCachedLists = async () => [{entry_id:"b",items:[{status:"needs_action"},{status:"completed"}]}];
+      enqueue = async (operation, listId) => {test.operations.push({...operation,entry_id:listId});};
+      currentItems = [{uid:"one",summary:"Tomaten",status:"needs_action",
+        metadata:{quantity:"2 Stück",catalog_id:"supermarket",image:"data:image/png;base64,test"},description:"reif",due:"2026-11-03"}];
+      render();
+      return {openMoveItem, setLists: lists => {availableLists=lists;}, render,
+        setBusy: value => {busy=value;}, setTheme: applyDesign,
+        removeItem: () => {currentItems=[];}, resetItem: () => {
+          currentItems=[{uid:"one",summary:"Tomaten",status:"needs_action",metadata:{quantity:"2 Stück"}}];render();
+        }};
+    `)({operations}, {getItem: () => null, setItem() {}, removeItem() {}});
+  const dialog = doc.querySelector("#move-item"), confirm = doc.querySelector("#confirm-move-item");
+  const swipe = (dx,dy=0,cancel=false) => {
+    const row = doc.querySelector(".item");
+    row.dispatchEvent(new win.PointerEvent("pointerdown", {pointerId:7,button:0,clientX:140,clientY:100,bubbles:true}));
+    row.dispatchEvent(new win.PointerEvent("pointermove", {pointerId:7,clientX:140+dx,clientY:100+dy,bubbles:true,cancelable:true}));
+    row.dispatchEvent(new win.PointerEvent(cancel?"pointercancel":"pointerup", {pointerId:7,clientX:140+dx,clientY:100+dy,bubbles:true}));
+  };
+  swipe(100);
+  await waitFor(() => dialog.open);
+  assert(doc.querySelector("#move-item-title").textContent === "Auf andere Liste verschieben", "Wrong dialog title");
+  assert(doc.querySelectorAll(".move-item-option").length === 2, "Current list offered as destination");
+  assert(confirm.disabled, "Move enabled without a destination");
+  assert(doc.querySelector("#move-item-description").textContent.includes("Tomaten · 2 Stück"), "Missing article context");
+  assert(doc.querySelector(".move-item-option small").textContent.startsWith("1 offener Artikel"), "Count includes completed items");
+  const actions = doc.querySelector("#move-item .dialog-actions").getBoundingClientRect();
+  const cancel = doc.querySelector("#cancel-move-item").getBoundingClientRect();
+  const move = confirm.getBoundingClientRect();
+  assert(Math.abs(cancel.left-actions.left)<1 && Math.abs(move.right-actions.right)<1, "Buttons are not aligned left/right");
+  doc.querySelector('input[value="b"][name="move-target"]').click();
+  doc.querySelector('input[value="c"][name="move-target"]').click();
+  assert(doc.querySelectorAll('#move-item input:checked').length === 1, "Multiple targets selected");
+  doc.querySelector('input[value="b"][name="move-target"]').click();
+  doc.querySelector("#move-item-form").requestSubmit();
+  await waitFor(() => !dialog.open);
+  assert(operations.length === 1 && operations[0].type === "move_item", "Move not queued");
+  const operation = operations[0];
+  assert(operation.entry_id === "a" && operation.target_entry_id === "b" && operation.uid === "one" &&
+    operation.target_uid !== operation.uid, "Invalid source/target identity");
+  assert(operation.metadata.quantity === "2 Stück" && operation.metadata.image && operation.description === "reif" &&
+    operation.due === "2026-11-03", "Move lost article details");
+  results.push("PASS Right swipe opens variant 2; exclusive targets, fields and left/right buttons");
+
+  for (const closeId of ["close-move-item", "cancel-move-item"]) {
+    await api.openMoveItem("one");
+    assert(confirm.disabled && !doc.querySelector("#move-item input:checked"), "Previous selection retained");
+    doc.querySelector("#"+closeId).click();
+    await waitFor(() => !dialog.open);
+  }
+  assert(operations.length === 1, "Cancel queued changes");
+  results.push("PASS Close and cancel leave article unchanged; selection resets");
+
+  for (const [dx,dy,cancelled] of [[40,0,false],[100,130,false],[100,0,true]]) {
+    swipe(dx,dy,cancelled);
+    await new Promise(resolve => setTimeout(resolve,25));
+    assert(!dialog.open && operations.length === 1, "Short/vertical/cancelled gesture changed article");
+    assert(doc.querySelector(".item").style.transform === "", "Gesture left a transformed row");
+  }
+  api.setBusy(true);
+  swipe(100);
+  assert(!dialog.open, "Busy app opened move dialog");
+  api.setBusy(false);
+  results.push("PASS Swipe thresholds, scrolling, pointer cancellation and busy guard");
+
+  doc.querySelector('[aria-label="Bearbeiten: Tomaten"]').dispatchEvent(new win.KeyboardEvent("keydown",{key:"ArrowRight",altKey:true,bubbles:true}));
+  await waitFor(() => dialog.open);
+  doc.querySelector("#cancel-move-item").click();
+  await waitFor(() => !dialog.open);
+  await api.openMoveItem("one");
+  doc.querySelector("#close-move-item").dispatchEvent(new win.KeyboardEvent("keydown",{key:"Escape",bubbles:true}));
+  await waitFor(() => !dialog.open);
+  assert(operations.length === 1, "Escape queued a change");
+  results.push("PASS Alt+ArrowRight opens the dialog; Escape cancels without changes");
+
+  await api.openMoveItem("one");
+  api.removeItem();
+  doc.querySelector('#move-item input[value="b"]').click();
+  doc.querySelector("#move-item-form").requestSubmit();
+  assert(dialog.open && operations.length === 1 && doc.querySelector("#move-item-message").textContent, "Stale article was moved");
+  doc.querySelector("#close-move-item").click();
+  await waitFor(() => !dialog.open);
+  api.resetItem();
+  api.setLists([{entry_id:"a",name:"ALDI"}]);
+  await api.openMoveItem("one");
+  assert(confirm.disabled && doc.querySelector("#move-item-message").textContent.includes("Keine andere Liste"), "Missing empty state");
+  doc.querySelector("#cancel-move-item").click();
+  await waitFor(() => !dialog.open);
+  results.push("PASS Missing target and stale item show errors without changes");
+
+  swipe(-100);
+  await waitFor(() => operations.length === 2);
+  assert(operations[1].type === "delete_item" && !dialog.open, "Left swipe no longer deletes");
+  results.push("PASS Left swipe still queues deletion");
+  api.render();
+  api.setLists([{entry_id:"a",name:"ALDI"},
+    ...Array.from({length:18},(_,i)=>({entry_id:"target-"+i,name:"Sehr langer Name einer Einkaufsliste "+i}))]);
+  await api.openMoveItem("one");
+  const options = doc.querySelector("#move-item-options");
+  assert(options.scrollHeight > options.clientHeight, "Long target list does not scroll internally");
+  assert(dialog.scrollWidth === dialog.clientWidth, "Long list names overflow horizontally");
+  doc.querySelector("#cancel-move-item").click();
+  await waitFor(() => !dialog.open);
+  results.push("PASS Long target lists scroll internally and long names wrap");
+  api.setLists([{entry_id:"a",name:"ALDI"},{entry_id:"b",name:"REWE"},
+    {entry_id:"c",name:"dm"},{entry_id:"d",name:"Wochenmarkt"},{entry_id:"e",name:"Baumarkt"}]);
+  await api.openMoveItem("one");
+  doc.querySelector('#move-item input[value="b"]').click();
+  document.querySelector("#results").textContent = results.join("\n");
+  document.body.dataset.result = "passed";
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent = `FAIL ${error.stack}`;
+  document.body.dataset.result = "failed";
+});
+</script>
+</html>

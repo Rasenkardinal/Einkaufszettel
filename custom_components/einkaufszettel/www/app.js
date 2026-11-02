@@ -85,6 +85,12 @@ const elements = {
   listSelect: document.querySelector("#list-select"),
   listFlyout: document.querySelector("#list-flyout"),
   editItem: document.querySelector("#edit-item"),
+  moveItem: document.querySelector("#move-item"),
+  moveItemForm: document.querySelector("#move-item-form"),
+  moveItemDescription: document.querySelector("#move-item-description"),
+  moveItemOptions: document.querySelector("#move-item-options"),
+  moveItemMessage: document.querySelector("#move-item-message"),
+  confirmMoveItem: document.querySelector("#confirm-move-item"),
   editItemForm: document.querySelector("#edit-item-form"),
   editItemTitle: document.querySelector("#edit-item-title"),
   editSummary: document.querySelector("#edit-summary"),
@@ -2550,7 +2556,9 @@ function applyLocalOperation(operation) {
       currentItems.push({
         uid: operation.uid,
         summary: operation.summary,
-        status: "needs_action",
+        status: operation.status || "needs_action",
+        ...(operation.description !== undefined ? { description: operation.description } : {}),
+        ...(operation.due !== undefined ? { due: operation.due } : {}),
         metadata: operation.metadata || {},
       });
     }
@@ -2565,7 +2573,7 @@ function applyLocalOperation(operation) {
         ...(operation.metadata ? { metadata: { ...item.metadata, ...operation.metadata } } : {}),
       } : item,
     );
-  } else if (operation.type === "delete_item") {
+  } else if (operation.type === "delete_item" || operation.type === "move_item") {
     currentItems = currentItems.filter((item) => item.uid !== operation.uid);
   }
   if (operation.type !== "delete_item" && Object.hasOwn(operation.metadata || {}, "category_id")) {
@@ -2697,6 +2705,89 @@ elements.endShoppingConfirm.addEventListener("click", () => {
   })().catch(showError);
 });
 
+let movingItem = null;
+let savingMove = false;
+
+async function openMoveItem(uid, listId = entryId) {
+  if (listId !== entryId || elements.moveItem.open) return;
+  const item = currentItems.find(value => value.uid === uid);
+  if (!item) throw new Error("Der Artikel ist nicht mehr auf dieser Liste.");
+  movingItem = { uid, listId };
+  elements.moveItemDescription.textContent = [
+    [item.summary, item.metadata?.quantity].filter(Boolean).join(" · "),
+    `Aktuell auf „${elements.listName.textContent}“ · Zielliste auswählen`,
+  ].join("\n");
+  elements.confirmMoveItem.disabled = true;
+  elements.moveItemOptions.replaceChildren();
+  setMessage(elements.moveItemMessage, "");
+  const cachedLists = await readCachedLists();
+  if (entryId !== listId || movingItem?.uid !== uid) return;
+  for (const list of availableLists.filter(value => value.entry_id !== listId)) {
+    const option = document.createElement("label");
+    option.className = "move-item-option";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "move-target";
+    input.value = list.entry_id;
+    input.addEventListener("change", () => { elements.confirmMoveItem.disabled = false; });
+    const label = document.createElement("span");
+    label.textContent = list.name;
+    const cached = cachedLists.find(value => value.entry_id === list.entry_id);
+    if (cached) {
+      const count = document.createElement("small");
+      const openCount = cached.items.filter(value => value.status !== "completed").length;
+      count.textContent = `${openCount} ${openCount === 1 ? "offener Artikel" : "offene Artikel"} · zuletzt gespeichert`;
+      label.append(count);
+    }
+    option.append(input, label);
+    elements.moveItemOptions.append(option);
+  }
+  if (!elements.moveItemOptions.childElementCount) {
+    setMessage(elements.moveItemMessage, "Keine andere Liste verfügbar. Aktiviere eine weitere Liste unter „Listen verwalten“.");
+  }
+  elements.moveItem.showModal();
+  document.querySelector("#close-move-item").focus({ preventScroll: true });
+}
+
+for (const id of ["close-move-item", "cancel-move-item"]) {
+  document.getElementById(id).addEventListener("click", () => elements.moveItem.close());
+}
+elements.moveItem.addEventListener("cancel", event => {
+  if (savingMove) event.preventDefault();
+});
+elements.moveItem.addEventListener("keydown", event => {
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  if (!savingMove) elements.moveItem.close();
+});
+elements.moveItem.addEventListener("close", () => { movingItem = null; });
+elements.moveItemForm.addEventListener("submit", event => {
+  event.preventDefault();
+  if (savingMove) return;
+  const targetId = elements.moveItemOptions.querySelector("input:checked")?.value;
+  const item = movingItem?.listId === entryId
+    ? currentItems.find(value => value.uid === movingItem.uid) : null;
+  if (!item || !targetId || !availableLists.some(list => list.entry_id === targetId && targetId !== entryId)) {
+    setMessage(elements.moveItemMessage, "Bitte wähle eine verfügbare Zielliste. Der Artikel muss noch auf der aktuellen Liste stehen.");
+    return;
+  }
+  savingMove = true;
+  elements.moveItemForm.inert = true;
+  enqueue({
+    type: "move_item", uid: item.uid, target_entry_id: targetId,
+    target_uid: crypto.randomUUID(), summary: item.summary, status: item.status,
+    description: item.description, due: item.due, metadata: { ...item.metadata },
+  }, movingItem.listId).then(() => {
+    elements.moveItem.close();
+  }).catch(error => {
+    setMessage(elements.moveItemMessage, error.message);
+    showError(error);
+  }).finally(() => {
+    savingMove = false;
+    elements.moveItemForm.inert = false;
+  });
+});
+
 function enableItemSwipeDelete(row, uid, listId = entryId) {
   let pointer = null;
   let suppressClick = false;
@@ -2716,7 +2807,7 @@ function enableItemSwipeDelete(row, uid, listId = entryId) {
     const deltaY = event.clientY - pointer.y;
     if (!pointer.horizontal) {
       if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 10) return;
-      if (Math.abs(deltaY) >= Math.abs(deltaX) || deltaX >= 0) {
+      if (Math.abs(deltaY) >= Math.abs(deltaX)) {
         pointer = null;
         return;
       }
@@ -2724,17 +2815,24 @@ function enableItemSwipeDelete(row, uid, listId = entryId) {
       row.classList.add("swiping");
     }
     event.preventDefault();
-    row.style.transform = `translateX(${Math.max(deltaX, -row.clientWidth)}px)`;
+    row.style.transform = `translateX(${Math.max(-row.clientWidth, Math.min(deltaX, row.clientWidth))}px)`;
   });
   row.addEventListener("pointerup", event => {
     if (!pointer || pointer.id !== event.pointerId) return;
     const shouldDelete = pointer.horizontal && event.clientX - pointer.x <= -72;
+    const shouldMove = pointer.horizontal && event.clientX - pointer.x >= 72;
+    const horizontal = pointer.horizontal;
     pointer = null;
     row.classList.remove("swiping");
     row.style.transform = "";
-    if (!shouldDelete) return;
+    if (!horizontal) return;
     suppressClick = true;
     window.setTimeout(() => { suppressClick = false; }, 0);
+    if (shouldMove) {
+      openMoveItem(uid, listId).catch(showError);
+      return;
+    }
+    if (!shouldDelete) return;
     row.classList.add("swipe-removing");
     window.setTimeout(() => {
       enqueue({ type: "delete_item", uid }, listId).catch(error => {
@@ -2855,8 +2953,8 @@ function render() {
       label.classList.add("has-note");
     }
     label.setAttribute("aria-label", `Bearbeiten: ${item.summary}`);
-    label.setAttribute("aria-description", "Zum Bearbeiten lange drücken oder Enter bzw. die Leertaste drücken. Zum Löschen nach links wischen oder die Entf-Taste drücken.");
-    label.setAttribute("aria-keyshortcuts", "Delete");
+    label.setAttribute("aria-description", "Zum Bearbeiten lange drücken oder Enter bzw. die Leertaste drücken. Zum Löschen nach links wischen oder die Entf-Taste drücken. Zum Verschieben nach rechts wischen oder Alt und Pfeil rechts drücken.");
+    label.setAttribute("aria-keyshortcuts", "Delete Alt+ArrowRight");
     enableItemLongPress(label, () => {
       editingUid = item.uid;
       elements.editSummary.value = item.summary;
@@ -2935,6 +3033,11 @@ function render() {
       if (!touchGated) elements.editItemTitle.focus({ preventScroll: true });
     });
     label.addEventListener("keydown", event => {
+      if (event.altKey && event.key === "ArrowRight") {
+        event.preventDefault();
+        if (!busy) openMoveItem(item.uid).catch(showError);
+        return;
+      }
       if (event.key !== "Delete") return;
       event.preventDefault();
       requestAppConfirmation({
@@ -3281,14 +3384,19 @@ async function loadSelectedList() {
   await withLocalState(async () => {
     if (entryId !== listId) return;
     const cached = await storeRequest("lists", "get", listId);
-    const operations = await readQueue(listId);
     const allOperations = await readQueue(null);
     if (entryId !== listId) return;
     deletedUids = new Set(cached?.deleted_uids || []);
     elements.listName.textContent = cached?.name ||
       availableLists.find((list) => list.entry_id === listId)?.name || "Liste laden";
     currentItems = cached?.items || [];
-    pendingOperations = operations;
+    pendingOperations = allOperations.flatMap(operation => {
+      if (operation.entry_id === listId) return [operation];
+      if (operation.type === "move_item" && operation.target_entry_id === listId) {
+        return [{ ...operation, type: "add_item", uid: operation.target_uid, entry_id: listId }];
+      }
+      return [];
+    });
     for (const operation of pendingOperations) applyLocalOperation(operation);
     replayProductAssignments(allOperations);
     applyProductCategories();
@@ -3888,6 +3996,41 @@ async function synchronize({ full = true } = {}) {
   }
 }
 
+function validateOperationReply(snapshot, operationId, listId) {
+  if (snapshot.ack_operation_id !== operationId || snapshot.entry_id !== listId ||
+      !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
+      !Array.isArray(snapshot.items) ||
+      !["applied", "already_exists", "deleted"].includes(snapshot.operation_result)) {
+    throw new Error("Die Synchronisationsbestätigung passt nicht zur gesendeten Änderung.");
+  }
+}
+
+async function sendQueuedOperation(operation) {
+  const changes = {};
+  for (const field of ["summary", "status", "description", "due", "metadata"]) {
+    if (operation[field] !== undefined) changes[field] = operation[field];
+  }
+  if (operation.type === "move_item") {
+    // Both steps reuse durable IDs: a lost reply must never duplicate or lose an item.
+    const target = await sendCommand(`${DOMAIN}/apply_operation`, {
+      entry_id: operation.target_entry_id, operation_id: operation.id,
+      action: "add_item", uid: operation.target_uid, changes,
+    });
+    validateOperationReply(target, operation.id, operation.target_entry_id);
+    if (target.operation_result === "deleted") {
+      throw new Error("Der Zielartikel wurde bereits gelöscht. Der ursprüngliche Artikel wird nicht gelöscht; die Verschiebung bleibt ausstehend.");
+    }
+    await saveList(target);
+  }
+  const snapshot = await sendCommand(`${DOMAIN}/apply_operation`, {
+    entry_id: operation.entry_id, operation_id: operation.id,
+    action: operation.type === "move_item" ? "delete_item" : operation.type,
+    uid: operation.uid, changes: operation.type === "move_item" ? {} : changes,
+  });
+  validateOperationReply(snapshot, operation.id, operation.entry_id);
+  return snapshot;
+}
+
 async function runSynchronization() {
   const warnings = [];
   const sourceWarnings = new Map();
@@ -3898,34 +4041,28 @@ async function runSynchronization() {
       const full = fullSyncRequested;
       syncRequested = false;
       fullSyncRequested = false;
-      const ids = new Set([entryId, ...availableLists.map((list) => list.entry_id)]);
+      const operations = await readQueue(null);
+      const ids = new Set([entryId, ...availableLists.map((list) => list.entry_id),
+        ...operations.map(operation => operation.entry_id),
+        ...operations.filter(operation => operation.type === "move_item").map(operation => operation.target_entry_id)]);
+      const changedIds = new Set(operations.flatMap(operation =>
+        operation.type === "move_item" ? [operation.entry_id, operation.target_entry_id] : [operation.entry_id]));
       for (const listId of ids) {
         if (!listId) continue;
-        const operations = await readQueue(listId);
-        if (!full && !operations.length) continue;
         if (full) {
           await saveList(await sendCommand(`${DOMAIN}/get_list`, { entry_id: listId }));
         }
-        for (const operation of operations) {
-          const changes = {};
-          for (const field of ["summary", "status", "description", "due", "metadata"]) {
-            if (operation[field] !== undefined) changes[field] = operation[field];
-          }
-          const snapshot = await sendCommand(`${DOMAIN}/apply_operation`, {
-            entry_id: listId, operation_id: operation.id,
-            action: operation.type, uid: operation.uid, changes,
-          });
-          if (snapshot.ack_operation_id !== operation.id || snapshot.entry_id !== listId ||
-              !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 ||
-              !Array.isArray(snapshot.items) ||
-              !["applied", "already_exists", "deleted"].includes(snapshot.operation_result)) {
-            throw new Error("Die Synchronisationsbestätigung passt nicht zur gesendeten Änderung.");
-          }
-          await acknowledgeOperation(snapshot, operation.id);
-          if (snapshot.operation_result === "deleted") {
-            warnings.push("Eine Änderung an einem bereits gelöschten Artikel wurde verworfen.");
-          }
+      }
+      // Preserve cross-list order, including edits to an offline move's target item.
+      for (const operation of operations) {
+        const snapshot = await sendQueuedOperation(operation);
+        await acknowledgeOperation(snapshot, operation.id);
+        if (snapshot.operation_result === "deleted" && operation.type !== "move_item") {
+          warnings.push("Eine Änderung an einem bereits gelöschten Artikel wurde verworfen.");
         }
+      }
+      for (const listId of ids) {
+        if (!listId || (!full && !changedIds.has(listId))) continue;
         const snapshot = await sendCommand(`${DOMAIN}/sync_source`, { entry_id: listId });
         await saveList(snapshot);
         if (snapshot.source_error) sourceWarnings.set(listId, `${snapshot.name}: ${snapshot.source_error}`);

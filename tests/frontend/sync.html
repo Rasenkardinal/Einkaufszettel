@@ -62,12 +62,13 @@ async function runTests() {
     const create = new Function("env", `
       const { database } = env;
       const DOMAIN = "einkaufszettel", WebSocket = { OPEN: 1 }, socket = { readyState: 1 };
-      const elements = { listName: { textContent: "Test" }, message: { textContent: "" }, ...env.conflictElements };
+      const elements = { listName: { textContent: "Test" }, message: { textContent: "", dataset: {} }, ...env.conflictElements };
       const confirm = text => env.confirm(text);
       let entryId = "a", currentItems = [], deletedUids = new Set(), pendingOperations = [],
         lastOperationTime = 0, busy = false, authenticated = false;
       let syncPromise, syncRequested = false, fullSyncRequested = false, syncTimer, listRefreshPromise;
-      let products = [];
+      let products = [], productAliases = {}, activeCatalogId = "supermarket";
+      const catalogs = {supermarket:{products:[]}};
       const cacheCatalog = () => {};
       const refreshSupermarkets = async () => {};
       ${productHelpers}
@@ -93,6 +94,7 @@ async function runTests() {
         refreshSyncConflicts, openSyncConflicts, resolveSyncConflict,
         online: () => { authenticated = true; },
         offline: () => { authenticated = false; },
+        setProducts: value => { products = value; catalogs.supermarket.products = value; },
         flush: () => syncPromise,
         lists: value => { availableLists = value; },
         select: async id => { entryId = id; await loadSelectedList(); },
@@ -113,6 +115,7 @@ async function runTests() {
   async function test(name, fn) { await fixture(fn); results.push(`PASS ${name}`); }
 
   await test("Offline patches retain metadata and revision across reload", async api => {
+    api.setProducts([{key:"milk",name:"Milk",category_id:"dairy"}]);
     await api.saveList({ entry_id: "a", name: "A", revision: 7, deleted_uids: ["deleted"],
       items: [{ uid: "one", summary: "Milk", status: "needs_action", metadata: { category_id: "dairy", quantity: "1" } }] });
     await api.loadSelectedList();
@@ -291,6 +294,7 @@ async function runTests() {
   });
 
   await test("Delayed acknowledgements never block rapid changes or overwrite newer local patches", async (api, env) => {
+    api.setProducts([{key:"milch",name:"Milch",category_id:"dairy"}]);
     const snapshots = {a:{entry_id:"a", name:"A", revision:1, items:[
       {uid:"one", summary:"Milch", status:"needs_action", metadata:{category_id:"dairy"}},
       {uid:"two", summary:"Brot", status:"needs_action"},
@@ -422,6 +426,167 @@ async function runTests() {
     assert(api.state().currentItems[0].metadata.category_id===null, "Explicit category removal was relearned");
   });
 
+  function transferServer(env) {
+    const snapshots = {
+      a: {entry_id:"a", name:"A", revision:1, items:[]},
+      b: {entry_id:"b", name:"B", revision:1, items:[{
+        uid:"milk", summary:"Milch", status:"completed", description:"ungesüßt",
+        due:"2026-11-03", metadata:{quantity:"2", catalog_id:"supermarket", image:"data:image/png;base64,test"},
+      }]},
+    };
+    const calls = [], receipts = new Map();
+    env.send = async (type, payload) => {
+      if (type.endsWith("/get_catalog")) return {categories:[],supermarkets:[],products:[]};
+      const snapshot = snapshots[payload.entry_id];
+      calls.push({type,...payload});
+      let result = "applied";
+      if (type.endsWith("/apply_operation")) {
+        const key = `${payload.entry_id}/${payload.operation_id}`;
+        if (!receipts.has(key)) {
+          if (payload.action === "add_item") snapshot.items.push({uid:payload.uid,...structuredClone(payload.changes)});
+          else if (payload.action === "delete_item") snapshot.items = snapshot.items.filter(item => item.uid !== payload.uid);
+          else {
+            const item = snapshot.items.find(item => item.uid === payload.uid);
+            assert(item, "Target patch arrived before move creation");
+            Object.assign(item, payload.changes);
+          }
+          snapshot.revision++;
+          receipts.set(key, result);
+        }
+        result = receipts.get(key);
+        return structuredClone({...snapshot, ack_operation_id:payload.operation_id, operation_result:result});
+      }
+      return structuredClone(snapshot);
+    };
+    return {snapshots,calls};
+  }
+  async function queueTransfer(api, snapshots) {
+    api.lists([{entry_id:"a",name:"A"},{entry_id:"b",name:"B"}]);
+    await api.saveList(snapshots.a);
+    await api.saveList(snapshots.b);
+    await api.select("b");
+    const item = snapshots.b.items[0];
+    await api.enqueue({type:"move_item",uid:item.uid,target_entry_id:"a",target_uid:"moved",summary:item.summary,
+      status:item.status,description:item.description,due:item.due,metadata:item.metadata});
+  }
+
+  await test("Offline move survives reload and target edits synchronize in cross-list order", async (api, env) => {
+    const {snapshots} = transferServer(env);
+    await queueTransfer(api, snapshots);
+    assert(!api.state().currentItems.length, "Source still contains moved article");
+    await api.loadSelectedList();
+    assert(!api.state().currentItems.length, "Reload resurrected source");
+    await api.select("a");
+    const item = api.state().currentItems[0];
+    assert(item.uid === "moved" && item.status === "completed", "Target state not projected");
+    assert(item.description === "ungesüßt" && item.due === "2026-11-03" && item.metadata.quantity === "2" &&
+      item.metadata.image === snapshots.b.items[0].metadata.image, "Article details lost");
+    await api.enqueue({type:"update_item",uid:"moved",summary:"Hafermilch"});
+    api.online();
+    await api.synchronize();
+    assert(!snapshots.b.items.length && snapshots.a.items.length === 1, "Move not completed");
+    assert(snapshots.a.items[0].summary === "Hafermilch", "Target edit lost");
+    assert(!(await api.readQueue(null)).length, "Move not acknowledged");
+  });
+
+  for (const failedStep of ["target", "source"]) {
+    await test(`Lost ${failedStep} move acknowledgement retries without duplication or loss`, async (api, env) => {
+      const {snapshots} = transferServer(env);
+      await queueTransfer(api, snapshots);
+      const normal = env.send;
+      let loseReply = true;
+      env.send = async (type,payload) => {
+        const reply = await normal(type,payload);
+        if (loseReply && type.endsWith("/apply_operation") &&
+            payload.entry_id === (failedStep === "target" ? "a" : "b")) {
+          loseReply = false;
+          throw Error("Lost move acknowledgement");
+        }
+        return reply;
+      };
+      api.online();
+      await api.synchronize().then(() => { throw Error("Expected failed acknowledgement"); },
+        error => assert(error.message === "Lost move acknowledgement", error.message));
+      assert((await api.readQueue(null)).length === 1, "Failed move was removed");
+      if (failedStep === "target") assert(snapshots.b.items.length === 1, "Source deleted before target acknowledged");
+      await api.select("a");
+      assert(api.state().currentItems.filter(item => item.uid === "moved").length === 1, "Pending projection duplicated target");
+      await api.synchronize();
+      assert(!snapshots.b.items.length && snapshots.a.items.length === 1, "Retry duplicated or lost article");
+      assert(!(await api.readQueue(null)).length, "Retry did not acknowledge transfer");
+    });
+  }
+
+  await test("Target rejection never deletes the source and retains the durable move", async (api, env) => {
+    const {snapshots,calls} = transferServer(env);
+    await queueTransfer(api, snapshots);
+    const normal = env.send;
+    env.send = async (type,payload) => {
+      if (type.endsWith("/apply_operation") && payload.entry_id === "a") throw Error("Target unavailable");
+      return normal(type,payload);
+    };
+    api.online();
+    await api.synchronize().then(() => { throw Error("Expected target failure"); },
+      error => assert(error.message === "Target unavailable", error.message));
+    assert(snapshots.b.items.length === 1 && !snapshots.a.items.length, "Failed target changed lists");
+    assert(!calls.some(call => call.action === "delete_item"), "Source deletion attempted");
+    assert((await api.readQueue(null)).length === 1, "Failed move not durable");
+  });
+
+  await test("Deleted target receipt does not delete the source", async (api, env) => {
+    const {snapshots,calls} = transferServer(env);
+    await queueTransfer(api, snapshots);
+    const normal = env.send;
+    env.send = async (type,payload) => {
+      if (type.endsWith("/apply_operation") && payload.entry_id === "a") {
+        return {...snapshots.a,ack_operation_id:payload.operation_id,operation_result:"deleted"};
+      }
+      return normal(type,payload);
+    };
+    api.online();
+    await api.synchronize().then(() => { throw Error("Expected deleted target error"); },
+      error => assert(error.message.includes("Zielartikel"), error.message));
+    assert(snapshots.b.items.length === 1 && !calls.some(call => call.action === "delete_item"), "Source lost after deleted target");
+    assert((await api.readQueue(null)).length === 1, "Deleted target move was acknowledged");
+  });
+
+  await test("Mismatched target acknowledgement never deletes the source", async (api, env) => {
+    const {snapshots,calls} = transferServer(env);
+    await queueTransfer(api, snapshots);
+    const normal = env.send;
+    env.send = async (type,payload) => {
+      if (type.endsWith("/apply_operation") && payload.entry_id === "a") {
+        return {...snapshots.a,ack_operation_id:"wrong",operation_result:"applied"};
+      }
+      return normal(type,payload);
+    };
+    api.online();
+    await api.synchronize().then(() => { throw Error("Expected mismatched target acknowledgement"); },
+      error => assert(error.message.includes("Synchronisationsbestätigung"), error.message));
+    assert(snapshots.b.items.length === 1 && !calls.some(call => call.action === "delete_item"), "Invalid acknowledgement deleted source");
+    assert((await api.readQueue(null)).length === 1, "Invalid acknowledgement consumed queue");
+  });
+
+  await test("Chained offline moves preserve ordering and end in exactly one list", async (api, env) => {
+    const {snapshots} = transferServer(env);
+    await queueTransfer(api, snapshots);
+    snapshots.c = {entry_id:"c",name:"C",revision:1,items:[]};
+    await api.saveList(snapshots.c);
+    api.lists([{entry_id:"a",name:"A"},{entry_id:"b",name:"B"},{entry_id:"c",name:"C"}]);
+    await api.select("a");
+    const item = api.state().currentItems[0];
+    await api.enqueue({type:"move_item",uid:item.uid,target_entry_id:"c",target_uid:"final",summary:item.summary,
+      status:item.status,metadata:item.metadata,description:item.description,due:item.due});
+    assert(!api.state().currentItems.length, "Intermediate source still visible");
+    await api.select("c");
+    assert(api.state().currentItems.length === 1 && api.state().currentItems[0].uid === "final", "Final projection missing");
+    api.online();
+    await api.synchronize();
+    assert(!snapshots.a.items.length && !snapshots.b.items.length && snapshots.c.items.length === 1, "Chained move duplicated item");
+    assert(snapshots.c.items[0].metadata.quantity === "2" && snapshots.c.items[0].status === "completed", "Chained move lost fields");
+    assert(!(await api.readQueue(null)).length, "Chained move queue not cleared");
+  });
+
   await test("Real UI stays interactive during a delayed response, including check, delete and add", async (api, env) => {
     const snapshots = {a:{entry_id:"a",name:"A",revision:1,items:[
       {uid:"one",summary:"Milch",status:"needs_action"},
@@ -461,10 +626,12 @@ async function runTests() {
     try {
       ui=win.Function("test","localStorage", source.replace(/initializeDesign\(\);\s*start\(\);\s*$/,"")+`
         database=test.database; entryId="a"; availableLists=[{entry_id:"a",name:"A"}];
-        socket={readyState:WebSocket.OPEN}; authenticated=true;
+        applyCatalog({categories:[],supermarkets:[],products:[]});
+        socket={readyState:WebSocket.OPEN,send:()=>{}}; authenticated=true;
         sendCommand=(type,payload)=>test.send(type,payload);
         return {loadSelectedList,enqueue,loadRemoteLists,
           flush:()=>syncPromise,
+          localFlush:()=>localUpdates,
           state:()=>({busy,items:currentItems,pending:pendingOperations,syncing:!!syncPromise}),
           stop:()=>{authenticated=false;window.clearTimeout(syncTimer);}
         };
@@ -479,9 +646,11 @@ async function runTests() {
       const start=performance.now();
       doc.querySelector('[aria-label="Erledigt: Obst"]').click();
       doc.querySelector('[aria-label="Bearbeiten: Brot"]').dispatchEvent(new win.KeyboardEvent("keydown",{key:"Delete",bubbles:true}));
+      doc.querySelector("#accept-app-confirm").click();
       doc.querySelector("#new-item").value="Kaffee";
       doc.querySelector("#add-form").requestSubmit();
-      await waitFor(()=>ui.state().pending.length===4);
+      await ui.localFlush();
+      assert(ui.state().pending.length===4, "Real UI changes did not commit locally");
       assert(performance.now()-start<250, "Real UI actions waited for delayed response");
       assert(!ui.state().items.some(item=>item.uid==="two"), "Delete not visible while network blocked");
       assert(ui.state().items.find(item=>item.uid==="three").status==="completed", "Checkbox not updated locally");
