@@ -142,10 +142,27 @@ async function runTests() {
     {entry_id:"c",name:"dm"},{entry_id:"d",name:"Wochenmarkt"}];
   api.setLists(sortingLists);
   const listOrder = () => [...doc.querySelectorAll(".move-item-option input")].map(input => input.value).join(",");
+  const assertPreview = (row, x, y, offsetX, offsetY) => {
+    const ghost = doc.querySelector(".move-item-drag-ghost");
+    assert(ghost && ghost.parentElement === dialog && ghost.inert && ghost.getAttribute("aria-hidden") === "true",
+      "Drag preview is missing from the modal layer or is accessible");
+    const rect = ghost.getBoundingClientRect(), original = row.getBoundingClientRect();
+    assert(Math.abs(rect.left - (x-offsetX)) < 1 && Math.abs(rect.top - (y-offsetY)) < 1,
+      "Drag preview does not follow the pointer at its grab offset");
+    assert(Math.abs(rect.width-original.width) < 1 && Math.abs(rect.height-original.height) < 1,
+      "Drag preview changed the card dimensions");
+    assert(row.classList.contains("dragging") && win.getComputedStyle(row).opacity === "0.25",
+      "Insertion placeholder is not visible");
+    assert(win.getComputedStyle(ghost).pointerEvents === "none" && !ghost.querySelector("input").name &&
+      ghost.querySelector("input").disabled, "Preview intercepts gestures or participates in target selection");
+  };
+  const assertNoPreview = () => assert(!doc.querySelector(".move-item-drag-ghost,.move-item-option.dragging,#move-item-options.sorting"),
+    "Drag preview or placeholder leaked after finishing");
   const closeDialog = async () => {
     const closed = new Promise(resolve => dialog.addEventListener("close", resolve, {once:true}));
     doc.querySelector("#cancel-move-item").click();
     await closed;
+    assertNoPreview();
   };
   const pointer = (type, row, x, y) => row.dispatchEvent(new win.PointerEvent(type, {
     pointerId:41,pointerType:"mouse",button:0,clientX:x,clientY:y,bubbles:true,cancelable:true,isPrimary:true,
@@ -156,10 +173,15 @@ async function runTests() {
     const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
     pointer("pointerdown",row,x,y);
     if (hold) await new Promise(resolve => setTimeout(resolve,550));
+    if (hold) assertPreview(row,x,y,rect.width/2,rect.height/2);
+    else assertNoPreview();
     return {row,x,y};
   };
   const dragToTop = drag => {
-    pointer("pointermove",drag.row,drag.x,doc.querySelector(".move-item-option").getBoundingClientRect().top+2);
+    const rect = drag.row.getBoundingClientRect();
+    const y = doc.querySelector(".move-item-option").getBoundingClientRect().top+2;
+    pointer("pointermove",drag.row,drag.x,y);
+    if (doc.querySelector(".move-item-drag-ghost")) assertPreview(drag.row,drag.x,y,rect.width/2,rect.height/2);
   };
   await api.openMoveItem("one");
   assert(listOrder() === "b,c,d", "Initial target order changed");
@@ -171,6 +193,7 @@ async function runTests() {
   dragToTop(drag);
   assert(listOrder() === "d,b,c", "Long press did not enable sorting");
   pointer("pointerup",drag.row,drag.x,drag.y);
+  assertNoPreview();
   drag.row.click();
   assert(confirm.disabled && !doc.querySelector("#move-item input:checked"), "Dragging selected a target");
   assert(JSON.parse(storage.get("einkaufszettel.move_list_order.a")).join(",") === "d,b,c", "Order not saved on drop");
@@ -183,10 +206,12 @@ async function runTests() {
   drag = await startDrag("c");
   dragToTop(drag);
   pointer("pointercancel",drag.row,drag.x,drag.y);
+  assertNoPreview();
   assert(listOrder() === "d,b,c", "Pointer cancellation did not roll back order");
   drag = await startDrag("c");
   dragToTop(drag);
   doc.querySelector("#close-move-item").dispatchEvent(new win.KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));
+  assertNoPreview();
   assert(dialog.open && listOrder() === "d,b,c", "Escape should cancel sorting, not close the dialog");
   assert(JSON.parse(storage.get("einkaufszettel.move_list_order.a")).join(",") === "d,b,c", "Cancelled order was saved");
   await closeDialog();
@@ -244,16 +269,36 @@ async function runTests() {
   };
   touchEvent("touchstart",rect.top+30);
   await new Promise(resolve => setTimeout(resolve,550));
-  assert(!touchEvent("touchmove",doc.querySelector(".move-item-option").getBoundingClientRect().top+2), "Active touch drag allowed scrolling");
+  assertPreview(touchRow,rect.left+30,rect.top+30,30,30);
+  const touchY = doc.querySelector(".move-item-option").getBoundingClientRect().top+2;
+  assert(!touchEvent("touchmove",touchY), "Active touch drag allowed scrolling");
+  assertPreview(touchRow,rect.left+30,touchY,30,30);
   touchRow.dispatchEvent(new win.PointerEvent("lostpointercapture", {
     pointerId:52,pointerType:"touch",bubbles:true,
   }));
   assert(listOrder() === "b,d,c", "Implicit touch capture loss cancelled the active touch drag");
   touchEvent("touchend",rect.top+30);
+  assertNoPreview();
   assert(listOrder() === "b,d,c", "Touch long press did not reorder");
   await closeDialog();
   assert(operations.length === 2, "Sorting queued an article operation");
   results.push("PASS Keyboard and touch sorting persist without moving the article");
+  await api.openMoveItem("one");
+  doc.querySelector('#move-item input[value="d"]').click();
+  drag = await startDrag("d");
+  assert(doc.querySelector('#move-item-options input[value="d"]').checked, "Preview cleared the selected target");
+  dragToTop(drag);
+  win.dispatchEvent(new win.Event("blur"));
+  assertNoPreview();
+  assert(listOrder() === "b,d,c" && doc.querySelector('#move-item-options input[value="d"]').checked,
+    "Blur failed to restore order or changed the target selection");
+  drag = await startDrag("c");
+  dragToTop(drag);
+  await closeDialog();
+  await api.openMoveItem("one");
+  assert(listOrder() === "b,d,c", "Closing during a drag saved the temporary order");
+  await closeDialog();
+  results.push("PASS Live mouse/touch preview and placeholder follow the grab point; drop, cancel, blur and close clean up without changing selection");
 
   api.setLists([{entry_id:"a",name:"ALDI"},
     ...Array.from({length:18},(_,i)=>({entry_id:"target-"+i,name:"Sehr langer Name einer Einkaufsliste "+i}))]);
@@ -265,6 +310,8 @@ async function runTests() {
   pointer("pointermove",drag.row,drag.x,options.getBoundingClientRect().bottom-2);
   await new Promise(resolve => setTimeout(resolve,250));
   assert(options.scrollTop > 20, "Dragging near the edge did not scroll the list");
+  const scrollingRow = drag.row.getBoundingClientRect();
+  assertPreview(drag.row,drag.x,options.getBoundingClientRect().bottom-2,scrollingRow.width/2,scrollingRow.height/2);
   pointer("pointercancel",drag.row,drag.x,drag.y);
   assert(listOrder().startsWith("target-0,target-1"), "Cancelling auto-scroll drag changed the default");
   await closeDialog();
@@ -294,6 +341,9 @@ async function runTests() {
         assertCentered();
       }
       assert(doc.activeElement.id === "close-move-item", "Opening focus changed");
+      const previewDrag = await startDrag("target-0");
+      assert(win.getComputedStyle(doc.querySelector(".move-item-drag-ghost")).backgroundColor ===
+        win.getComputedStyle(previewDrag.row).backgroundColor, "Preview does not use the active theme");
       await closeDialog();
       assert(win.getComputedStyle(dialog).display === "none", "Closing left a visible dialog");
     }

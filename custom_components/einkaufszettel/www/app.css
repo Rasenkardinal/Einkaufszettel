@@ -419,12 +419,15 @@ dialog h2, dialog p { margin: 0; }
 .move-item-header svg { width: 18px; height: 18px; }
 #move-item-description { color: var(--muted); font-size: 12px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
 #move-item-options { display: grid; gap: 8px; max-height: min(320px, 42dvh); overflow-y: auto; overscroll-behavior: contain; }
-.move-item-option { display: flex; align-items: center; gap: 12px; min-height: 68px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.move-item-option, .move-item-drag-ghost { display: flex; align-items: center; gap: 12px; min-height: 68px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .move-item-option:has(input:checked) { border-color: var(--accent); }
-.move-item-option input { appearance: none; width: 18px; height: 18px; flex: none; padding: 0; margin: 0; border: 1.5px solid var(--muted); border-radius: 50%; background: transparent; }
-.move-item-option input:checked { border: 5px solid var(--accent); }
-.move-item-option span { min-width: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
-.move-item-option small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; font-weight: 400; }
+:is(.move-item-option, .move-item-drag-ghost) input { appearance: none; width: 18px; height: 18px; flex: none; padding: 0; margin: 0; border: 1.5px solid var(--muted); border-radius: 50%; background: transparent; }
+:is(.move-item-option, .move-item-drag-ghost) input:checked { border: 5px solid var(--accent); }
+:is(.move-item-option, .move-item-drag-ghost) span { min-width: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+:is(.move-item-option, .move-item-drag-ghost) small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.move-item-option.dragging { opacity: .25; border-style: dashed; }
+.move-item-drag-ghost { position: fixed; z-index: 1; margin: 0; pointer-events: none; border-color: var(--accent); box-shadow: 0 12px 30px #0009; }
+#move-item-options.sorting, #move-item-options.sorting .move-item-option { cursor: grabbing; }
 #move-item-message { margin: 0; font-size: 12px; }
 #move-item-message:empty { display: none; }
 #move-item .dialog-actions { justify-content: space-between; margin-top: 4px; }

@@ -2750,6 +2750,8 @@ function initializeMoveListSorting(listId, storedOrder) {
   }
   function positionRow() {
     if (!drag?.active) return;
+    drag.ghost.style.left = `${drag.x - drag.offsetX}px`;
+    drag.ghost.style.top = `${drag.y - drag.offsetY}px`;
     const target = [...list.children].filter(row => row !== drag.row).find(row => {
       const rect = row.getBoundingClientRect();
       return drag.y < rect.top + rect.height / 2;
@@ -2776,6 +2778,9 @@ function initializeMoveListSorting(listId, storedOrder) {
     drag = undefined;
     window.clearTimeout(previous.timer);
     window.cancelAnimationFrame(frame);
+    previous.ghost?.remove();
+    previous.row.classList.remove("dragging");
+    list.classList.remove("sorting");
     if (previous.active) {
       suppressClickUntil = performance.now() + 700;
       if (cancelled) restore(previous.order);
@@ -2787,11 +2792,28 @@ function initializeMoveListSorting(listId, storedOrder) {
     const row = event.target.closest(".move-item-option");
     if (!row || drag || savingMove || (type !== "touch" && event.button !== 0)) return;
     suppressClickUntil = 0;
-    drag = { row, id, type, x, y, startX: x, startY: y, order: order(), active: false };
+    const rect = row.getBoundingClientRect();
+    drag = { row, id, type, x, y, startX: x, startY: y,
+      offsetX: x - rect.left, offsetY: y - rect.top, order: order(), active: false };
     drag.timer = window.setTimeout(() => {
       if (!drag || !elements.moveItem.open) return;
       drag.active = true;
       suppressClickUntil = Infinity;
+      const rect = row.getBoundingClientRect();
+      drag.ghost = row.cloneNode(true);
+      drag.ghost.className = "move-item-drag-ghost";
+      drag.ghost.setAttribute("aria-hidden", "true");
+      drag.ghost.inert = true;
+      const input = drag.ghost.querySelector("input");
+      input.removeAttribute("name");
+      input.disabled = true;
+      drag.ghost.style.width = `${rect.width}px`;
+      drag.ghost.style.height = `${rect.height}px`;
+      // Keep the preview in the dialog's top layer, outside the scrolling options.
+      elements.moveItem.append(drag.ghost);
+      row.classList.add("dragging");
+      list.classList.add("sorting");
+      positionRow();
       if (type !== "touch") list.setPointerCapture(id);
       frame = window.requestAnimationFrame(scrollAtEdge);
     }, 500);
