@@ -2668,33 +2668,90 @@ elements.cashierReminderOk.addEventListener("click", event => {
   openEndShoppingConfirmation();
 });
 
+let cancelEndShoppingPress = null;
+
 function enableEndShoppingLongPress(button) {
+  const holdDuration = 550;
+  const label = button.querySelector(".end-shopping-label");
+  const controller = new AbortController();
+  const { signal } = controller;
   let press = null;
+  let hintTimer = null;
+  let animation = null;
+  let completed = false;
   function cancelPress() {
     if (press) window.clearTimeout(press.timer);
+    window.clearTimeout(hintTimer);
+    window.cancelAnimationFrame(animation);
     press = null;
+    hintTimer = animation = null;
+    button.style.setProperty("--finish-progress", 0);
+    delete button.dataset.pressState;
+    label.textContent = "Einkauf beenden";
+    button.setAttribute("aria-label", label.textContent);
+  }
+  function showHint() {
+    cancelPress();
+    if (!button.isConnected || busy || planningMode || document.hidden) return;
+    button.dataset.pressState = "hint";
+    label.textContent = "Lang drücken!";
+    button.setAttribute("aria-label", label.textContent);
+    hintTimer = window.setTimeout(cancelPress, 2000);
   }
   button.addEventListener("pointerdown", event => {
-    cancelPress();
     if (busy || planningMode || event.button !== 0 || !event.isPrimary) return;
+    cancelPress();
+    completed = false;
     press = { id: event.pointerId, type: event.pointerType, x: event.clientX, y: event.clientY };
+    button.dataset.pressState = "holding";
+    label.textContent = "Lange drücken!";
+    button.setAttribute("aria-label", label.textContent);
+    const start = performance.now();
+    function updateProgress(now) {
+      if (!button.isConnected || busy || planningMode || document.hidden) {
+        cancelPress();
+        return;
+      }
+      const progress = Math.min((now - start) / holdDuration, 1);
+      button.style.setProperty("--finish-progress", progress);
+      if (progress < 1) animation = window.requestAnimationFrame(updateProgress);
+    }
+    animation = window.requestAnimationFrame(updateProgress);
     press.timer = window.setTimeout(() => {
       const { id, type } = press;
       cancelPress();
       if (!button.isConnected || busy || planningMode || document.hidden) return;
+      completed = true;
       suppressLongPressClick = true;
       if (type === "touch") longPressTouchPointerId = id;
       openCashierReminder(type === "touch");
-    }, 550);
-  });
+    }, holdDuration);
+  }, { signal });
   button.addEventListener("pointermove", event => {
     if (press && event.pointerId === press.id &&
         Math.hypot(event.clientX - press.x, event.clientY - press.y) >= 10) cancelPress();
-  });
-  for (const type of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) {
-    button.addEventListener(type, cancelPress);
+  }, { signal });
+  button.addEventListener("pointerup", event => {
+    if (press && event.pointerId === press.id) showHint();
+  }, { signal });
+  for (const type of ["pointercancel", "pointerleave", "lostpointercapture"]) {
+    button.addEventListener(type, event => {
+      if (press && event.pointerId === press.id) cancelPress();
+    }, { signal });
   }
-  button.addEventListener("contextmenu", event => event.preventDefault());
+  button.addEventListener("click", event => {
+    if (event.detail === 0) cancelPress();
+    else if (!completed && !press) showHint();
+  }, { signal });
+  button.addEventListener("contextmenu", event => event.preventDefault(), { signal });
+  for (const type of ["blur", "pagehide"]) window.addEventListener(type, cancelPress, { signal });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) cancelPress();
+  }, { signal });
+  return () => {
+    cancelPress();
+    controller.abort();
+  };
 }
 
 elements.endShoppingConfirm.addEventListener("click", () => {
@@ -3070,6 +3127,8 @@ function render() {
   const pendingIds = new Set(
     pendingOperations.map((operation) => operation.uid),
   );
+  cancelEndShoppingPress?.();
+  cancelEndShoppingPress = null;
   elements.items.replaceChildren();
   const order = supermarkets.find(market => market.id === selectedMarket)?.category_ids || [];
   const sortedCategories = [...categories].sort((a, b) => {
@@ -3272,7 +3331,7 @@ function render() {
   if (!planningMode) {
     const endShoppingItem = elements.endShoppingTemplate.content.cloneNode(true);
     const endShoppingAction = endShoppingItem.querySelector(".end-shopping-action");
-    enableEndShoppingLongPress(endShoppingAction);
+    cancelEndShoppingPress = enableEndShoppingLongPress(endShoppingAction);
     endShoppingAction.addEventListener("click", event => {
       if (busy || planningMode) return;
       if (event.detail !== 0) {

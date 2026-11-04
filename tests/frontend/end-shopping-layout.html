@@ -27,7 +27,11 @@ async function runTests() {
         {uid:"open", summary:"Brot", status:"needs_action"}
       ];
       render();
-      return {planning(value) { planningMode = value; render(); }};
+      return {
+        planning(value) { planningMode = value; render(); },
+        redraw() { render(); },
+        busy(value) { setBusy(value); }
+      };
     `)({operations}, storage);
   const assert = (condition, message) => { if (!condition) throw Error(message); };
   const pause = ms => new Promise(resolve => win.setTimeout(resolve, ms));
@@ -57,16 +61,62 @@ async function runTests() {
   frame.style.width = "390px";
   const reminder = doc.querySelector("#cashier-reminder");
   const confirmation = doc.querySelector("#end-shopping-confirm");
+  const label = button.querySelector(".end-shopping-label");
+  const pointer = (type, values = {}) => button.dispatchEvent(new win.PointerEvent(type, {
+    pointerId:91, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,
+    ...values,
+  }));
   button.dispatchEvent(new win.MouseEvent("click", {detail:1, bubbles:true, cancelable:true}));
   assert(!reminder.open && !confirmation.open, "A regular tap opened checkout");
-  button.dispatchEvent(new win.PointerEvent("pointerdown", {
-    pointerId:91, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,
-  }));
-  await pause(575);
+  assert(label.textContent === "Lang drücken!", "Short press did not show hint");
+  assert(button.getAttribute("aria-label") === label.textContent, "Accessible label differs from hint");
+  await pause(1750);
+  assert(label.textContent === "Lang drücken!", "Hint disappeared before 2 seconds");
+  pointer("pointerdown");
+  pointer("pointerup");
+  await pause(400);
+  assert(label.textContent === "Lang drücken!", "Repeated press did not restart hint timer");
+  await pause(1700);
+  assert(label.textContent === "Einkauf beenden" && !button.dataset.pressState, "Hint did not reset after 2 seconds");
+  assert(button.style.getPropertyValue("--finish-progress") === "0", "Hint left a visible fill");
+  results.push("PASS Short press hint, accessible label, 2-second reset and repeated-press reset");
+  for (const type of ["pointercancel", "pointerleave", "lostpointercapture"]) {
+    pointer("pointerdown");
+    pointer(type);
+    await pause(600);
+    assert(!reminder.open && label.textContent === "Einkauf beenden", `${type} did not cancel long press`);
+  }
+  pointer("pointerdown");
+  pointer("pointermove", {clientX:10});
+  await pause(600);
+  assert(!reminder.open && label.textContent === "Einkauf beenden", "Scroll movement did not cancel");
+  pointer("pointerdown");
+  win.dispatchEvent(new win.Event("blur"));
+  await pause(600);
+  assert(!reminder.open && label.textContent === "Einkauf beenden", "Window blur did not cancel");
+  pointer("pointerdown");
+  api.busy(true);
+  await pause(600);
+  assert(!reminder.open && label.textContent === "Einkauf beenden", "Busy state did not cancel");
+  api.busy(false);
+  results.push("PASS Pointer cancellation, scrolling, blur and busy state abort without checkout");
+  pointer("pointerdown");
+  assert(label.textContent === "Lange drücken!", "Long press label missing");
+  assert(button.getAttribute("aria-label") === label.textContent, "Accessible label differs during hold");
+  await pause(300);
+  const progress = Number(button.style.getPropertyValue("--finish-progress"));
+  assert(progress > .2 && progress < .9, "Fill is not progressing during hold");
+  assert(!reminder.open && !confirmation.open, "Long press activated before 550 ms");
+  const fill = button.querySelector(".end-shopping-fill").getBoundingClientRect();
+  const rect = button.getBoundingClientRect();
+  assert(fill.width > 0 && fill.width < rect.width, "Fill is not partial during hold");
+  assert(Math.abs(fill.left - rect.left - button.clientLeft) < 1, "Fill does not start at the left edge");
+  assert(win.getComputedStyle(button.querySelector(".end-shopping-fill-edge")).opacity === "0.7", "Leading edge missing");
+  assert(rect.height === 96, "Long press changed button height");
+  await pause(300);
   assert(reminder.open && reminder.inert, "Long press did not open and touch-gate the reminder");
-  button.dispatchEvent(new win.PointerEvent("pointerup", {
-    pointerId:91, pointerType:"touch", isPrimary:true, button:0, bubbles:true, cancelable:true,
-  }));
+  assert(label.textContent === "Einkauf beenden", "Label not restored after successful long press");
+  pointer("pointerup");
   await pause(0);
   assert(!reminder.inert, "Reminder stayed touch-gated after release");
   doc.querySelector("#cashier-reminder-ok").click();
@@ -85,9 +135,20 @@ async function runTests() {
   const deleted = operations.filter(operation => operation.type === "delete_item");
   assert(deleted.length === 1 && deleted[0].uid === "done", "Checkout did not delete only completed items");
   results.push("PASS Keyboard checkout deletes only completed items");
+  pointer("pointerdown");
+  api.redraw();
+  await pause(600);
+  assert(!reminder.open && label.textContent === "Einkauf beenden", "Rerender left an active hold timer");
+  const replacement = doc.querySelector("#items .end-shopping-action");
+  assert(replacement !== button && replacement.querySelector(".end-shopping-label").textContent === "Einkauf beenden", "Replacement button is not idle");
+  replacement.dispatchEvent(new win.PointerEvent("pointerdown", {
+    pointerId:92, pointerType:"touch", isPrimary:true, button:0, bubbles:true,
+  }));
   api.planning(true);
+  await pause(600);
+  assert(!reminder.open, "Mode switch did not cancel hold timer");
   assert(!doc.querySelector("#items .end-shopping-action"), "Finish button appears in planning mode");
-  results.push("PASS Finish button remains hidden in planning mode");
+  results.push("PASS Rerender and mode switch cancel timers; finish button hidden in planning mode");
   document.querySelector("#results").textContent = results.join("\n");
 }
 runTests().catch(error => {
