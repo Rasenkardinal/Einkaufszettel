@@ -404,9 +404,12 @@ function validProductUsage(usage) {
         /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/u.test(week) && Number.isSafeInteger(count) && count >= 0));
 }
 
-function rememberProduct(name, categoryId, categoryKnown = true) {
-  const key = canonicalProductKey(name);
-  const known = products.find(item => item.key === key);
+function rememberProduct(name, categoryId, categoryKnown = true, catalogId = activeCatalogId) {
+  const catalog = catalogs[catalogId];
+  const records = catalog?.products || products;
+  const nameKey = productNameKey(name);
+  const key = (catalog?.product_aliases || productAliases)[nameKey] || nameKey;
+  const known = records.find(item => item.key === key);
   const product = {
     ...known,
     key,
@@ -414,8 +417,75 @@ function rememberProduct(name, categoryId, categoryKnown = true) {
     category_id: categoryId,
     category_known: categoryKnown,
   };
-  products = [...products.filter(item => item.key !== key), product];
-  if (catalogs[activeCatalogId]) catalogs[activeCatalogId].products = products;
+  const updated = [...records.filter(item => item.key !== key), product];
+  if (catalog) catalog.products = updated;
+  if (catalogId === activeCatalogId) products = updated;
+}
+
+function applyLocalProductRename(operation) {
+  if (!operation.product_rename) return;
+  const { source_name: sourceName, catalog_id: catalogId } = operation.product_rename;
+  const catalog = catalogs[catalogId];
+  if (!catalog) throw new Error("Der Artikelkatalog für die Umbenennung fehlt. Bitte erneut laden.");
+  const receipt = `${operation.entry_id}:${operation.id}:rename`;
+  const receipts = catalog.product_operations ||= {};
+  if (receipts[receipt] !== undefined) return;
+  const aliases = catalog.product_aliases ||= {};
+  const sourceKey = aliases[productNameKey(sourceName)] || productNameKey(sourceName);
+  const source = catalog.products.find(product => product.key === sourceKey);
+  if (!source) throw new Error("Der umzubenennende Artikel fehlt. Bitte erneut laden.");
+  const nameKey = productNameKey(operation.summary);
+  const targetKey = aliases[nameKey] || nameKey;
+  const target = catalog.products.find(product => product.key === targetKey);
+  let destination;
+  if (target && target !== source) {
+    const total = productUsageCount(target) + productUsageCount(source);
+    const usage = structuredClone(target.usage || {});
+    for (const [listId, stats] of Object.entries(source.usage || {})) {
+      const combined = usage[listId] ||= { added: 0, last_added: 0, weeks: {} };
+      combined.added += stats.added;
+      combined.last_added = Math.max(combined.last_added, stats.last_added);
+      for (const [week, count] of Object.entries(stats.weeks)) {
+        combined.weeks[week] = (combined.weeks[week] || 0) + count;
+      }
+    }
+    destination = { ...target, usage };
+    if (target.usage_adjustment !== undefined || source.usage_adjustment !== undefined) {
+      destination.usage_adjustment = (target.usage_adjustment || 0) + total - productUsageCount(destination);
+    }
+    if (target.category_id === null && source.category_id !== null) {
+      destination.category_id = source.category_id;
+      destination.category_known = source.category_known !== false;
+    }
+  } else {
+    destination = { ...source, key: nameKey, name: operation.summary };
+    delete aliases[nameKey];
+  }
+  for (const [alias, key] of Object.entries(aliases)) {
+    if (key === sourceKey) aliases[alias] = destination.key;
+  }
+  if (sourceKey !== destination.key) aliases[sourceKey] = destination.key;
+  catalog.products = [
+    ...catalog.products.filter(product => product !== source && product !== target),
+    destination,
+  ];
+  for (const [identity, key] of Object.entries(catalog.product_events || {})) {
+    if (key === sourceKey) catalog.product_events[identity] = destination.key;
+  }
+  const keys = new Set(catalog.products.map(product => product.key));
+  catalog.dismissed_product_suggestions = (catalog.dismissed_product_suggestions || [])
+    .filter(pair => pair.every(key => keys.has(key)));
+  receipts[receipt] = JSON.stringify(operation.product_rename);
+  if (catalogId === activeCatalogId) {
+    products = catalog.products;
+    productAliases = aliases;
+    dismissedProductSuggestions = catalog.dismissed_product_suggestions;
+  }
+  currentItems = currentItems.map(item => {
+    if ((item.metadata?.catalog_id || "supermarket") !== catalogId) return item;
+    const key = aliases[productNameKey(item.summary)] || productNameKey(item.summary);
+    return key === destination.key ? { ...item, summary: destination.name } : item;
+  });
 }
 
 function applyProductCategories() {
@@ -668,14 +738,16 @@ async function refreshSupermarkets(requestedCatalogId = catalogIdForView()) {
 
 function replayProductAssignments(operations) {
   for (const operation of operations) {
-    if (operation.type === "add_item" && operation.summary &&
-        (operation.metadata?.catalog_id || "supermarket") === activeCatalogId) {
-      const known = products.find(product => product.key === canonicalProductKey(operation.summary));
-      rememberProduct(operation.summary, known?.category_id ?? null, known ? known.category_known !== false : false);
+    const catalogId = operation.metadata?.catalog_id || operation.product_rename?.catalog_id || "supermarket";
+    const catalog = catalogs[catalogId];
+    if (operation.type === "add_item" && operation.summary && catalog) {
+      const key = catalog.product_aliases?.[productNameKey(operation.summary)] || productNameKey(operation.summary);
+      const known = catalog.products.find(product => product.key === key);
+      rememberProduct(operation.summary, known?.category_id ?? null, known ? known.category_known !== false : false, catalogId);
     }
-    if (operation.product_name && Object.hasOwn(operation.metadata || {}, "category_id") &&
-        (operation.metadata?.catalog_id || "supermarket") === activeCatalogId) {
-      rememberProduct(operation.product_name, operation.metadata.category_id);
+    applyLocalProductRename(operation);
+    if (operation.product_name && Object.hasOwn(operation.metadata || {}, "category_id") && catalog) {
+      rememberProduct(operation.product_name, operation.metadata.category_id, true, catalogId);
     }
   }
 }
@@ -2545,6 +2617,7 @@ async function enqueue(operation, listId = entryId) {
 
 function applyLocalOperation(operation) {
   if (deletedUids.has(operation.uid)) return;
+  applyLocalProductRename(operation);
   if (operation.type === "add_item") {
     const itemCatalogId = operation.metadata?.catalog_id || "supermarket";
     const itemCatalog = catalogs[itemCatalogId];
@@ -3770,10 +3843,17 @@ elements.editItemForm.addEventListener("submit", async (event) => {
     return;
   }
   try {
+    const item = currentItems.find(item => item.uid === editingUid);
+    if (!item) throw new Error("Der Artikel wurde inzwischen entfernt. Bitte lade die Liste erneut.");
+    const catalogId = item.metadata?.catalog_id || "supermarket";
     await enqueue({
       type: "update_item", uid: editingUid, summary,
+      ...(summary !== item.summary
+        ? { product_rename: { source_name: item.summary, catalog_id: catalogId } }
+        : {}),
       description: elements.editNotes.value.trim() || null,
       metadata: {
+        catalog_id: catalogId,
         ...(elements.editCategory.value !== editingCategory
           ? { category_id: elements.editCategory.value || null } : {}),
         quantity: elements.editQuantity.value.trim() || null,
@@ -4282,7 +4362,7 @@ function validateOperationReply(snapshot, operationId, listId) {
 
 async function sendQueuedOperation(operation) {
   const changes = {};
-  for (const field of ["summary", "status", "description", "due", "metadata"]) {
+  for (const field of ["summary", "status", "description", "due", "metadata", "product_rename"]) {
     if (operation[field] !== undefined) changes[field] = operation[field];
   }
   if (operation.type === "move_item") {
@@ -4321,6 +4401,7 @@ async function runSynchronization() {
         ...operations.map(operation => operation.entry_id),
         ...operations.filter(operation => operation.type === "move_item").map(operation => operation.target_entry_id)]);
       const changedIds = new Set(operations.flatMap(operation =>
+        operation.product_rename ? [...ids] :
         operation.type === "move_item" ? [operation.entry_id, operation.target_entry_id] : [operation.entry_id]));
       for (const listId of ids) {
         if (!listId) continue;

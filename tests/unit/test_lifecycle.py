@@ -1901,6 +1901,217 @@ async def sync_environment(env, monkeypatch, *, features=49):
     )
 
 
+@pytest.mark.parametrize("merge", [False, True])
+async def test_list_rename_updates_catalog_statistics_and_other_lists(
+    integration, monkeypatch, merge
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    ctx.data.items = []
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "category",
+        "update_item",
+        ctx.data.items[0].uid,
+        {"metadata": {"category_id": "dairy"}},
+    )
+    store = env.stores["einkaufszettel.supermarkets"]
+    if merge:
+        await ctx.protocol.apply_operation(
+            ctx.data,
+            "target",
+            "add_item",
+            "target",
+            {"summary": "Vollmilch", "metadata": {"quantity": "2"}},
+        )
+    other_data = env.package.EinkaufszettelData(
+        SimpleNamespace(async_save=AsyncMock()),
+        [env.model.ShoppingItem("other", "Milch", "completed")],
+    )
+    other_data.product_rules = ctx.data.product_rules
+    other_entry = SimpleNamespace(entry_id="other", runtime_data=other_data)
+    env.hass.config_entries.async_entries.return_value = [env.entry, other_entry]
+    env.hass.config_entries.async_get_entry.return_value = env.entry
+    env.entry.domain = "einkaufszettel"
+    changes = {
+        "summary": "Vollmilch",
+        "description": "laktosefrei",
+        "metadata": {"quantity": "1 l"},
+        "product_rename": {"source_name": "Milch", "catalog_id": "supermarket"},
+    }
+    message = {
+        "id": 1,
+        "type": "einkaufszettel/apply_operation",
+        "entry_id": env.entry.entry_id,
+        "operation_id": "rename",
+        "action": "update_item",
+        "uid": ctx.data.items[0].uid,
+        "changes": changes,
+    }
+    connection = Mock(user=SimpleNamespace(is_admin=False))
+    await env.websocket.websocket_apply_operation(env.hass, connection, message)
+    connection.send_error.assert_not_called()
+    saved = await store.async_load()
+    assert [product["key"] for product in saved["products"]] == ["vollmilch"]
+    product = saved["products"][0]
+    assert product["category_id"] == "dairy"
+    assert product["usage"][env.entry.entry_id]["added"] == (2 if merge else 1)
+    assert sum(product["usage"][env.entry.entry_id]["weeks"].values()) == (
+        2 if merge else 1
+    )
+    assert saved["product_aliases"]["milch"] == "vollmilch"
+    assert set(saved["product_events"].values()) == {"vollmilch"}
+    assert ctx.data.items[0].summary == other_data.items[0].summary == "Vollmilch"
+    assert ctx.data.items[0].metadata["quantity"] == "1 l"
+    assert ctx.data.items[0].description == "laktosefrei"
+    assert other_data.items[0].status == "completed"
+    await env.websocket.websocket_apply_operation(env.hass, connection, message)
+    assert await store.async_load() == saved
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.remote[0]["summary"] == "Vollmilch"
+
+
+@pytest.mark.parametrize("failure", ["list", "other-list"])
+async def test_list_rename_retries_after_partial_save_without_repeating_statistics(
+    integration, monkeypatch, failure
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.protocol.apply_operation(
+        ctx.data, "fresh", "add_item", "fresh", {"summary": "Buter"}
+    )
+    other_store = SimpleNamespace(async_save=AsyncMock())
+    other_data = env.package.EinkaufszettelData(
+        other_store, [env.model.ShoppingItem("other", "Buter", "completed")]
+    )
+    other_data.product_rules = ctx.data.product_rules
+    env.entry.domain = "einkaufszettel"
+    env.hass.config_entries.async_get_entry.return_value = env.entry
+    env.hass.config_entries.async_entries.return_value = [
+        env.entry,
+        SimpleNamespace(entry_id="other", runtime_data=other_data),
+    ]
+    failed_store = ctx.data.store if failure == "list" else other_store
+    failed_store.async_save.side_effect = OSError("disk unavailable")
+    msg = {
+        "id": 1,
+        "type": "einkaufszettel/apply_operation",
+        "entry_id": env.entry.entry_id,
+        "operation_id": "rename",
+        "action": "update_item",
+        "uid": "fresh",
+        "changes": {
+            "summary": "Butter",
+            "product_rename": {"source_name": "Buter", "catalog_id": "supermarket"},
+        },
+    }
+    connection = Mock(user=SimpleNamespace(is_admin=False))
+    await env.websocket.websocket_apply_operation(env.hass, connection, msg)
+    connection.send_error.assert_called_once()
+    connection.send_result.assert_not_called()
+    store = env.stores["einkaufszettel.supermarkets"]
+    saved = await store.async_load()
+    failed_store.async_save.side_effect = None
+    connection.reset_mock()
+    await env.websocket.websocket_apply_operation(env.hass, connection, msg)
+    connection.send_error.assert_not_called()
+    assert await store.async_load() == saved
+    assert (
+        next(item for item in ctx.data.items if item.uid == "fresh").summary == "Butter"
+    )
+    assert other_data.items[0].summary == "Butter"
+    # A lost old reply must not undo a newer successful rename.
+    newer = deepcopy(msg)
+    newer["operation_id"] = "newer"
+    newer["changes"]["summary"] = "Salzbutter"
+    newer["changes"]["product_rename"]["source_name"] = "Butter"
+    await env.websocket.websocket_apply_operation(env.hass, connection, newer)
+    latest = await store.async_load()
+    await env.websocket.websocket_apply_operation(env.hass, connection, msg)
+    assert await store.async_load() == latest
+    assert (
+        next(item for item in ctx.data.items if item.uid == "fresh").summary
+        == "Salzbutter"
+    )
+    assert other_data.items[0].summary == "Salzbutter"
+
+
+@pytest.mark.parametrize(
+    "rename",
+    [
+        None,
+        {"source_name": "", "catalog_id": "supermarket"},
+        {"source_name": "Milch", "catalog_id": "hardware"},
+        {"source_name": "Fremder Artikel", "catalog_id": "supermarket"},
+    ],
+)
+async def test_list_rename_rejects_invalid_or_unrelated_source_without_catalog_changes(
+    integration, monkeypatch, rename
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.protocol.apply_operation(
+        ctx.data, "fresh", "add_item", "fresh", {"summary": "Milch"}
+    )
+    store = env.stores["einkaufszettel.supermarkets"]
+    saved = await store.async_load()
+    before = list(ctx.data.items)
+    with pytest.raises(ValueError):
+        await ctx.protocol.apply_operation(
+            ctx.data,
+            "rename",
+            "update_item",
+            "fresh",
+            {"summary": "Vollmilch", "product_rename": rename},
+        )
+    assert ctx.data.items == before
+    assert await store.async_load() == saved
+
+
+async def test_list_rename_changes_source_spelling_but_not_other_catalogs(
+    integration, monkeypatch
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    other_data = env.package.EinkaufszettelData(
+        SimpleNamespace(async_save=AsyncMock()),
+        [
+            env.model.ShoppingItem("source", "Milch", source_uid="external"),
+            env.model.ShoppingItem(
+                "hardware", "Milch", metadata={"catalog_id": "hardware"}
+            ),
+        ],
+    )
+    env.entry.domain = "einkaufszettel"
+    env.hass.config_entries.async_get_entry.return_value = env.entry
+    env.hass.config_entries.async_entries.return_value = [
+        env.entry,
+        SimpleNamespace(entry_id="other", runtime_data=other_data),
+    ]
+    connection = Mock(user=SimpleNamespace(is_admin=False))
+    await env.websocket.websocket_apply_operation(
+        env.hass,
+        connection,
+        {
+            "id": 1,
+            "type": "einkaufszettel/apply_operation",
+            "entry_id": env.entry.entry_id,
+            "operation_id": "spelling",
+            "action": "update_item",
+            "uid": ctx.data.items[0].uid,
+            "changes": {
+                "summary": "MILCH",
+                "product_rename": {"source_name": "Milch", "catalog_id": "supermarket"},
+            },
+        },
+    )
+    connection.send_error.assert_not_called()
+    assert ctx.data.items[0].summary == other_data.items[0].summary == "MILCH"
+    assert other_data.items[1].summary == "Milch"
+
+
 @pytest.mark.parametrize("features", [49, 17])
 async def test_deleted_product_remains_deleted_during_source_sync(
     integration, monkeypatch, features

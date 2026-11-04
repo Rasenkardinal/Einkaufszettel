@@ -8,12 +8,12 @@ from typing import Any
 
 from homeassistant.helpers.storage import Store
 
-from .catalog import product_key, validate_catalog
+from .catalog import change_catalog, product_key, validate_catalog
 from .const import DOMAIN
 
 
 async def apply_product_rules(
-    hass, items, *, operation=None, seed=(), events=(), list_id=None
+    hass, items, *, operation=None, rename=None, seed=(), events=(), list_id=None
 ):
     """Persist assignments before projecting them; receipts make retries harmless."""
     lock = hass.data.setdefault(f"{DOMAIN}.supermarkets_lock", asyncio.Lock())
@@ -21,6 +21,43 @@ async def apply_product_rules(
         store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}.supermarkets")
         stored = await store.async_load()
         catalog = deepcopy(validate_catalog(stored if stored is not None else {}))
+        if rename is not None:
+            identity, source, name, payload, catalog_id, expected_name = rename
+            value = catalog["catalogs"].get(catalog_id)
+            if value is None:
+                raise ValueError("Der Artikelkatalog wurde nicht gefunden.")
+            receipts = value["product_operations"]
+            previous = receipts.get(identity)
+            if previous is not None and previous != payload:
+                raise ValueError(
+                    "Die Umbenennung wurde bereits mit anderem Inhalt verwendet."
+                )
+            if previous is None:
+                aliases = value["product_aliases"]
+                source_key = aliases.get(product_key(source), product_key(source))
+                expected_key = aliases.get(
+                    product_key(expected_name), product_key(expected_name)
+                )
+                if source_key != expected_key:
+                    raise ValueError(
+                        "Der Artikel wurde inzwischen geändert. Bitte neu laden."
+                    )
+                target_key = aliases.get(product_key(name), product_key(name))
+                merge = target_key != source_key and any(
+                    product["key"] == target_key for product in value["products"]
+                )
+                catalog = change_catalog(
+                    catalog,
+                    "merge_product" if merge else "rename_product",
+                    {
+                        "catalog_id": catalog_id,
+                        "product_key": source_key,
+                        **({"target_key": target_key} if merge else {"name": name}),
+                    },
+                )
+                catalog["catalogs"][catalog_id]["product_operations"][identity] = (
+                    payload
+                )
         catalogs = catalog["catalogs"]
         product_maps = {
             catalog_id: {

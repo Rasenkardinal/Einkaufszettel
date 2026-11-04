@@ -77,7 +77,12 @@ def load_sync_state(value: object) -> dict[str, Any]:
 
 
 async def persist_items(
-    data, items: list[ShoppingItem], state=None, *, product_operation=None
+    data,
+    items: list[ShoppingItem],
+    state=None,
+    *,
+    product_operation=None,
+    product_rename=None,
 ) -> None:
     """Commit the snapshot, receipts and tombstones in one HA Store write."""
     state = deepcopy(
@@ -124,7 +129,10 @@ async def persist_items(
                     )
                 )
         items = await data.product_rules(
-            items, operation=product_operation, events=events
+            items,
+            operation=product_operation,
+            events=events,
+            **({"rename": product_rename} if product_rename is not None else {}),
         )
     previous = {item.uid: item for item in data.items}
     current = {item.uid: item for item in items}
@@ -158,10 +166,24 @@ async def apply_operation(
         "description",
         "due",
         "metadata",
+        "product_rename",
     }:
         raise ValueError("Invalid item patch")
     if action == "delete_item" and changes:
         raise ValueError("Deletion cannot contain an item patch")
+    rename = changes.get("product_rename")
+    if "product_rename" in changes and (
+        action != "update_item"
+        or not isinstance(rename, dict)
+        or set(rename) != {"source_name", "catalog_id"}
+        or not isinstance(rename["source_name"], str)
+        or not 1 <= len(rename["source_name"].strip()) <= 200
+        or not isinstance(rename["catalog_id"], str)
+        or not rename["catalog_id"]
+        or not isinstance(changes.get("summary"), str)
+        or not 1 <= len(changes["summary"].strip()) <= 200
+    ):
+        raise ValueError("Invalid product rename")
     payload = json.dumps([action, uid, changes], sort_keys=True, allow_nan=False)
     receipt_payload = payload
     metadata_changes = changes.get("metadata")
@@ -188,6 +210,7 @@ async def apply_operation(
         if action == "update_item" and old is None:
             raise ValueError("Shopping item not found")
         values = dict(changes)
+        values.pop("product_rename", None)
         if "metadata" in values:
             if not isinstance(values["metadata"], dict):
                 raise ValueError("Invalid metadata patch")
@@ -205,6 +228,23 @@ async def apply_operation(
         "result": result,
     }
     product_operation = None
+    product_rename = None
+    if result == "applied" and rename is not None:
+        article = next(item for item in items if item.uid == uid)
+        if (
+            old.metadata.get("catalog_id", "supermarket") != rename["catalog_id"]
+            or article.metadata.get("catalog_id", "supermarket") != rename["catalog_id"]
+            or getattr(data, "product_rules", None) is None
+        ):
+            raise ValueError("Der Artikelkatalog für die Umbenennung passt nicht.")
+        product_rename = (
+            f"{operation_id}:rename",
+            rename["source_name"],
+            article.summary,
+            receipt_payload,
+            rename["catalog_id"],
+            old.summary,
+        )
     if (
         result == "applied"
         and action != "delete_item"
@@ -218,5 +258,11 @@ async def apply_operation(
             payload,
             article.metadata.get("catalog_id", "supermarket"),
         )
-    await persist_items(data, items, state, product_operation=product_operation)
+    await persist_items(
+        data,
+        items,
+        state,
+        product_operation=product_operation,
+        product_rename=product_rename,
+    )
     return result

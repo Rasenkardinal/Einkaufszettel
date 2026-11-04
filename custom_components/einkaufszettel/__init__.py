@@ -163,7 +163,7 @@ async def async_setup_entry(
     entry.runtime_data = EinkaufszettelData(store, items, sync=sync)
     from .products import apply_product_rules  # noqa: PLC0415
 
-    async def product_rules(articles, *, operation=None, events=()):
+    async def product_rules(articles, *, operation=None, rename=None, events=()):
         if operation is not None:
             identity, name, category, payload, *catalog_id = operation
             operation = (
@@ -177,6 +177,7 @@ async def async_setup_entry(
             hass,
             articles,
             operation=operation,
+            rename=(f"{entry.entry_id}:{rename[0]}", *rename[1:]) if rename else None,
             events=[
                 (
                     f"{entry.entry_id}:{identity}",

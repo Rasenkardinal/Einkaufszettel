@@ -182,6 +182,30 @@ async def websocket_delete_supermarket(
     await _market_command(hass, connection, msg)
 
 
+async def _project_product_name(
+    hass, entries, catalog_id, aliases, source_key, name
+) -> None:
+    for entry in entries:
+        runtime = entry.runtime_data
+        items = [
+            replace(item, summary=name)
+            if item.metadata.get("catalog_id", "supermarket") == catalog_id
+            and aliases.get(product_key(item.summary), product_key(item.summary))
+            == source_key
+            else item
+            for item in runtime.items
+        ]
+        if items != runtime.items:
+            state = deepcopy(runtime.sync)
+            state["revision"] += 1
+            await runtime.store.async_save(
+                {"items": [item.to_dict() for item in items], "sync": state}
+            )
+            runtime.items = items
+            runtime.sync = state
+            async_dispatcher_send(hass, update_signal(entry.entry_id))
+
+
 async def _catalog_command(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
@@ -326,33 +350,14 @@ async def _catalog_command(
                             for product in updated["products"]
                             if product["key"] == target_key
                         )
-                        for entry in entries:
-                            runtime = entry.runtime_data
-                            items = [
-                                replace(item, summary=target["name"])
-                                if item.metadata.get("catalog_id", "supermarket")
-                                == catalog_id
-                                and aliases.get(
-                                    product_key(item.summary), product_key(item.summary)
-                                )
-                                == source_key
-                                else item
-                                for item in runtime.items
-                            ]
-                            if items != runtime.items:
-                                state = deepcopy(runtime.sync)
-                                state["revision"] += 1
-                                await runtime.store.async_save(
-                                    {
-                                        "items": [item.to_dict() for item in items],
-                                        "sync": state,
-                                    }
-                                )
-                                runtime.items = items
-                                runtime.sync = state
-                                async_dispatcher_send(
-                                    hass, update_signal(entry.entry_id)
-                                )
+                        await _project_product_name(
+                            hass,
+                            entries,
+                            catalog_id,
+                            aliases,
+                            source_key,
+                            target["name"],
+                        )
                     data = updated
                 connection.send_result(
                     msg["id"],
@@ -644,7 +649,22 @@ async def websocket_apply_operation(
     entry = _get_entry(hass, connection, msg)
     if entry is None:
         return
-    async with entry.runtime_data.lock:
+    rename = isinstance(msg["changes"], dict) and "product_rename" in msg["changes"]
+    entries = (
+        sorted(
+            (
+                other
+                for other in hass.config_entries.async_entries(DOMAIN)
+                if getattr(other, "runtime_data", None) is not None
+            ),
+            key=lambda other: other.entry_id,
+        )
+        if rename
+        else [entry]
+    )
+    async with AsyncExitStack() as stack:
+        for other in entries:
+            await stack.enter_async_context(other.runtime_data.lock)
         try:
             result = await apply_operation(
                 entry.runtime_data,
@@ -653,7 +673,33 @@ async def websocket_apply_operation(
                 msg["uid"],
                 msg["changes"],
             )
-        except (HomeAssistantError, OSError, ValueError, TypeError) as err:
+            if rename and result == "applied":
+                lock = hass.data.setdefault(
+                    f"{DOMAIN}.supermarkets_lock", asyncio.Lock()
+                )
+                async with lock:
+                    store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}.supermarkets")
+                    stored = await store.async_load()
+                    catalog_id = msg["changes"]["product_rename"]["catalog_id"]
+                    catalog = validate_catalog(stored)["catalogs"][catalog_id]
+                    aliases = catalog["product_aliases"]
+                    source = product_key(
+                        msg["changes"]["product_rename"]["source_name"]
+                    )
+                    source_key = aliases.get(source, source)
+                    target = next(
+                        (
+                            product
+                            for product in catalog["products"]
+                            if product["key"] == source_key
+                        ),
+                        None,
+                    )
+                if target is not None:
+                    await _project_product_name(
+                        hass, entries, catalog_id, aliases, source_key, target["name"]
+                    )
+        except (HomeAssistantError, OSError, ValueError, KeyError, TypeError) as err:
             connection.send_error(msg["id"], "cannot_apply_operation", str(err))
             return
         async_dispatcher_send(hass, update_signal(entry.entry_id))

@@ -10,6 +10,7 @@ async function runTests() {
   const selection = source.slice(source.indexOf("async function loadSelectedList()"), source.indexOf("async function selectList("));
   const protocol = source.slice(source.indexOf("function scheduleSynchronization()"), source.indexOf("async function loadRemoteLists()"));
   const productHelpers = source.slice(source.indexOf("function productNameKey("), source.indexOf("function cacheCatalog("));
+  const usageHelper = source.slice(source.indexOf("function productUsageCount("), source.indexOf("function productEditDistance("));
   const productReplay = source.slice(source.indexOf("function replayProductAssignments("), source.indexOf("function button("));
   const results = [];
   const assert = (value, message) => { if (!value) throw Error(message); };
@@ -67,11 +68,12 @@ async function runTests() {
       let entryId = "a", currentItems = [], deletedUids = new Set(), pendingOperations = [],
         lastOperationTime = 0, busy = false, authenticated = false;
       let syncPromise, syncRequested = false, fullSyncRequested = false, syncTimer, listRefreshPromise;
-      let products = [], productAliases = {}, activeCatalogId = "supermarket";
+      let products = [], productAliases = {}, dismissedProductSuggestions = [], activeCatalogId = "supermarket";
       const catalogs = {supermarket:{products:[]}};
       const cacheCatalog = () => {};
       const refreshSupermarkets = async () => {};
       ${productHelpers}
+      ${usageHelper}
       ${productReplay}
       let availableLists = [{ entry_id: "a", name: "Test" }];
       const setBusy = value => { busy = value; env.busyStates.push(value); };
@@ -98,7 +100,7 @@ async function runTests() {
         flush: () => syncPromise,
         lists: value => { availableLists = value; },
         select: async id => { entryId = id; await loadSelectedList(); },
-        state: () => ({ currentItems, pendingOperations, products, message: elements.message.textContent, busy, syncing: !!syncPromise }) };
+        state: () => ({ currentItems, pendingOperations, products, catalogs, message: elements.message.textContent, busy, syncing: !!syncPromise }) };
     `);
     const api = create(env);
     try { await test(api, env); }
@@ -125,6 +127,97 @@ async function runTests() {
     assert(api.state().currentItems[0].metadata.quantity === "2", "Quantity lost");
     await api.enqueue({ type: "add_item", uid: "deleted", summary: "Must not reappear" });
     assert(api.state().currentItems.length === 1, "Tombstone ignored");
+  });
+
+  for (const merge of [false, true]) {
+    await test(`Offline article rename ${merge ? "merges existing statistics" : "removes the old catalog name"} across list switches`, async (api, env) => {
+      const usage = {a:{added:3,last_added:100,weeks:{"2026-W44":3}}};
+      api.setProducts([
+        {key:"buter",name:"Buter",category_id:"dairy",usage,usage_adjustment:1},
+        ...(merge ? [{key:"butter",name:"Butter",category_id:null,
+          usage:{a:{added:2,last_added:200,weeks:{"2026-W44":2}}}}] : []),
+      ]);
+      await api.saveList({entry_id:"a",name:"A",revision:1,items:[
+        {uid:"one",summary:"Buter",status:"needs_action",metadata:{category_id:"dairy",quantity:"1"}},
+        {uid:"two",summary:"Buter",status:"completed"},
+      ]});
+      await api.saveList({entry_id:"b",name:"B",revision:1,items:[
+        {uid:"other",summary:"Buter",status:"needs_action"},
+      ]});
+      await api.loadSelectedList();
+      await api.enqueue({type:"update_item",uid:"one",summary:"Butter",
+        product_rename:{source_name:"Buter",catalog_id:"supermarket"},
+        metadata:{catalog_id:"supermarket",quantity:"2"},description:"Gesalzen"});
+      assert(api.state().products.length===1 && api.state().products[0].name==="Butter","Old product still selectable");
+      const expected = JSON.stringify(api.state().products);
+      assert(api.state().products[0].usage.a.added===(merge?5:3),"Usage not retained/combined");
+      assert(api.state().products[0].usage_adjustment===1,"Statistics correction lost");
+      assert(api.state().currentItems.every(item=>item.summary==="Butter"),"Duplicate list entries not renamed");
+      assert(api.state().currentItems[0].metadata.quantity==="2","Quantity lost");
+      await api.select("b");
+      assert(api.state().currentItems[0].summary==="Butter","Inactive cached list kept old name");
+      await api.select("a");
+      await api.loadSelectedList();
+      assert(JSON.stringify(api.state().products)===expected,"Replay counted statistics twice");
+      const operation=(await api.readQueue())[0];
+      assert(operation.product_rename.source_name==="Buter","Rename not durably queued");
+      api.lists([{entry_id:"a",name:"A"},{entry_id:"b",name:"B"}]);
+      const calls=server(env,{
+        a:{entry_id:"a",name:"A",revision:1,items:[{uid:"one",summary:"Buter",status:"needs_action"}]},
+        b:{entry_id:"b",name:"B",revision:1,items:[]},
+      });
+      api.online();
+      await api.synchronize({full:false});
+      assert(calls.find(call=>call.type.endsWith("/apply_operation")).changes.product_rename.source_name==="Buter","Rename stripped from network payload");
+      assert(calls.some(call=>call.type.endsWith("/sync_source")&&call.entry_id==="b"),"Other lists were not reconciled after rename");
+    });
+  }
+
+  await test("Real edit dialog renames the shared product and keeps notes-only edits separate", async (api, env) => {
+    await api.saveList({entry_id:"a",name:"A",revision:1,items:[
+      {uid:"one",summary:"Buter",status:"needs_action",metadata:{quantity:"1"}},
+    ]});
+    const base="../../custom_components/einkaufszettel/www/";
+    const markup=await (await fetch(base+"app.html")).text();
+    const frame=document.createElement("iframe");
+    frame.title="Article correction regression";
+    frame.style.cssText="width:390px;height:844px;border:0";
+    frame.srcdoc=markup.replace(/<script src="[^"]+" defer><\/script>/,"")
+      .replace("<head>",`<head><base href="${new URL(base,location.href)}">`);
+    document.body.append(frame);
+    await new Promise(resolve=>frame.onload=resolve);
+    const win=frame.contentWindow,doc=win.document,storage=new Map();
+    try {
+      const ui=win.Function("test","localStorage",source.replace(/initializeDesign\(\);\s*start\(\);\s*$/,"")+`
+        database=test.database; entryId="a"; availableLists=[{entry_id:"a",name:"A"}];
+        applyCatalog({categories:[],supermarkets:[],products:[
+          {key:"buter",name:"Buter",category_id:null,usage:{}},
+          {key:"butter",name:"Butter",category_id:null,usage:{}}
+        ]});
+        return {loadSelectedList,readQueue,localFlush:()=>localUpdates,
+          state:()=>({products,items:currentItems})};
+      `)({database:env.database},{getItem:key=>storage.get(key)||null,
+        setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)});
+      await ui.loadSelectedList();
+      doc.querySelector('[aria-label="Bearbeiten: Buter"]').click();
+      assert(doc.querySelector("#edit-item").open,"Edit dialog did not open");
+      assert(doc.querySelector("#edit-summary").getAttribute("aria-describedby")==="edit-summary-help","Shared rename explanation missing");
+      doc.querySelector("#edit-summary").value="Butter";
+      doc.querySelector("#edit-item-form").requestSubmit();
+      await ui.localFlush();
+      const queue=await ui.readQueue();
+      assert(queue[0].product_rename.source_name==="Buter"&&queue[0].product_rename.catalog_id==="supermarket","Shared rename not queued");
+      assert(ui.state().products.length===1&&ui.state().products[0].name==="Butter","Duplicate catalog article remains");
+      assert(ui.state().items[0].summary==="Butter"&&ui.state().items[0].metadata.quantity==="1","List edit lost fields");
+      const cached=JSON.parse(storage.get("einkaufszettel.catalog"));
+      assert(cached.catalogs.supermarket.products.length===1,"Corrected catalog not cached");
+      doc.querySelector('[aria-label="Bearbeiten: Butter"]').click();
+      doc.querySelector("#edit-notes").value="Gesalzen";
+      doc.querySelector("#edit-item-form").requestSubmit();
+      await ui.localFlush();
+      const notes=(await ui.readQueue()).at(-1);
+      assert(!notes.product_rename&&notes.description==="Gesalzen","Notes-only edit renamed the catalog");
+    } finally { frame.remove(); }
   });
 
   await test("Lost acknowledgement retries the same operation without replacing newer data", async (api, env) => {
