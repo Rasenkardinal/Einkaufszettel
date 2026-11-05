@@ -61,7 +61,7 @@ class BackupButton(ButtonEntity):
         name="Easy Shopping Backup",
         manufacturer="Easy Shopping",
         model="Backup / Restore",
-        configuration_url=f"/{DOMAIN}_backup",
+        configuration_url=f"homeassistant://{DOMAIN}_backup",
     )
 
     async def async_press(self) -> None:

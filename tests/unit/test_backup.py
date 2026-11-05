@@ -496,7 +496,10 @@ async def test_one_central_backup_entity_without_hub_and_independent_of_load_ord
         == 2
     )
     assert backup[0]._attr_device_info["identifiers"] == {("einkaufszettel", "backup")}
-    assert backup[0]._attr_device_info["configuration_url"] == "/einkaufszettel_backup"
+    assert (
+        backup[0]._attr_device_info["configuration_url"]
+        == "homeassistant://einkaufszettel_backup"
+    )
     backup[0].hass = env.hass
     await backup[0].async_press()
     notification = env.persistent_notification.async_create.call_args

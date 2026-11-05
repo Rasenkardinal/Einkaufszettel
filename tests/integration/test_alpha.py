@@ -89,7 +89,7 @@ async def test_central_backup_device_and_list_options_removed(hass, source):
     assert not entry.supports_options and not hub.supports_options
     device = dr.async_get(hass).devices[backup[0].device_id]
     assert device.name == "Easy Shopping Backup"
-    assert device.configuration_url == "/einkaufszettel_backup"
+    assert device.configuration_url == "homeassistant://einkaufszettel_backup"
     await hass.services.async_call(
         "button", "press", {"entity_id": backup[0].entity_id}, blocking=True
     )
