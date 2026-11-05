@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from . import EinkaufszettelConfigEntry
+from .backup import get_manager
 from .const import CONF_SOURCE, DOMAIN, update_signal
 from .model import append_new_items
 from .source import async_read_source
@@ -42,6 +43,14 @@ class CopySourceButton(ButtonEntity):
 
     async def async_press(self) -> None:
         """Read, merge and persist atomically before notifying the To-do UI."""
+        if self._entry.options.get("source_paused", False):
+            raise HomeAssistantError(
+                "Quellabgleich nach Wiederherstellung gesperrt. Bitte unter Datensicherung freigeben."
+            )
+        async with get_manager(self.hass).activity():
+            await self._copy_source()
+
+    async def _copy_source(self) -> None:
         data = self._entry.runtime_data
         async with data.lock:
             try:

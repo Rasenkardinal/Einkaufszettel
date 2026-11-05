@@ -199,7 +199,15 @@ async def _project_product_name(
             state = deepcopy(runtime.sync)
             state["revision"] += 1
             await runtime.store.async_save(
-                {"items": [item.to_dict() for item in items], "sync": state}
+                {
+                    "items": [item.to_dict() for item in items],
+                    "sync": state,
+                    **(
+                        {"restore_id": runtime.restore_id}
+                        if getattr(runtime, "restore_id", "")
+                        else {}
+                    ),
+                }
             )
             runtime.items = items
             runtime.sync = state
@@ -330,6 +338,11 @@ async def _catalog_command(
                                 {
                                     "items": [item.to_dict() for item in items],
                                     "sync": state,
+                                    **(
+                                        {"restore_id": runtime.restore_id}
+                                        if getattr(runtime, "restore_id", "")
+                                        else {}
+                                    ),
                                 }
                             )
                             runtime.items = items
@@ -599,6 +612,16 @@ def _get_entry(hass: HomeAssistant, connection, msg: dict[str, Any]):
     ):
         connection.send_error(msg["id"], "not_found", "Shopping list not found")
         return None
+    action = msg.get("type", "").rsplit("/", 1)[-1]
+    if action in ("add_item", "update_item", "delete_item") and getattr(
+        entry.runtime_data, "restore_id", ""
+    ):
+        connection.send_error(
+            msg["id"],
+            "restore_conflict",
+            "Veralteter App-Zugriff nach Wiederherstellung. Bitte die App aktualisieren.",
+        )
+        return None
     return entry
 
 
@@ -617,6 +640,8 @@ def _send_snapshot(connection, message_id: int, entry, **extra) -> None:
                 getattr(entry.runtime_data, "sync", {}).get("deleted", {})
             ),
             "source_error": getattr(entry.runtime_data, "source_error", None),
+            "restore_id": getattr(entry.runtime_data, "restore_id", ""),
+            "source_paused": entry.options.get("source_paused", False),
             "source_conflicts": source_conflicts(entry.runtime_data),
             "source_local_items": [
                 item
@@ -640,6 +665,7 @@ async def _save_items(entry, items: list[ShoppingItem]) -> None:
         vol.Required("action"): vol.In(["add_item", "update_item", "delete_item"]),
         vol.Required("uid"): str,
         vol.Required("changes"): dict,
+        vol.Optional("restore_id"): str,
     }
 )
 @websocket_api.async_response
@@ -649,6 +675,13 @@ async def websocket_apply_operation(
     """Acknowledge only after item changes and deduplication are durable."""
     entry = _get_entry(hass, connection, msg)
     if entry is None:
+        return
+    if msg.get("restore_id", "") != getattr(entry.runtime_data, "restore_id", ""):
+        connection.send_error(
+            msg["id"],
+            "restore_conflict",
+            "Diese Offline-Änderung stammt von vor einer Wiederherstellung und wird nicht angewendet. Bitte den lokalen Entwurf sichern und die App-Daten prüfen.",
+        )
         return
     rename = isinstance(msg["changes"], dict) and "product_rename" in msg["changes"]
     entries = (
@@ -735,7 +768,8 @@ async def websocket_sync_source(
             {}
             if completed
             else {
-                "source_error": "Quelllistenabgleich läuft bereits oder die Liste ist ausgeblendet."
+                "source_error": entry.runtime_data.source_error
+                or "Quelllistenabgleich läuft bereits oder die Liste ist ausgeblendet."
             }
         ),
     )
@@ -1082,6 +1116,13 @@ async def websocket_copy_source(
     """Append unseen open source items, preserving existing local edits."""
     entry = _get_entry(hass, connection, msg)
     if entry is None:
+        return
+    if entry.options.get("source_paused", False):
+        connection.send_error(
+            msg["id"],
+            "source_paused",
+            "Quellabgleich nach Wiederherstellung gesperrt. Bitte unter Datensicherung freigeben.",
+        )
         return
     data = entry.runtime_data
     async with data.lock:

@@ -16,6 +16,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
 
+from .backup import get_manager
 from .const import CONF_SOURCE, update_signal
 from .source import async_read_all_source
 from .sync import persist_items
@@ -79,6 +80,10 @@ def _available_sources(data, incoming, uid):
 async def resolve_source_conflict(hass, entry, uid, token, action, source_uid=None):
     """Revalidate a human decision against current source IDs under the list lock."""
     data = entry.runtime_data
+    if entry.options.get("source_paused", False):
+        raise HomeAssistantError(
+            "Der Quellabgleich ist nach einer Wiederherstellung gesperrt. Bitte unter Datensicherung prüfen und freigeben."
+        )
     async with data.lock:
         intent = data.sync["creates"].get(uid)
         if (
@@ -408,6 +413,17 @@ async def _reconcile(hass, entry) -> None:
 
 
 async def synchronize_source(hass: HomeAssistant, entry) -> bool:
+    manager = get_manager(hass)
+    if manager.blocked:
+        return False
+    if entry.options.get("source_paused", False):
+        entry.runtime_data.source_error = "Quellabgleich nach Wiederherstellung gesperrt. Unter Datensicherung prüfen und freigeben."
+        return False
+    async with manager.activity():
+        return await _synchronize_source(hass, entry)
+
+
+async def _synchronize_source(hass: HomeAssistant, entry) -> bool:
     """Bound network waits and explicitly expose source errors in app snapshots."""
     data = entry.runtime_data
     if not entry.options.get("enabled", True):

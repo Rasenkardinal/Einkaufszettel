@@ -1,5 +1,6 @@
 """Exercise HA source discovery and app management without duplicate To-do lists."""
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -71,6 +72,112 @@ async def test_user_flow_creates_hub_without_source_selection(hass):
     assert result["data"] == {"name": "Einkaufszettel"}
     await hass.async_block_till_done()
     assert not hass.states.async_all("todo")
+
+
+async def test_backup_http_restore_and_websocket_generation(
+    hass, source, hass_client, hass_ws_client
+):
+    """Use HA's real authenticated view, slotted connection and command decorators."""
+    entry = await setup_app(hass, with_source=True)
+    websocket = await hass_ws_client(hass)
+    before = await command(websocket, 1, "get_list", entry_id=entry.entry_id)
+    client = await hass_client()
+    download = await client.get(f"/api/{DOMAIN}/backup")
+    assert download.status == 200
+    assert download.headers["Cache-Control"] == "no-store"
+    raw = await download.read()
+    assert json.loads(raw)["payload"]["lists"][0]["entry_id"] == entry.entry_id
+    preview = await client.post(f"/api/{DOMAIN}/backup/preview", data=raw)
+    assert preview.status == 200
+    token = (await preview.json())["token"]
+    changed = await command(
+        websocket,
+        2,
+        "apply_operation",
+        entry_id=entry.entry_id,
+        operation_id="before-restore",
+        action="add_item",
+        uid="new-item",
+        changes={"summary": "Neu"},
+    )
+    assert changed["success"]
+    restored = await client.post(
+        f"/api/{DOMAIN}/backup/restore",
+        json={
+            "token": token,
+            "mapping": {entry.entry_id: entry.entry_id},
+            "confirm": True,
+        },
+    )
+    assert restored.status == 200
+    assert entry.options["source_paused"]
+    snapshot = await command(websocket, 3, "get_list", entry_id=entry.entry_id)
+    assert snapshot["result"]["items"] == before["result"]["items"]
+    assert snapshot["result"]["restore_id"]
+    stale = await command(
+        websocket,
+        4,
+        "apply_operation",
+        entry_id=entry.entry_id,
+        operation_id="old-offline",
+        action="delete_item",
+        uid=before["result"]["items"][0]["uid"],
+        changes={},
+    )
+    assert not stale["success"] and stale["error"]["code"] == "restore_conflict"
+    fallback = await client.get(f"/api/{DOMAIN}/backup/previous")
+    assert fallback.status == 200
+    previous = json.loads(await fallback.read())
+    assert len(previous["payload"]["lists"][0]["snapshot"]["items"]) == 3
+    resumed = await client.post(
+        f"/api/{DOMAIN}/backup/resume",
+        json={"entry_ids": [entry.entry_id], "confirm": True},
+    )
+    assert resumed.status == 200
+    assert not entry.options["source_paused"]
+    await websocket.close()
+    await hass.async_block_till_done()
+
+
+async def test_backup_http_rejects_nonadmin_and_unauthenticated(
+    hass, source, hass_client, hass_read_only_user
+):
+    await setup_app(hass, with_source=True)
+    client = await hass_client()
+    refresh = await hass.auth.async_create_refresh_token(
+        hass_read_only_user, "https://example.test"
+    )
+    token = hass.auth.async_create_access_token(refresh)
+    headers = {"Authorization": f"Bearer {token}"}
+    for action in ("", "/status", "/previous"):
+        response = await client.get(f"/api/{DOMAIN}/backup{action}", headers=headers)
+        assert response.status == 403
+    for action in ("preview", "restore", "resume"):
+        response = await client.post(
+            f"/api/{DOMAIN}/backup/{action}", data=b"{}", headers=headers
+        )
+        assert response.status == 403
+    response = await client.get(
+        f"/api/{DOMAIN}/backup", headers={"Authorization": "Bearer invalid"}
+    )
+    assert response.status == 401
+
+
+async def test_backup_upload_streams_files_larger_than_default_json_limit(
+    hass, source, hass_client
+):
+    from custom_components.einkaufszettel.backup import encode_backup, read_backup
+
+    await setup_app(hass, with_source=True)
+    client = await hass_client()
+    response = await client.get(f"/api/{DOMAIN}/backup")
+    payload = read_backup(await response.read())
+    payload["lists"][0]["snapshot"]["items"][0]["description"] = "x" * (1024 * 1024 + 1)
+    uploaded = await client.post(
+        f"/api/{DOMAIN}/backup/preview", data=encode_backup(payload)
+    )
+    assert uploaded.status == 200
+    assert (await uploaded.json())["lists"][0]["items"] == 2
 
 
 async def test_discover_activate_alias_hide_and_reload(hass, source, hass_ws_client):

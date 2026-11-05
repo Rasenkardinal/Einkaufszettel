@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_NAME
 from homeassistant.exceptions import HomeAssistantError
 
@@ -18,6 +18,10 @@ class EinkaufszettelConfigFlow(ConfigFlow, domain=DOMAIN):
     """Set up one app hub and internal source-bound entries."""
 
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(config_entry):
+        return EinkaufszettelOptionsFlow()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -52,4 +56,17 @@ class EinkaufszettelConfigFlow(ConfigFlow, domain=DOMAIN):
             title=name,
             data={CONF_NAME: name, CONF_SOURCE: source},
             options={"enabled": user_input.get("enabled", True)},
+        )
+
+
+class EinkaufszettelOptionsFlow(OptionsFlow):
+    """Open the authenticated file UI from the integration's Configure action."""
+
+    async def async_step_init(self, user_input=None):
+        if user_input is not None:
+            return self.async_abort(reason="backup_link")
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({}),
+            description_placeholders={"backup_url": "/einkaufszettel_backup"},
         )

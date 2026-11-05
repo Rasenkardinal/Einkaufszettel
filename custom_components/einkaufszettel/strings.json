@@ -10,6 +10,15 @@
       }
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Easy Shopping backup",
+        "description": "[Open backup and restore]({backup_url})\n\nDownload one JSON file or upload a backup. Only HA administrators can access this page. Closing this dialog does not change settings."
+      }
+    },
+    "abort": {"backup_link": "Open the backup page using the link in Configure."}
+  },
   "config": {
     "step": {
       "user": {

@@ -10,6 +10,15 @@
       }
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Easy Shopping Datensicherung",
+        "description": "[BACKUP / RESTORE öffnen]({backup_url})\n\nEine einzelne JSON-Datei herunterladen oder eine Sicherung hochladen. Zugriff nur für HA-Administratoren. Das Schließen dieses Dialogs ändert keine Einstellungen."
+      }
+    },
+    "abort": {"backup_link": "Die Datensicherung über den Link unter Konfigurieren öffnen."}
+  },
   "config": {
     "step": {
       "user": {

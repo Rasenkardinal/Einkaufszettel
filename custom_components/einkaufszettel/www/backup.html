@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="same-origin">
+  <title>Easy Shopping · Datensicherung</title>
+  <link rel="stylesheet" href="./app.css?v=0.4.67">
+  <style>
+    .backup-page { max-width: 680px; padding: 28px 20px; margin: auto; }
+    .backup-page h1 { font-size: 26px; letter-spacing: -.04em; }
+    .backup-page h2 { font-size: 17px; margin: 0 0 12px; }
+    .backup-page p { color: var(--muted); line-height: 1.65; font-size: 13px; }
+    .backup-page a { color: var(--accent); }
+    .backup-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 24px 0; }
+    .backup-actions button { min-height: 56px; gap: 10px; }
+    .backup-actions svg { width: 22px; height: 22px; }
+    .backup-card { margin: 20px 0; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+    .backup-page label { display: flex; align-items: flex-start; gap: 12px; font-size: 13px; line-height: 1.6; margin: 14px 0; }
+    .backup-page input[type="checkbox"] { width: 20px; height: 20px; flex: none; margin: 0; accent-color: var(--accent); }
+    .backup-page select { width: 100%; min-width: 0; min-height: 48px; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font-size: 14px; }
+    .backup-page .mapping-label { display: block; overflow-wrap: anywhere; }
+    .backup-page .mapping-label select { display: block; margin-top: 8px; }
+    .backup-page .message { overflow-wrap: anywhere; }
+    .backup-page .message[data-status="error"] { color: var(--error); }
+    .backup-page .message[data-status="success"] { color: var(--success); }
+    .backup-page .secondary { font-size: 13px; }
+  </style>
+  <script src="./backup.js?v=0.4.67" defer></script>
+</head>
+<body>
+  <main class="backup-page">
+    <header><p>EASY SHOPPING · HOME ASSISTANT</p><h1>Datensicherung</h1></header>
+    <p>Alle in HA gespeicherten Easy-Shopping-Listen, Artikel und Bilder, Kataloge, Kategorien, Statistiken, Märkte, Bonuskarten und Listeneinstellungen in einer Datei.</p>
+    <p>Nicht enthalten: externe HA-/Alexa-Listen, Browser-Einstellungen und noch nicht synchronisierte Offline-Änderungen. Vor einem Backup auf allen Geräten synchronisieren. Die Datei ist unverschlüsselt; bitte sicher aufbewahren. Maximal 100 MiB.</p>
+    <div id="login-help" hidden><p>Diese Seite benötigt die HA-Anmeldung eines Administrators.</p><a href="/einkaufszettel_backup" target="_top">In Home Assistant öffnen / anmelden</a></div>
+    <p id="backup-message" class="message" role="status" aria-live="polite"></p>
+    <div class="backup-actions">
+      <button id="backup-download" type="button" class="primary" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg>BACKUP</button>
+      <button id="backup-upload" type="button" class="secondary" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M4 16v5h16v-5"/></svg>RESTORE</button>
+      <input id="backup-file" type="file" accept=".json,application/json" hidden>
+    </div>
+    <section id="restore-preview" class="backup-card" aria-labelledby="preview-title" hidden>
+      <h2 id="preview-title" tabindex="-1">Sicherung prüfen</h2>
+      <p id="preview-summary"></p>
+      <div id="restore-mapping"></div>
+      <p>Jede gesicherte Liste genau einer eingerichteten App-Liste zuordnen. Fehlende Quellen zuerst in HA und unter „Listen verwalten“ einrichten. Für vollständiges Ersetzen müssen alle App-Listen zugeordnet sein. Bei neuer Zuordnung werden alte externe Artikelverknüpfungen gelöst.</p>
+      <label><input id="restore-confirm" type="checkbox"><span>Alle bestehenden Easy-Shopping-Daten ersetzen. Externe Quellen bleiben zunächst gesperrt. Eine Rückfallsicherung wird vorher in HA gespeichert.</span></label>
+      <button id="restore-apply" type="button" class="primary" disabled>Wiederherstellen</button>
+      <button id="restore-cancel" type="button" class="secondary">Abbrechen</button>
+    </section>
+    <section id="fallback-section" class="backup-card" hidden>
+      <h2>Rückfallsicherung</h2><p>Stand unmittelbar vor dem letzten Restore. Zum Zurücksetzen herunterladen und anschließend über RESTORE einspielen.</p>
+      <button id="backup-previous" type="button" class="secondary">Rückfallsicherung herunterladen</button>
+    </section>
+    <section id="resume-section" class="backup-card" hidden>
+      <h2>Quellabgleich gesperrt</h2><p>Die Wiederherstellung ist abgeschlossen. Bitte zuerst die Listen in der App und die externen HA-/Alexa-Quellen prüfen. Andere App-Geräte neu laden. Alte Offline-Änderungen werden zum Schutz des wiederhergestellten Standes abgewiesen, aber nicht gelöscht.</p>
+      <div id="resume-lists"></div>
+      <label><input id="resume-confirm" type="checkbox"><span>Abgleich für die ausgewählten Listen wieder freigeben. Dabei können Artikel in den externen Quellen hinzugefügt, geändert oder gelöscht werden.</span></label>
+      <button id="resume-apply" type="button" class="secondary" disabled>Quellabgleich freigeben</button>
+    </section>
+    <section class="backup-card">
+      <h2>Lokale Offline-Entwürfe auf diesem Gerät</h2>
+      <p>Vor einem Restore müssen die ausstehenden Änderungen dieses Browsers synchronisiert oder bewusst verworfen werden. Bei nach einem Restore abgewiesenen Altänderungen zuerst den lokalen Entwurf exportieren. Dieser Export ist keine HA-Sicherung und lässt sich nicht über RESTORE einspielen.</p>
+      <button id="local-export" type="button" class="secondary">Lokalen Entwurf herunterladen</button>
+      <label><input id="local-confirm" type="checkbox"><span>Ich habe benötigte Entwürfe gesichert. Ausstehende lokale Änderungen dieses Browsers verwerfen.</span></label>
+      <button id="local-clear" type="button" class="secondary" disabled>Lokale Änderungen verwerfen</button>
+    </section>
+    <p><a href="/einkaufszettel_app" target="_top">Zur Einkaufsliste</a></p>
+  </main>
+</body>
+</html>

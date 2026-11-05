@@ -24,10 +24,23 @@ PLATFORMS = [Platform.BUTTON]
 WEBAPP_PATH = Path(__file__).parent / "www"
 PANEL_PATH = f"{DOMAIN}_app"
 PANEL_ENTRIES_KEY = f"{DOMAIN}.panel_entries"
+BACKUP_PANEL_PATH = f"{DOMAIN}_backup"
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Serve the installable web app and register its authenticated API."""
+    from .backup import get_manager, guard_command  # noqa: PLC0415
+    from .backup_http import BackupView  # noqa: PLC0415
+
+    await get_manager(hass).recover()
+    hass.http.register_view(BackupView())
+    frontend.async_register_built_in_panel(
+        hass,
+        "iframe",
+        frontend_url_path=BACKUP_PANEL_PATH,
+        require_admin=True,
+        config={"url": f"/{DOMAIN}/backup.html"},
+    )
     await hass.http.async_register_static_paths(
         [
             StaticPathConfig(
@@ -96,7 +109,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         websocket_set_product_statistics,
         websocket_dismiss_product_suggestion,
     ):
-        websocket_api.async_register_command(hass, command)
+        websocket_api.async_register_command(hass, guard_command(command))
     return True
 
 
@@ -109,6 +122,7 @@ class EinkaufszettelData:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     sync: dict[str, Any] = field(default_factory=new_sync_state)
     source_error: str | None = None
+    restore_id: str = ""
     cancel_source_sync: Callable[[], None] | None = None
     product_rules: Callable[..., Awaitable[list[ShoppingItem]]] | None = None
 
@@ -118,6 +132,19 @@ type EinkaufszettelConfigEntry = ConfigEntry[EinkaufszettelData]
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: EinkaufszettelConfigEntry
+) -> bool:
+    from .backup import get_manager  # noqa: PLC0415
+
+    try:
+        manager = get_manager(hass)
+        async with manager.activity():
+            return await _async_setup_entry(hass, entry, manager.restore_id)
+    except HomeAssistantError as err:
+        raise ConfigEntryNotReady(str(err)) from err
+
+
+async def _async_setup_entry(
+    hass: HomeAssistant, entry: EinkaufszettelConfigEntry, restore_id: str
 ) -> bool:
     """Load local data, migrate a matching legacy store, or import the source."""
     store = Store[dict[str, Any]](hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}")
@@ -153,14 +180,22 @@ async def async_setup_entry(
                     if CONF_SOURCE in entry.data
                     else []
                 )
-            await store.async_save({"items": [item.to_dict() for item in items]})
+            await store.async_save(
+                {
+                    "items": [item.to_dict() for item in items],
+                    **({"restore_id": restore_id} if restore_id else {}),
+                }
+            )
         else:
             items = load_items(data)
+            restore_id = data.get("restore_id", "")
         sync = load_sync_state(data.get("sync") if data is not None else None)
     except (HomeAssistantError, OSError, ValueError, TimeoutError) as err:
         raise ConfigEntryNotReady(f"Cannot load Einkaufszettel: {err}") from err
 
-    entry.runtime_data = EinkaufszettelData(store, items, sync=sync)
+    entry.runtime_data = EinkaufszettelData(
+        store, items, sync=sync, restore_id=restore_id
+    )
     from .products import apply_product_rules  # noqa: PLC0415
 
     async def product_rules(articles, *, operation=None, rename=None, events=()):
@@ -221,6 +256,15 @@ async def async_setup_entry(
 
 
 async def async_unload_entry(
+    hass: HomeAssistant, entry: EinkaufszettelConfigEntry
+) -> bool:
+    from .backup import get_manager  # noqa: PLC0415
+
+    async with get_manager(hass).activity():
+        return await _async_unload_entry(hass, entry)
+
+
+async def _async_unload_entry(
     hass: HomeAssistant, entry: EinkaufszettelConfigEntry
 ) -> bool:
     """Unload without deleting the local shopping list."""

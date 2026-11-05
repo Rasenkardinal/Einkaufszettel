@@ -144,6 +144,11 @@ async def persist_items(
         {
             "items": [item.to_dict() for item in items],
             "sync": state,
+            **(
+                {"restore_id": data.restore_id}
+                if getattr(data, "restore_id", "")
+                else {}
+            ),
         }
     )
     data.items = items

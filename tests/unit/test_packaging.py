@@ -46,6 +46,8 @@ def test_hacs_metadata_and_integration_layout():
         "app.js",
         "manifest.json",
         "service-worker.js",
+        "backup.html",
+        "backup.js",
         "icon.svg",
         "icon-192.png",
         "icon-512.png",
@@ -94,12 +96,26 @@ def test_web_app_assets_are_versioned_and_precached():
     assert 'id="app-version"' in html
     for asset in assets:
         assert f'"{asset}"' in worker
-    assert "einkaufszettel-shell-v96" in worker
+    assert "einkaufszettel-shell-v97" in worker
     assert ".then(() => self.skipWaiting())" in worker
     script = (webapp / "app.js").read_text(encoding="utf-8")
     assert "serviceWorkerRegistration.update()" in script
     assert 'addEventListener("controllerchange"' in script
     assert "location.reload()" in script
+
+
+def test_backup_assets_are_versioned_and_kept_out_of_offline_cache():
+    webapp = ROOT / "custom_components" / "einkaufszettel" / "www"
+    version = json.loads((webapp.parent / "manifest.json").read_text(encoding="utf-8"))[
+        "version"
+    ]
+    html = (webapp / "backup.html").read_text(encoding="utf-8")
+    assert f"./app.css?v={version}" in html
+    assert f"./backup.js?v={version}" in html
+    worker = (webapp / "service-worker.js").read_text(encoding="utf-8")
+    assert "backup" not in worker.split("];", 1)[0]
+    assert 'url.pathname === "/einkaufszettel/backup.html"' in worker
+    assert 'url.pathname.startsWith("/api/einkaufszettel/backup")' in worker
 
 
 def test_product_management_can_dismiss_similarity_and_restore_scroll():

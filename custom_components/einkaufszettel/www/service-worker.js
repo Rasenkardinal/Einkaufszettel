@@ -1,8 +1,8 @@
-const CACHE_NAME = "einkaufszettel-shell-v96";
+const CACHE_NAME = "einkaufszettel-shell-v97";
 const APP_FILES = [
   "./app.html",
-  "./app.css?v=0.4.66",
-  "./app.js?v=0.4.66",
+  "./app.css?v=0.4.67",
+  "./app.js?v=0.4.67",
   "./manifest.json",
   "./icon.svg",
   "./icon-192.png",
@@ -36,6 +36,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   const url = new URL(request.url);
+  if (url.pathname === "/einkaufszettel/backup.html" ||
+      url.pathname === "/einkaufszettel/backup.js" ||
+      url.pathname.startsWith("/api/einkaufszettel/backup")) {
+    return;
+  }
   if (!url.pathname.includes("/einkaufszettel/")) {
     return;
   }

@@ -72,6 +72,7 @@ async function runTests() {
       const catalogs = {supermarket:{products:[]}};
       const cacheCatalog = () => {};
       let automaticShoppingGeneration = 0;
+      let currentRestoreId = "";
       const resetAutomaticShopping = () => { automaticShoppingGeneration++; };
       const recordShoppingCheck = () => {};
       const loadAutomaticShoppingSetting = () => {};
@@ -119,6 +120,34 @@ async function runTests() {
     }
   }
   async function test(name, fn) { await fixture(fn); results.push(`PASS ${name}`); }
+
+  await test("Restore epochs remain attached to old offline changes and rejected moves", async (api, env) => {
+    const snapshot = {entry_id:"a", name:"A", revision:1, restore_id:"old",
+      items:[{uid:"milk", summary:"Milch", status:"needs_action"}]};
+    await api.saveList(snapshot);
+    await api.loadSelectedList();
+    await api.enqueue({type:"move_item",uid:"milk",summary:"Milch",target_entry_id:"b",target_uid:"moved"});
+    assert((await api.readQueue(null))[0].restore_id === "old", "Queue lost original restore epoch");
+    const calls = [];
+    env.send = async (type, payload) => {
+      calls.push({type, ...payload});
+      if (type.endsWith("/get_list")) return {...snapshot, entry_id:payload.entry_id, restore_id:"new", items:[]};
+      if (type.endsWith("/apply_operation")) {
+        assert(payload.restore_id === "old", "Reload rewrote old operation epoch");
+        throw Error("restore_conflict");
+      }
+      throw Error("Unexpected request");
+    };
+    api.online();
+    await api.synchronize().then(() => { throw Error("Old operation was accepted"); },
+      error => assert(error.message === "restore_conflict", error.message));
+    const operations = calls.filter(call => call.type.endsWith("/apply_operation"));
+    assert(operations.length === 1 && operations[0].entry_id === "b", "Source changed after rejected target");
+    assert((await api.readQueue(null)).length === 1, "Rejected offline operation was deleted");
+    api.offline();
+    await api.enqueue({type:"add_item",uid:"fresh",summary:"Neu"});
+    assert((await api.readQueue(null))[1].restore_id === "new", "New edits did not capture restored epoch");
+  });
 
   await test("Offline patches retain metadata and revision across reload", async api => {
     api.setProducts([{key:"milk",name:"Milk",category_id:"dairy"}]);

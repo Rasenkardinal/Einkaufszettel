@@ -12,6 +12,22 @@ Bei fokussierter Eingabe-/Suchleiste wird der Hintergrund wie beim Dreipunktmen�
 
 ## Funktionsumfang
 
+### Datensicherung und Wiederherstellung
+
+HA-Administratoren öffnen unter **Einstellungen → Geräte & Dienste → Einkaufszettel → Konfigurieren** die Datensicherung. Alternativ führt **Datensicherung (HA-Admin)** in den App-Einstellungen zur selben HA-Seite. Die Seite benötigt eine aktive HA-Verbindung und ist nicht offline verfügbar.
+
+- **BACKUP** lädt eine einzelne JSON-Datei herunter: alle eingerichteten App-Listen einschließlich ausgeblendeter Listen, Artikel und Bilder, Artikelkataloge, Kategorien, Nutzungsstatistiken, Märkte, Bonuskarten, Listeneinstellungen und notwendiger Synchronisationszustand.
+- Nicht enthalten sind externe HA-/Alexa-Listen, HA-Zugangsdaten, Browser-Einstellungen und noch nicht übertragene Offline-Änderungen. Vor dem Backup alle Geräte synchronisieren. Die Datei ist **unverschlüsselt** und auf **100 MiB** begrenzt; sicher aufbewahren. Versionskennung und SHA-256-Prüfsumme dienen Formatprüfung und Integrität, nicht Verschlüsselung oder Echtheitsnachweis.
+- **RESTORE** lädt die Datei zunächst nur zur Prüfung hoch. Die Vorschau zeigt Datum, Version und Inhalt. Jede gesicherte Liste muss genau einer bereits eingerichteten App-Liste zugeordnet werden; alle bestehenden App-Listen müssen zugeordnet sein. Fehlende Quellen zuerst in HA und anschließend unter **Listen verwalten** einrichten. Bei geänderter Listen-/Quellidentität werden externe Artikelverknüpfungen gelöst.
+- Erst die ausdrückliche Bestätigung ersetzt den gesamten HA-App-Datenbestand; es wird nicht zusammengeführt. Vorher wird automatisch eine **Rückfallsicherung** in HA gespeichert, die auf derselben Seite heruntergeladen und erneut über RESTORE eingespielt werden kann. Abbrechen vor dem Bestätigen verändert keine App-Daten.
+- Während der Wiederherstellung sind App-Schreibzugriffe und Quellabgleich gesperrt. Bei Schreibfehlern wird der vorherige Stand zurückgesetzt. Ein dauerhaftes Journal ermöglicht auch nach einem unterbrochenen Restore das Zurücksetzen beim HA-Neustart. Schlägt das Rücksetzen fehl, bleiben weitere Schreibzugriffe gesperrt: Speicherproblem beheben und **Home Assistant neu starten**; das Journal nicht manuell löschen.
+- Danach bleibt der externe Quellabgleich für jede wiederhergestellte Liste gesperrt. Alle App-Geräte neu laden, App-Listen und externe Quellen prüfen und erst dann ausgewählte Listen auf der Backup-Seite ausdrücklich freigeben. Die Freigabe kann Änderungen an externen Quellen auslösen.
+- Alte Offline-Änderungen anderer Geräte werden abgewiesen, aber nicht automatisch gelöscht. Die Backup-Seite kann die ausstehenden Änderungen dieses Browsers als separaten **lokalen Entwurf** exportieren und nach Bestätigung verwerfen. Ein Entwurf ist keine HA-Sicherung und kann nicht über RESTORE importiert werden. Für andere Geräte den Export jeweils dort ausführen.
+
+Der [Backup-Browsertest](tests/frontend/backup.html) prüft Upload/Download, Vorschau, Zuordnung, Bestätigungen, Offline-Entwürfe und Fehleranzeige; die [Backup-Unit-Tests](tests/unit/test_backup.py) prüfen Validierung, Rücksetzen, Neustartwiederherstellung, Zugriffsschutz und alte Operationen.
+
+### Einkaufs- und Planungsmodus
+
 Nach erfolgreichem **Einkauf beenden** wechselt die App automatisch in den Planungsmodus. Abgehakte Artikel werden wie bisher entfernt, offene bleiben erhalten. Offline genügt die dauerhaft gespeicherte lokale Vormerkung; der HA-Abgleich folgt später. Schlägt das lokale Speichern fehl, bleibt der Einkaufsmodus aktiv und der Fehler wird angezeigt.
 
 Unter **Einstellungen → Synchronisation → Listen verwalten** lässt sich je Liste **Automatischer Einkaufsmodus:** aktivieren. Direkt hinter der Überschrift steht die aufklappbare Info im App-Design; darunter stehen **Nach Abhakungen in Folge:** und das rechtsbündige Zahlenfeld in einer Zeile. Schalter aus bzw. **0** deaktiviert nur den automatischen Wechsel zum Einkauf (Standard für bestehende und neue Listen). Beim Einschalten wird zunächst **3** vorgeschlagen; jede positive ganze Zahl bis 9007199254740991 ist einstellbar. **Übernehmen** speichert die Einstellung für alle Nutzer und Geräte; sie ist nach dem nächsten Abgleich auch offline verfügbar.

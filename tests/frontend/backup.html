@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Datensicherung · Regressionstests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Datensicherung" style="width:390px;height:850px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all(["backup.html", "backup.js"].map(file =>
+    fetch(base + file, {cache:"no-store"}).then(response => response.text())));
+  const root = document.createElement("home-assistant");
+  document.body.append(root);
+  const calls = [], downloads = [], results = [];
+  let restored = false, paused = false, fail = false, uploaded = "";
+  const list = {entry_id:"a", name:"<img src=x onerror=alert(1)>", source_entity_id:"todo.alexa"};
+  const json = (data, status=200) => new Response(JSON.stringify(data),
+    {status, headers:{"Content-Type":"application/json"}});
+  root.hass = {
+    user:{is_admin:true}, themes:{darkMode:true},
+    fetchWithAuth:async (path, options={}) => {
+      calls.push({path, ...options});
+      if (fail) return json({error:"Test: Datenträger voll"}, 400);
+      const action = path.split("/").at(-1);
+      if (action === "status") return json({lists:[{...list, source_paused:paused}], fallback_available:restored});
+      if (action === "preview") {
+        uploaded = await options.body.text();
+        return json({token:"preview", created_at:"2026-01-01T10:00:00Z", app_version:"test",
+          lists:[{...list, items:2}], markets:1, catalogs:3, targets:[list]});
+      }
+      if (action === "restore") {
+        const command = JSON.parse(options.body);
+        if (!command.confirm || command.mapping.a !== "a") return json({error:"Ungültige Zuordnung"}, 400);
+        restored = paused = true;
+        return json({restored:true, source_paused:true});
+      }
+      if (action === "resume") { paused = false; return json({resumed:true}); }
+      return new Response('{"payload":{}}', {headers:{
+        "Content-Type":"application/json", "Content-Disposition":'attachment; filename="backup-test.json"'}});
+    },
+  };
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document;
+  const name = `backup-test-${crypto.randomUUID()}`;
+  win.HTMLAnchorElement.prototype.click = function() { downloads.push(this.download); };
+  const api = win.Function(
+    script.replace('"einkaufszettel-offline-v1"', JSON.stringify(name))
+      .replace(/initializeBackup\(\);\s*$/, "") + `
+      return {initializeBackup, localData, busy:() => backupBusy};
+    `)();
+  const assert = (ok, text) => { if (!ok) throw Error(text); };
+  const message = () => doc.querySelector("#backup-message").textContent;
+  const wait = async () => {
+    for (let i=0; i<200 && api.busy(); i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(!api.busy(), "Action timed out");
+  };
+  const click = async id => { doc.querySelector("#" + id).click(); await wait(); };
+  const upload = async () => {
+    const data = new win.DataTransfer();
+    data.items.add(new win.File(['{"test":"backup"}'], "backup.json", {type:"application/json"}));
+    const input = doc.querySelector("#backup-file");
+    input.files = data.files;
+    input.dispatchEvent(new win.Event("change", {bubbles:true}));
+    await wait();
+  };
+  try {
+    await api.initializeBackup();
+    assert(!doc.querySelector("#backup-download").disabled, "Admin download disabled");
+    await click("backup-download");
+    assert(downloads.includes("backup-test.json"), "Download filename not preserved");
+    results.push("PASS HA-Anmeldung und einzelner JSON-Download");
+
+    await upload();
+    assert(uploaded === '{"test":"backup"}', "Original file body not uploaded");
+    assert(!doc.querySelector("#restore-preview").hidden, "Preview not shown");
+    assert(doc.querySelector("#restore-apply").disabled, "Confirmation not required");
+    assert(doc.querySelector("#restore-mapping select").value === "a", "Matching source not selected");
+    assert(!doc.querySelector("#restore-mapping img"), "List name interpreted as HTML");
+    await click("restore-cancel");
+    assert(doc.querySelector("#restore-preview").hidden && !restored, "Cancel changed data");
+    results.push("PASS Datei-Upload, sichere Vorschau, Quellzuordnung und Abbrechen");
+
+    await upload();
+    await click("restore-confirm");
+    await click("restore-apply");
+    assert(restored && paused, "Restore failed or sources not paused");
+    assert(!doc.querySelector("#fallback-section").hidden, "Fallback download missing");
+    assert(!doc.querySelector("#resume-section").hidden, "Resume review missing");
+    assert(doc.querySelector("#resume-apply").disabled, "Resume did not require confirmation");
+    await click("resume-confirm");
+    await click("resume-apply");
+    assert(!paused && doc.querySelector("#resume-section").hidden, "Explicit resume failed");
+    results.push("PASS Bestätigtes Ersetzen, Rückfallsicherung und bewusste Quellfreigabe");
+
+    const database = await new Promise((resolve, reject) => {
+      const request = win.indexedDB.open(name, 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise((resolve, reject) => {
+      const tx = database.transaction("operations", "readwrite");
+      tx.objectStore("operations").put({id:"old", entry_id:"a", restore_id:"old"});
+      tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);
+    });
+    database.close();
+    await upload(); await click("restore-confirm");
+    const restoresBefore = calls.filter(call => call.path.endsWith("/restore")).length;
+    await click("restore-apply");
+    assert(message().includes("Offline-Änderungen"), "Pending operations not explained");
+    assert(calls.filter(call => call.path.endsWith("/restore")).length === restoresBefore, "Restore bypassed local queue");
+    await click("local-export");
+    assert(downloads.some(name => name.startsWith("easy-shopping-local-draft-")), "Draft download missing");
+    await click("local-confirm"); await click("local-clear");
+    assert(!(await api.localData()).operations.length, "Explicit queue discard failed");
+    results.push("PASS Offline-Schutz, Entwurfsexport und bestätigtes Verwerfen");
+
+    fail = true;
+    await click("backup-download");
+    assert(message().includes("Datenträger voll") &&
+      doc.querySelector("#backup-message").dataset.status === "error", "Server error hidden");
+    assert(!doc.querySelector("#backup-download").disabled, "Buttons stayed blocked after error");
+    fail = false;
+    results.push("PASS Fehler werden angezeigt und Bedienung bleibt möglich");
+
+    for (const width of [320, 390, 680]) {
+      frame.style.width = width + "px";
+      await new Promise(resolve => setTimeout(resolve, 10));
+      assert(doc.documentElement.scrollWidth <= doc.documentElement.clientWidth, `Horizontal overflow at ${width}`);
+    }
+    root.hass.themes.darkMode = false;
+    await api.initializeBackup();
+    assert(doc.body.dataset.colorMode === "light", "Light HA theme not applied");
+    results.push("PASS Mobile/Desktop ohne Seitenüberlauf und helles HA-Design");
+
+    root.hass.user.is_admin = false;
+    await api.initializeBackup();
+    assert(doc.querySelector("#backup-download").disabled && message().includes("Administratoren"), "Non-admin enabled");
+    results.push("PASS Nichtadministratoren erhalten keine Backup-/Restore-Bedienung");
+  } finally {
+    win.indexedDB.deleteDatabase(name);
+    root.remove();
+  }
+  document.querySelector("#results").textContent = results.join("\n");
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent = "FAIL " + error.stack;
+  console.error(error);
+});
+</script>
+</html>

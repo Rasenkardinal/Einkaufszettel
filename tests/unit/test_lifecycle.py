@@ -100,6 +100,7 @@ def integration(monkeypatch):
         "homeassistant.config_entries",
         ConfigEntry=Generic,
         ConfigFlow=ConfigFlow,
+        OptionsFlow=ConfigFlow,
         ConfigFlowResult=dict,
     )
     components = module("homeassistant.components")
@@ -112,6 +113,7 @@ def integration(monkeypatch):
     module(
         "homeassistant.components.http",
         StaticPathConfig=lambda *args, **kwargs: (args, kwargs),
+        HomeAssistantView=object,
     )
     websocket_api = module(
         "homeassistant.components.websocket_api",
@@ -146,6 +148,7 @@ def integration(monkeypatch):
         ConfigEntryNotReady=NotReady,
     )
     module("homeassistant.helpers")
+    module("homeassistant.helpers.http", KEY_HASS=object())
     network = module(
         "homeassistant.helpers.network",
         NoURLAvailableError=type("NoURLAvailableError", (Exception,), {}),
@@ -966,7 +969,9 @@ async def test_install_button_uses_configured_external_url(integration):
 
 async def test_async_setup_serves_app_and_registers_websocket_api(integration):
     env = integration
-    env.hass.http = SimpleNamespace(async_register_static_paths=AsyncMock())
+    env.hass.http = SimpleNamespace(
+        async_register_static_paths=AsyncMock(), register_view=Mock()
+    )
     assert await env.package.async_setup(env.hass, {})
     env.hass.http.async_register_static_paths.assert_awaited_once()
     assert env.websocket_api.async_register_command.call_count == 27

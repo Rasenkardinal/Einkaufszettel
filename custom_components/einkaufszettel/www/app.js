@@ -9,6 +9,7 @@ const MARKET_SELECTION_PREFIX = "einkaufszettel.supermarket.";
 const MOVE_LIST_ORDER_PREFIX = "einkaufszettel.move_list_order.";
 const CATALOG_KEY = "einkaufszettel.catalog";
 const MODE_KEY = "einkaufszettel.mode";
+let currentRestoreId = "";
 
 const elements = {
   appVersion: document.querySelector("#app-version"),
@@ -2644,6 +2645,7 @@ async function enqueue(operation, listId = entryId) {
     entry_id: listId,
     created_at: (lastOperationTime = Math.max(Date.now(), lastOperationTime + 1)),
     product_name: operation.summary || currentItems.find(item => item.uid === operation.uid)?.summary,
+    restore_id: currentRestoreId,
   };
   await withLocalState(async () => {
     await storeRequest("operations", "put", queued);
@@ -3793,6 +3795,8 @@ async function loadSelectedList() {
     const cached = await storeRequest("lists", "get", listId);
     const allOperations = await readQueue(null);
     if (entryId !== listId) return;
+    if (currentRestoreId !== (cached?.restore_id || "")) resetAutomaticShopping();
+    currentRestoreId = cached?.restore_id || "";
     loadAutomaticShoppingSetting(listId, cached?.auto_shopping_threshold ??
       availableLists.find(list => list.entry_id === listId)?.auto_shopping_threshold ?? 0);
     deletedUids = new Set(cached?.deleted_uids || []);
@@ -4432,6 +4436,7 @@ async function sendQueuedOperation(operation) {
     const target = await sendCommand(`${DOMAIN}/apply_operation`, {
       entry_id: operation.target_entry_id, operation_id: operation.id,
       action: "add_item", uid: operation.target_uid, changes,
+      restore_id: operation.restore_id || "",
     });
     validateOperationReply(target, operation.id, operation.target_entry_id);
     if (target.operation_result === "deleted") {
@@ -4443,6 +4448,7 @@ async function sendQueuedOperation(operation) {
     entry_id: operation.entry_id, operation_id: operation.id,
     action: operation.type === "move_item" ? "delete_item" : operation.type,
     uid: operation.uid, changes: operation.type === "move_item" ? {} : changes,
+    restore_id: operation.restore_id || "",
   });
   validateOperationReply(snapshot, operation.id, operation.entry_id);
   return snapshot;
