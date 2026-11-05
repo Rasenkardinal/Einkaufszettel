@@ -15,7 +15,7 @@ async function runTests() {
   await new Promise(resolve => frame.onload = resolve);
   const win = frame.contentWindow, doc = win.document, calls = [];
   const sources = [
-    {source_name:"Alexa Einkaufsliste", source_entity_id:"todo.alexa_einkaufsliste", name:"Zuhause", enabled:true, available:true},
+    {source_name:"Alexa Einkaufsliste", source_entity_id:"todo.alexa_einkaufsliste", name:"Zuhause", enabled:true, available:true, auto_shopping_threshold:3},
     {source_name:"HA Wochenende", source_entity_id:"todo.wochenende", name:"Wochenende", enabled:false, available:true},
     {source_name:"Eine sehr lange Einkaufsliste für unsere Ferienwohnung", source_entity_id:"todo.eine_sehr_lange_quellkennung_fuer_die_ferienwohnung", name:"Ferienwohnung", enabled:true, available:false},
   ];
@@ -80,7 +80,7 @@ async function runTests() {
     assert(doc.documentElement.scrollWidth <= win.innerWidth, `Page overflows at ${width}px`);
     for (const card of cards) {
       assert(card.scrollWidth <= card.clientWidth, `Card overflows at ${width}px`);
-      const button = card.querySelector("button").getBoundingClientRect();
+      const button = card.querySelector('button[type="submit"]').getBoundingClientRect();
       const input = card.querySelector('input[type="text"]').getBoundingClientRect();
       assert(Math.abs(button.width - input.width) < 1, "Apply button does not fill the card");
       assert(button.height >= 44 && input.height >= 48, "Touch targets too small");
@@ -92,6 +92,39 @@ async function runTests() {
     results.push(`PASS Card layout, full-width buttons and fixed header at ${width}px`);
   }
   frame.style.width = "390px";
+  const automatic = cards[0].querySelector(".automatic-shopping-setting");
+  const autoInfo = automatic.querySelector(".management-help-trigger");
+  const autoHelp = automatic.querySelector(".management-help-popover");
+  autoInfo.click();
+  assert(!autoHelp.hidden && autoHelp.textContent.includes("ohne Zeitlimit"), "Automatic mode explanation missing");
+  autoInfo.dispatchEvent(new win.KeyboardEvent("keydown", {key:"Escape", bubbles:true}));
+  assert(autoHelp.hidden && doc.activeElement === autoInfo, "Automatic mode help Escape/focus failed");
+  const threshold = automatic.querySelector('input[type="number"]');
+  const autoSwitch = automatic.querySelector('[role="switch"]');
+  assert(threshold.value === "3" && autoSwitch.checked, "Automatic threshold not loaded");
+  threshold.value = "1.5";
+  threshold.dispatchEvent(new win.Event("input"));
+  assert(!threshold.checkValidity(), "Fractional threshold accepted");
+  threshold.value = "7";
+  threshold.dispatchEvent(new win.Event("input"));
+  assert(threshold.checkValidity(), "Valid threshold rejected");
+  autoSwitch.click();
+  assert(threshold.value === "0" && automatic.querySelector(".automatic-shopping-threshold").hidden, "Switch off did not set 0");
+  autoSwitch.click();
+  assert(threshold.value === "7", "Positive threshold not restored");
+  for (const width of [320,390,430]) {
+    frame.style.width = `${width}px`;
+    await new Promise(resolve => win.requestAnimationFrame(resolve));
+    const row = automatic.querySelector(".automatic-shopping-threshold");
+    const inputRect = threshold.getBoundingClientRect();
+    const textRect = row.querySelector("label").getBoundingClientRect();
+    assert(inputRect.left >= textRect.right && Math.abs(inputRect.right - row.getBoundingClientRect().right) < 1, "Threshold not right-aligned on one line");
+    assert(cards[0].scrollWidth <= cards[0].clientWidth, `Automatic settings overflow at ${width}px`);
+    const title = automatic.querySelector(".automatic-shopping-title").getBoundingClientRect();
+    assert(Math.abs(autoInfo.getBoundingClientRect().left - title.right - 16) < 1, "Info not directly after title");
+  }
+  frame.style.width = "390px";
+  results.push("PASS Automatic settings, compact row, adjacent info, validation, switch and per-list values");
   for (const [mode, theme] of [["dark","botanical"], ["light","porcelain-blue"]]) {
     doc.body.dataset.colorMode = mode;
     doc.body.dataset.theme = theme;
@@ -118,7 +151,7 @@ async function runTests() {
   await waitFor(() => releaseSave);
   assert(doc.querySelector("#source-lists").inert, "Cards not blocked during save");
   const saved = calls.find(call => call.type.endsWith("/configure_list")).payload;
-  assert(saved.name === "Wochenendkauf" && saved.enabled === true && saved.source_entity_id === "todo.wochenende", "Save payload changed");
+  assert(saved.name === "Wochenendkauf" && saved.enabled === true && saved.source_entity_id === "todo.wochenende" && saved.auto_shopping_threshold === 0, "Save payload changed");
   releaseSave();
   await waitFor(() => doc.querySelector("#management-message").dataset.status === "success");
   assert(reloads === 1 && !doc.querySelector("#source-lists").inert, "List refresh or save unlock missing");

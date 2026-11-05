@@ -522,11 +522,13 @@ async def test_web_app_lists_loaded_entries_with_names_and_sources(integration):
                 "entry_id": "test-entry",
                 "name": "Einkaufszettel",
                 "source_entity_id": "todo.alexa",
+                "auto_shopping_threshold": 0,
             },
             {
                 "entry_id": "edeka",
                 "name": "Edeka",
                 "source_entity_id": "todo.edeka",
+                "auto_shopping_threshold": 0,
             },
         ],
     )
@@ -599,6 +601,106 @@ async def test_alias_and_visibility_update_shared_config_not_source(integration)
     )
     env.hass.services.async_call.assert_not_awaited()
     connection.send_result.assert_called_once_with(11, {"entry_id": "test-entry"})
+
+
+@pytest.mark.parametrize("threshold", [0, 1, 3, 17, 9_007_199_254_740_991])
+async def test_auto_shopping_threshold_saved_and_exposed(integration, threshold):
+    env = integration
+    env.entry.domain = "einkaufszettel"
+    env.hass.config_entries.async_get_entry.return_value = env.entry
+    await env.package.async_setup_entry(env.hass, env.entry)
+    env.entry.options = {"enabled": True, "other": "preserved"}
+    env.hass.states.async_all = Mock(
+        return_value=[SimpleNamespace(entity_id="todo.alexa", name="Alexa", state="1")]
+    )
+    env.hass.config_entries.async_entries.return_value = [env.entry]
+    connection = Mock(user=SimpleNamespace(is_admin=False))
+    await env.websocket.websocket_configure_list(
+        env.hass,
+        connection,
+        {
+            "id": 11,
+            "source_entity_id": "todo.alexa",
+            "name": "Zuhause",
+            "enabled": True,
+            "auto_shopping_threshold": threshold,
+        },
+    )
+    connection.send_error.assert_not_called()
+    options = env.hass.config_entries.async_update_entry.call_args.kwargs["options"]
+    assert options == {
+        "enabled": True,
+        "other": "preserved",
+        "auto_shopping_threshold": threshold,
+    }
+    env.entry.options = options
+    await env.websocket.websocket_get_sources(env.hass, connection, {"id": 12})
+    assert (
+        connection.send_result.call_args.args[1][0]["auto_shopping_threshold"]
+        == threshold
+    )
+    await env.websocket.websocket_get_lists(env.hass, connection, {"id": 13})
+    assert (
+        connection.send_result.call_args.args[1][0]["auto_shopping_threshold"]
+        == threshold
+    )
+    await env.websocket.websocket_get_list(
+        env.hass, connection, {"id": 14, "entry_id": env.entry.entry_id}
+    )
+    assert (
+        connection.send_result.call_args.args[1]["auto_shopping_threshold"] == threshold
+    )
+    env.hass.states.async_all.return_value = []
+    await env.websocket.websocket_get_sources(env.hass, connection, {"id": 15})
+    assert (
+        connection.send_result.call_args.args[1][0]["auto_shopping_threshold"]
+        == threshold
+    )
+
+
+@pytest.mark.parametrize("threshold", [-1, 1.5, True, "3", None, 9_007_199_254_740_992])
+async def test_auto_shopping_threshold_rejects_invalid_input(integration, threshold):
+    env = integration
+    connection = Mock(user=SimpleNamespace(is_admin=False))
+    await env.websocket.websocket_configure_list(
+        env.hass,
+        connection,
+        {
+            "id": 11,
+            "source_entity_id": "todo.alexa",
+            "name": "Zuhause",
+            "enabled": True,
+            "auto_shopping_threshold": threshold,
+        },
+    )
+    assert connection.send_error.call_args.args[1] == "invalid_input"
+    env.hass.config_entries.async_update_entry.assert_not_called()
+    env.hass.config_entries.flow.async_init.assert_not_awaited()
+
+
+async def test_old_client_preserves_auto_shopping_threshold(integration):
+    env = integration
+    env.entry.options = {"auto_shopping_threshold": 5}
+    env.hass.config_entries.async_entries.return_value = [env.entry]
+    env.hass.states.async_all = Mock(
+        return_value=[SimpleNamespace(entity_id="todo.alexa", name="Alexa", state="1")]
+    )
+    await env.websocket.websocket_configure_list(
+        env.hass,
+        Mock(user=SimpleNamespace(is_admin=False)),
+        {
+            "id": 11,
+            "source_entity_id": "todo.alexa",
+            "name": "Zuhause",
+            "enabled": True,
+        },
+    )
+    assert (
+        env.hass.config_entries.async_update_entry.call_args.kwargs["options"][
+            "auto_shopping_threshold"
+        ]
+        == 5
+    )
 
 
 async def test_enabling_discovered_source_imports_it_without_user_config_flow(
@@ -784,6 +886,7 @@ async def test_web_app_item_edits_stay_in_the_requested_list(integration):
         entry_id="edeka",
         domain="einkaufszettel",
         data={"name": "Edeka", "source_entity_id": "todo.edeka"},
+        options={},
         runtime_data=env.package.EinkaufszettelData(
             store=SimpleNamespace(async_save=AsyncMock()),
             items=[env.model.ShoppingItem(uid="edeka-bread", summary="Brot")],

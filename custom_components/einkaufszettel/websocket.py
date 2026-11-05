@@ -610,6 +610,7 @@ def _send_snapshot(connection, message_id: int, entry, **extra) -> None:
         {
             "entry_id": entry.entry_id,
             "name": entry.data[CONF_NAME],
+            "auto_shopping_threshold": entry.options.get("auto_shopping_threshold", 0),
             "items": [item.to_dict() for item in entry.runtime_data.items],
             "revision": getattr(entry.runtime_data, "sync", {}).get("revision", 0),
             "deleted_uids": list(
@@ -794,6 +795,9 @@ async def websocket_get_lists(
                 "entry_id": entry.entry_id,
                 "name": entry.data[CONF_NAME],
                 "source_entity_id": entry.data[CONF_SOURCE],
+                "auto_shopping_threshold": entry.options.get(
+                    "auto_shopping_threshold", 0
+                ),
             }
             for entry in hass.config_entries.async_entries(DOMAIN)
             if getattr(entry, "runtime_data", None) is not None
@@ -823,6 +827,11 @@ def _sources(hass: HomeAssistant) -> list[dict[str, Any]]:
                 "name": entry.data[CONF_NAME] if entry else state.name,
                 "enabled": entry.options.get("enabled", True) if entry else False,
                 "available": state.state not in ("unavailable", "unknown"),
+                "auto_shopping_threshold": entry.options.get(
+                    "auto_shopping_threshold", 0
+                )
+                if entry
+                else 0,
             }
         )
     known = {source["source_entity_id"] for source in result}
@@ -835,6 +844,9 @@ def _sources(hass: HomeAssistant) -> list[dict[str, Any]]:
                     "name": entry.data[CONF_NAME],
                     "enabled": entry.options.get("enabled", True),
                     "available": False,
+                    "auto_shopping_threshold": entry.options.get(
+                        "auto_shopping_threshold", 0
+                    ),
                 }
             )
     return result
@@ -855,6 +867,7 @@ async def websocket_get_sources(
         vol.Required("source_entity_id"): str,
         vol.Required("name"): str,
         vol.Required("enabled"): bool,
+        vol.Optional("auto_shopping_threshold"): int,
     }
 )
 @websocket_api.async_response
@@ -867,6 +880,14 @@ async def websocket_configure_list(
         return
     source = msg["source_entity_id"]
     name = msg["name"].strip()
+    threshold = msg.get("auto_shopping_threshold", 0)
+    if type(threshold) is not int or not 0 <= threshold <= 9_007_199_254_740_991:
+        connection.send_error(
+            msg["id"],
+            "invalid_input",
+            "Die Anzahl der Abhakungen muss eine ganze Zahl ab 0 sein (maximal 9007199254740991).",
+        )
+        return
     candidates = {item["source_entity_id"] for item in _sources(hass)}
     if not name or len(name) > 100 or source not in candidates:
         connection.send_error(
@@ -899,7 +920,15 @@ async def websocket_configure_list(
         entry,
         title=name,
         data={**entry.data, CONF_NAME: name},
-        options={**entry.options, "enabled": msg["enabled"]},
+        options={
+            **entry.options,
+            "enabled": msg["enabled"],
+            **(
+                {"auto_shopping_threshold": threshold}
+                if "auto_shopping_threshold" in msg
+                else {}
+            ),
+        },
     )
     connection.send_result(msg["id"], {"entry_id": entry.entry_id})
 

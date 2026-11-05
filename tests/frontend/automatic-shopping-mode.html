@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<title>Automatischer Einkaufsmodus · Regressionstests</title>
+<pre id="results">Running...</pre>
+<iframe id="fixture" title="Einkaufszettel" style="width:390px;height:740px;border:0"></iframe>
+<script>
+async function runTests() {
+  const base = "../../custom_components/einkaufszettel/www/";
+  const [markup, script] = await Promise.all(["app.html", "app.js"].map(file =>
+    fetch(base + file, {cache:"no-store"}).then(response => response.text())));
+  const frame = document.querySelector("#fixture");
+  frame.srcdoc = markup.replace(/<script src="[^"]+" defer><\/script>/, "")
+    .replace("<head>", `<head><base href="${new URL(base, location.href)}">`);
+  await new Promise(resolve => frame.onload = resolve);
+  const win = frame.contentWindow, doc = win.document;
+  win.history.replaceState = () => {};
+  const name = `automatic-shopping-test-${crypto.randomUUID()}`;
+  const database = await new Promise((resolve, reject) => {
+    const request = indexedDB.open(name, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore("lists", {keyPath:"entry_id"});
+      request.result.createObjectStore("operations", {keyPath:"id"});
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  const values = new Map(), storage = {
+    getItem:key => values.get(key) ?? null,
+    setItem:(key, value) => values.set(key, value),
+    removeItem:key => values.delete(key),
+  };
+  const api = win.Function("test", "localStorage",
+    script.replace(/initializeDesign\(\);\s*start\(\);\s*$/, "") + `
+      database = test.database; entryId = "a"; busy = false;
+      catalogs = {supermarket:{id:"supermarket", categories:[], products:[], product_aliases:{}}};
+      availableLists = [{entry_id:"a", name:"A"}, {entry_id:"b", name:"B"}];
+      const originalStoreRequest = storeRequest;
+      let failWrites = false;
+      storeRequest = (store, method, value) => failWrites && store === "operations" && method === "put"
+        ? Promise.reject(new Error("Test: Speichern fehlgeschlagen"))
+        : originalStoreRequest(store, method, value);
+      return {
+        enqueue, saveList, loadSelectedList, selectList, initializeMode, setPlanningMode,
+        state: () => ({planningMode, consecutiveShoppingChecks, automaticShoppingThreshold}),
+        failWrites: value => { failWrites = value; },
+        persistedMode: () => localStorage.getItem(MODE_KEY),
+        pending: () => localUpdates,
+      };
+    `)({database}, storage);
+  const assert = (ok, message) => { if (!ok) throw Error(message); };
+  const results = [];
+  const pause = () => new Promise(resolve => win.setTimeout(resolve, 0));
+  async function waitFor(predicate) {
+    for (let i = 0; i < 100 && !predicate(); i++) await pause();
+    assert(predicate(), "Timeout");
+  }
+  const item = uid => ({uid, summary:uid, status:"needs_action", metadata:{}});
+  let serial = 0;
+  async function seed(threshold = 3) {
+    serial++;
+    await api.saveList({entry_id:"a", name:"A", auto_shopping_threshold:threshold,
+      items:[1,2,3,4,5,6].map(n => item(`${serial}-${n}`))});
+    await api.loadSelectedList();
+    api.setPlanningMode(true);
+    return [1,2,3,4,5,6].map(n => `${serial}-${n}`);
+  }
+  const check = uid => api.enqueue({type:"update_item", uid, status:"completed"});
+  try {
+    let ids = await seed();
+    await check(ids[0]); await check(ids[1]);
+    assert(api.state().planningMode && api.state().consecutiveShoppingChecks === 2, "Switched before threshold");
+    await check(ids[2]);
+    assert(!api.state().planningMode && api.persistedMode() === "shopping", "Exact threshold did not switch and persist");
+    results.push("PASS Exakter Schwellenwert und persistierter Einkaufsmodus");
+
+    ids = await seed(2);
+    doc.querySelector(`[aria-label="Erledigt: ${ids[0]}"]`).click();
+    await api.pending();
+    assert(api.state().planningMode, "UI switched too early");
+    doc.querySelector(`[aria-label="Erledigt: ${ids[1]}"]`).click();
+    await api.pending();
+    assert(!api.state().planningMode && doc.querySelector("#add-form").hidden,
+      "Checkbox UI did not switch mode and hide planning controls");
+    results.push("PASS Echte Checkboxen wechseln Modus und blenden Planungseingabe aus");
+
+    ids = await seed(0);
+    for (const uid of ids) await check(uid);
+    assert(api.state().planningMode, "0 did not disable automation");
+    ids = await seed(1);
+    await check(ids[0]);
+    assert(!api.state().planningMode, "Threshold 1 failed");
+    results.push("PASS 0 deaktiviert und 1 wechselt beim ersten Abhaken");
+
+    for (const operation of [
+      uid => ({type:"update_item", uid, status:"needs_action"}),
+      uid => ({type:"update_item", uid, description:"Bearbeitet"}),
+      uid => ({type:"add_item", uid:`new-${uid}`, summary:"Neu"}),
+      uid => ({type:"delete_item", uid}),
+      uid => ({type:"move_item", uid, target_entry_id:"b", target_uid:`moved-${uid}`, summary:"Verschoben"}),
+    ]) {
+      ids = await seed();
+      await check(ids[0]); await check(ids[1]);
+      await api.enqueue(operation(ids[0]));
+      assert(api.state().consecutiveShoppingChecks === 0, "Edit did not reset");
+      await check(ids[2]);
+      assert(api.state().planningMode && api.state().consecutiveShoppingChecks === 1, "Edit streak continued");
+    }
+    results.push("PASS Neu zählen nach Wiederöffnen, Bearbeiten, Hinzufügen, Löschen und Verschieben");
+
+    ids = await seed();
+    await check(ids[0]); await check(ids[1]);
+    doc.querySelector(".item-name").click();
+    assert(doc.querySelector("#edit-item").open && api.state().consecutiveShoppingChecks === 0, "Opening editor did not reset");
+    doc.querySelector("#cancel-edit").click();
+    await check(ids[2]); await check(ids[3]);
+    const search = doc.querySelector("#new-item");
+    search.value = "Neu";
+    search.dispatchEvent(new win.Event("input", {bubbles:true}));
+    assert(api.state().consecutiveShoppingChecks === 0, "Typing new article did not reset");
+    search.value = "";
+    results.push("PASS Beginn einer Artikelbearbeitung und Eingabe eines neuen Artikels setzen zurück");
+
+    ids = await seed();
+    await check(ids[0]); await api.loadSelectedList(); await check(ids[1]);
+    assert(api.state().consecutiveShoppingChecks === 2, "Background reload reset streak");
+    await check(ids[1]);
+    assert(api.state().consecutiveShoppingChecks === 2, "Duplicate completion counted");
+    await check("missing");
+    assert(api.state().consecutiveShoppingChecks === 2, "Missing item counted");
+    api.failWrites(true);
+    let failed = false;
+    try { await check(ids[2]); } catch { failed = true; }
+    assert(failed && api.state().planningMode && api.state().consecutiveShoppingChecks === 2, "Failed write counted");
+    api.failWrites(false);
+    await check(ids[2]);
+    assert(!api.state().planningMode, "Successful retry not counted");
+    results.push("PASS Synchronisation/Replay zählt nicht doppelt; fehlgeschlagene Speicherung zählt nicht");
+
+    ids = await seed();
+    await check(ids[0]);
+    const pending = check(ids[1]);
+    search.dispatchEvent(new win.Event("input"));
+    await pending;
+    assert(api.state().consecutiveShoppingChecks === 0, "Late write crossed edit boundary");
+    await check(ids[2]);
+    api.setPlanningMode(false); api.setPlanningMode(true);
+    assert(api.state().consecutiveShoppingChecks === 0, "Mode switch did not reset");
+    await check(ids[3]);
+    api.initializeMode();
+    assert(api.state().consecutiveShoppingChecks === 0, "Restart did not reset");
+    await api.saveList({entry_id:"b", name:"B", auto_shopping_threshold:1, items:[item("b-one")]});
+    await api.selectList("b");
+    await check("b-one");
+    assert(!api.state().planningMode && api.state().automaticShoppingThreshold === 1, "Per-list threshold not applied");
+    await api.selectList("a");
+    api.setPlanningMode(true);
+    assert(api.state().consecutiveShoppingChecks === 0 && api.state().automaticShoppingThreshold === 3, "List switch did not reset");
+    results.push("PASS Asynchrone Bearbeitungsgrenze, Moduswechsel, Neustart und Schwelle je Liste");
+
+    ids = await seed(0);
+    await check(ids[0]);
+    api.setPlanningMode(false);
+    doc.querySelector("#end-shopping-confirm-button").click();
+    await waitFor(() => api.state().planningMode);
+    assert(api.persistedMode() === "planning", "Completion did not persist planning mode");
+    assert(!doc.querySelector(`[aria-label="Erledigt: ${ids[0]}"]`), "Completed item not removed");
+    assert(doc.querySelector(`[aria-label="Erledigt: ${ids[1]}"]`), "Open item removed");
+    ids = await seed();
+    await check(ids[0]);
+    api.setPlanningMode(false);
+    api.failWrites(true);
+    doc.querySelector("#end-shopping-confirm-button").click();
+    await waitFor(() => doc.querySelector("#message").textContent.includes("Test: Speichern fehlgeschlagen"));
+    assert(!api.state().planningMode, "Failed checkout switched mode");
+    api.failWrites(false);
+    doc.querySelector("#end-shopping-confirm-button").click();
+    await waitFor(() => api.state().planningMode);
+    results.push("PASS Erfolgreicher Offline-Abschluss wechselt zurück; Fehler bleibt im Einkaufsmodus");
+    document.querySelector("#results").textContent = results.join("\n");
+  } finally {
+    await api.pending().catch(() => {});
+    database.close();
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(name);
+      request.onsuccess = resolve;
+      request.onerror = () => reject(request.error);
+    });
+  }
+}
+runTests().catch(error => {
+  document.querySelector("#results").textContent = "FAIL " + error.stack;
+  throw error;
+});
+</script>
+</html>

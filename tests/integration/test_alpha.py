@@ -87,17 +87,24 @@ async def test_discover_activate_alias_hide_and_reload(hass, source, hass_ws_cli
         source_entity_id=SOURCE,
         name="Kaufland",
         enabled=True,
+        auto_shopping_threshold=3,
     )
     assert configured["success"]
     entry_id = configured["result"]["entry_id"]
     await hass.async_block_till_done()
     lists = await command(client, 3, "get_lists")
     assert lists["result"] == [
-        {"entry_id": entry_id, "name": "Kaufland", "source_entity_id": SOURCE}
+        {
+            "entry_id": entry_id,
+            "name": "Kaufland",
+            "source_entity_id": SOURCE,
+            "auto_shopping_threshold": 3,
+        }
     ]
     assert [state.entity_id for state in hass.states.async_all("todo")] == [SOURCE]
     assert source.name == "Alexa Long Shopping List"
     snapshot = await command(client, 4, "get_list", entry_id=entry_id)
+    assert snapshot["result"]["auto_shopping_threshold"] == 3
     assert [item["summary"] for item in snapshot["result"]["items"]] == [
         "Milch",
         "Brot",
@@ -116,6 +123,7 @@ async def test_discover_activate_alias_hide_and_reload(hass, source, hass_ws_cli
     assert await hass.config_entries.async_reload(entry_id)
     assert entry.data["name"] == "Kurzname"
     assert entry.options["enabled"] is False
+    assert entry.options["auto_shopping_threshold"] == 3
     assert len(entry.runtime_data.items) == 2
 
 

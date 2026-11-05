@@ -524,6 +524,7 @@ function renderMarketSelection() {
   elements.marketFlyout.replaceChildren();
   for (const market of [{ id: "", name: "Ohne Markt" }, ...supermarkets]) {
     elements.marketFlyout.append(createPickerOption(market.name, market.id === selectedMarket, () => {
+      resetAutomaticShopping();
       closeFlyout(elements.marketSelect, elements.marketFlyout, true);
       selectedMarket = market.id;
       activateCatalog(market.catalog_id || "supermarket");
@@ -846,19 +847,21 @@ function setHelpPopover(trigger, popover, open) {
   popover.hidden = !open;
 }
 
-const helpPopovers = [
-  [elements.catalogHelpTrigger, elements.catalogHelpPopover],
-  [elements.listManagementHelpTrigger, elements.listManagementHelpPopover],
-  [document.querySelector("#app-confirm-help-trigger"), document.querySelector("#app-confirm-help")],
-  [document.querySelector("#product-merge-help-trigger"), document.querySelector("#product-merge-help")],
-];
-for (const [trigger, popover] of helpPopovers) {
+const helpPopovers = [];
+function registerHelpPopover(trigger, popover) {
+  helpPopovers.push([trigger, popover]);
   trigger.addEventListener("click", () => {
     const opening = trigger.getAttribute("aria-expanded") !== "true";
     for (const [otherTrigger, otherPopover] of helpPopovers) setHelpPopover(otherTrigger, otherPopover, false);
     setHelpPopover(trigger, popover, opening);
   });
 }
+for (const [trigger, popover] of [
+  [elements.catalogHelpTrigger, elements.catalogHelpPopover],
+  [elements.listManagementHelpTrigger, elements.listManagementHelpPopover],
+  [document.querySelector("#app-confirm-help-trigger"), document.querySelector("#app-confirm-help")],
+  [document.querySelector("#product-merge-help-trigger"), document.querySelector("#product-merge-help")],
+]) registerHelpPopover(trigger, popover);
 elements.listManagementHelpPopover.textContent = elements.listManagementHelp.textContent;
 document.addEventListener("pointerdown", event => {
   for (const [trigger, popover] of helpPopovers) {
@@ -931,6 +934,7 @@ function leaveManagement() {
 }
 
 function openCatalog(view, record) {
+  resetAutomaticShopping();
   if (managingSupermarkets) return;
   cancelCategoryDrag?.();
   if (catalogDirty) {
@@ -2399,7 +2403,48 @@ function updateModeView() {
     : '<path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/>';
 }
 
+let automaticShoppingListId = null;
+let automaticShoppingThreshold = 0;
+let consecutiveShoppingChecks = 0;
+let automaticShoppingGeneration = 0;
+
+function resetAutomaticShopping() {
+  consecutiveShoppingChecks = 0;
+  automaticShoppingGeneration++;
+}
+
+function loadAutomaticShoppingSetting(listId, threshold) {
+  if (!Number.isSafeInteger(threshold) || threshold < 0) {
+    throw new Error("Die gespeicherte Anzahl für den automatischen Einkaufsmodus ist ungültig.");
+  }
+  if (automaticShoppingListId !== listId || automaticShoppingThreshold !== threshold) {
+    resetAutomaticShopping();
+    automaticShoppingListId = listId;
+    automaticShoppingThreshold = threshold;
+  }
+}
+
+function setPlanningMode(value) {
+  resetAutomaticShopping();
+  planningMode = value;
+  updateModeView();
+  render();
+  try {
+    localStorage.setItem(MODE_KEY, planningMode ? "planning" : "shopping");
+  } catch (error) {
+    showError(new Error(`Der Ansichtsmodus konnte nicht auf diesem Gerät gespeichert werden: ${error.message}`));
+  }
+}
+
+function recordShoppingCheck(listId, generation) {
+  if (!planningMode || listId !== entryId || listId !== automaticShoppingListId ||
+      generation !== automaticShoppingGeneration || !automaticShoppingThreshold) return;
+  consecutiveShoppingChecks++;
+  if (consecutiveShoppingChecks >= automaticShoppingThreshold) setPlanningMode(false);
+}
+
 function initializeMode() {
+  resetAutomaticShopping();
   try {
     const mode = localStorage.getItem(MODE_KEY) || "planning";
     if (!["planning", "shopping"].includes(mode)) {
@@ -2413,15 +2458,9 @@ function initializeMode() {
 }
 
 elements.modeToggle.addEventListener("click", () => {
-  planningMode = !planningMode;
-  updateModeView();
-  render();
-  try {
-    localStorage.setItem(MODE_KEY, planningMode ? "planning" : "shopping");
-  } catch (error) {
-    showError(new Error(`Der Ansichtsmodus konnte nicht auf diesem Gerät gespeichert werden: ${error.message}`));
-  }
+  setPlanningMode(!planningMode);
 });
+elements.newItem.addEventListener("input", resetAutomaticShopping);
 
 const additionalDesigns = [
   ["deep-ocean", "Deep Ocean", "dark", "#67dfed"],
@@ -2589,6 +2628,10 @@ async function readQueue(listId = entryId) {
 
 async function enqueue(operation, listId = entryId) {
   if (!listId) throw new Error("Bitte wähle zuerst eine Einkaufsliste aus.");
+  const completion = operation.type === "update_item" && operation.status === "completed" &&
+    Object.keys(operation).every(key => ["type", "uid", "status"].includes(key));
+  if (!completion) resetAutomaticShopping();
+  const generation = automaticShoppingGeneration;
   const queuedOperation = operation.type === "add_item"
     ? {
       ...operation,
@@ -2605,8 +2648,11 @@ async function enqueue(operation, listId = entryId) {
   await withLocalState(async () => {
     await storeRequest("operations", "put", queued);
     if (entryId === listId) {
+      const wasOpen = currentItems.some(item => item.uid === operation.uid &&
+        item.status === "needs_action" && !deletedUids.has(item.uid));
       pendingOperations.push(queued);
       applyLocalOperation(queued);
+      if (completion && wasOpen) recordShoppingCheck(listId, generation);
       cacheCatalog();
       render();
       updateConnection("pending");
@@ -2828,11 +2874,21 @@ function enableEndShoppingLongPress(button) {
 }
 
 elements.endShoppingConfirm.addEventListener("click", () => {
-  const completedItems = currentItems
-    .filter(item => item.status === "completed")
-    .map(item => ({ type: "delete_item", uid: item.uid }));
+  if (busy || planningMode) return;
+  const listId = entryId;
   (async () => {
-    for (const operation of completedItems) await enqueue(operation);
+    setBusy(true);
+    try {
+      await withLocalState(() => {});
+      const completedItems = currentItems
+        .filter(item => item.status === "completed")
+        .map(item => ({ type: "delete_item", uid: item.uid }));
+      for (const operation of completedItems) await enqueue(operation, listId);
+      setMessage(elements.message, "");
+      setPlanningMode(true);
+    } finally {
+      setBusy(false);
+    }
   })().catch(showError);
 });
 
@@ -3030,6 +3086,7 @@ function initializeMoveListSorting(listId, storedOrder) {
 }
 
 async function openMoveItem(uid, listId = entryId) {
+  resetAutomaticShopping();
   if (listId !== entryId || elements.moveItem.open) return;
   const item = currentItems.find(value => value.uid === uid);
   if (!item) throw new Error("Der Artikel ist nicht mehr auf dieser Liste.");
@@ -3304,6 +3361,7 @@ function render() {
     label.setAttribute("aria-description", "Zum Bearbeiten lange drücken oder Enter bzw. die Leertaste drücken. Zum Löschen nach links wischen oder die Entf-Taste drücken. Zum Verschieben nach rechts wischen oder Alt und Pfeil rechts drücken.");
     label.setAttribute("aria-keyshortcuts", "Delete Alt+ArrowRight");
     enableItemLongPress(label, () => {
+      resetAutomaticShopping();
       editingUid = item.uid;
       elements.editSummary.value = item.summary;
       elements.editQuantity.value = item.metadata?.quantity || "";
@@ -3491,6 +3549,7 @@ function setBusy(value) {
   updateSyncAnimation();
   elements.copySource.disabled = blocked || !!syncPromise || !entryId;
   elements.items.inert = blocked;
+  elements.modeToggle.disabled = blocked;
   elements.manageLists.disabled = blocked;
 }
 
@@ -3734,6 +3793,8 @@ async function loadSelectedList() {
     const cached = await storeRequest("lists", "get", listId);
     const allOperations = await readQueue(null);
     if (entryId !== listId) return;
+    loadAutomaticShoppingSetting(listId, cached?.auto_shopping_threshold ??
+      availableLists.find(list => list.entry_id === listId)?.auto_shopping_threshold ?? 0);
     deletedUids = new Set(cached?.deleted_uids || []);
     elements.listName.textContent = cached?.name ||
       availableLists.find((list) => list.entry_id === listId)?.name || "Liste laden";
@@ -3759,6 +3820,7 @@ async function loadSelectedList() {
 
 async function selectList(listId) {
   if (busy) return;
+  resetAutomaticShopping();
   const previousEntry = entryId;
   setBusy(true);
   try {
@@ -4626,7 +4688,10 @@ async function refreshRemoteLists() {
     await withLocalState(async () => {
       for (const cached of await readCachedLists()) {
         const listed = lists.find((list) => list.entry_id === cached.entry_id);
-        await storeRequest("lists", "put", { ...cached, enabled: !!listed, name: listed?.name || cached.name });
+        await storeRequest("lists", "put", {
+          ...cached, enabled: !!listed, name: listed?.name || cached.name,
+          auto_shopping_threshold: listed?.auto_shopping_threshold ?? cached.auto_shopping_threshold ?? 0,
+        });
       }
     });
     availableLists = lists;
@@ -4662,10 +4727,58 @@ async function refreshRemoteLists() {
   }
 }
 
+function createAutomaticShoppingSetting(threshold) {
+  const section = document.createElement("div");
+  section.className = "automatic-shopping-setting";
+  const id = `automatic-shopping-${crypto.randomUUID()}`;
+  section.innerHTML = `
+    <div class="automatic-shopping-heading">
+      <label class="automatic-shopping-title" for="${id}-enabled">Automatischer Einkaufsmodus:</label>
+      <button class="management-help-trigger" type="button" aria-label="Info zum automatischen Einkaufsmodus anzeigen" aria-expanded="false" aria-controls="${id}-help"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".9" fill="currentColor" stroke="none"/></svg></button>
+      <label class="source-list-toggle"><input id="${id}-enabled" class="market-option-switch" type="checkbox" role="switch"></label>
+    </div>
+    <div id="${id}-help" class="management-help-popover" role="region" aria-label="Automatischer Einkaufsmodus erklärt" hidden>Im Planungsmodus wechselt die App nach der eingestellten Anzahl an Abhakungen in Folge automatisch in den Einkaufsmodus – ohne Zeitlimit. Neue Artikel, Bearbeitungen, Löschen, Verschieben oder das Wiederöffnen eines Artikels starten die Zählung neu. Auch Listen-, Markt- und Moduswechsel sowie ein App-Neustart setzen den Zähler zurück. Gezählt werden nur deine Abhakungen auf diesem Gerät. Schalter aus bzw. Wert 0 deaktiviert den automatischen Einkaufsmodus für diese Liste. Nach erfolgreichem Einkaufsabschluss wechselt die App immer zurück in den Planungsmodus – auch bei ausgeschaltetem automatischen Einkaufsmodus.</div>
+    <div class="automatic-shopping-threshold">
+      <label for="${id}-threshold">Nach Abhakungen in Folge:</label>
+      <input id="${id}-threshold" type="number" min="0" max="9007199254740991" step="1" required inputmode="numeric">
+    </div>`;
+  const input = section.querySelector('input[type="number"]');
+  const toggle = section.querySelector('[role="switch"]');
+  const row = section.querySelector(".automatic-shopping-threshold");
+  let lastPositive = threshold > 0 ? threshold : 3;
+  input.value = String(threshold);
+  toggle.checked = threshold > 0;
+  row.hidden = !toggle.checked;
+  toggle.setAttribute("aria-label", "Automatischer Einkaufsmodus");
+  toggle.addEventListener("change", () => {
+    resetAutomaticShopping();
+    input.value = String(toggle.checked ? lastPositive : 0);
+    input.setCustomValidity("");
+    row.hidden = !toggle.checked;
+  });
+  input.addEventListener("input", () => {
+    resetAutomaticShopping();
+    const value = input.valueAsNumber;
+    const valid = Number.isSafeInteger(value) && value >= 0;
+    input.setCustomValidity(valid ? "" : "Bitte eine ganze Zahl ab 0 eingeben.");
+    if (!valid) return;
+    if (value > 0) lastPositive = value;
+    toggle.checked = value > 0;
+    row.hidden = !toggle.checked;
+  });
+  registerHelpPopover(section.querySelector(".management-help-trigger"),
+    section.querySelector(".management-help-popover"));
+  return { section, input };
+}
+
 elements.manageLists.addEventListener("click", async () => {
+  resetAutomaticShopping();
   showManagementPage(elements.listManagement);
   document.querySelector("#list-management-title").focus();
   setMessage(elements.managementMessage, "HA-Listen werden geladen …", "info");
+  for (let index = helpPopovers.length - 1; index >= 0; index--) {
+    if (elements.sourceLists.contains(helpPopovers[index][0])) helpPopovers.splice(index, 1);
+  }
   elements.sourceLists.replaceChildren();
   try {
     const sources = await sendCommand(`${DOMAIN}/get_sources`);
@@ -4714,9 +4827,10 @@ elements.manageLists.addEventListener("click", async () => {
       save.type = "submit";
       save.className = "primary";
       save.textContent = "Übernehmen";
+      const automatic = createAutomaticShoppingSetting(source.auto_shopping_threshold ?? 0);
       form.append(heading);
       if (!source.available) form.append(paragraph("Quelle nicht verfügbar", "source-list-unavailable"));
-      form.append(nameLabel, save);
+      form.append(nameLabel, automatic.section, save);
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         if (!alias.value.trim()) {
@@ -4736,6 +4850,7 @@ elements.manageLists.addEventListener("click", async () => {
             source_entity_id: source.source_entity_id,
             name: alias.value.trim(),
             enabled: enabled.checked,
+            auto_shopping_threshold: automatic.input.valueAsNumber,
           });
           if (enabled.checked && result.entry_id) {
             let ready = false;
@@ -4751,7 +4866,7 @@ elements.manageLists.addEventListener("click", async () => {
           }
           setBusy(false);
           await loadRemoteLists();
-          setMessage(elements.managementMessage, "Gespeichert. Der App-Name gilt für alle Nutzer.", "success");
+          setMessage(elements.managementMessage, "Gespeichert. App-Name und Automatik gelten für alle Nutzer.", "success");
         } catch (error) {
           setMessage(elements.managementMessage, error.message);
         } finally {

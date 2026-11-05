@@ -71,6 +71,10 @@ async function runTests() {
       let products = [], productAliases = {}, dismissedProductSuggestions = [], activeCatalogId = "supermarket";
       const catalogs = {supermarket:{products:[]}};
       const cacheCatalog = () => {};
+      let automaticShoppingGeneration = 0;
+      const resetAutomaticShopping = () => { automaticShoppingGeneration++; };
+      const recordShoppingCheck = () => {};
+      const loadAutomaticShoppingSetting = () => {};
       const refreshSupermarkets = async () => {};
       ${productHelpers}
       ${usageHelper}
