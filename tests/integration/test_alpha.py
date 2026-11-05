@@ -8,6 +8,8 @@ from homeassistant.components.todo import TodoItem, TodoItemStatus, TodoListEnti
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -72,6 +74,38 @@ async def test_user_flow_creates_hub_without_source_selection(hass):
     assert result["data"] == {"name": "Einkaufszettel"}
     await hass.async_block_till_done()
     assert not hass.states.async_all("todo")
+
+
+async def test_central_backup_device_and_list_options_removed(hass, source):
+    entry = await setup_app(hass, with_source=True)
+    hub = await setup_app(hass)
+    registry = er.async_get(hass)
+    backup = [
+        entity
+        for entity in registry.entities.values()
+        if entity.platform == DOMAIN and entity.unique_id == f"{DOMAIN}_backup"
+    ]
+    assert len(backup) == 1
+    assert not entry.supports_options and not hub.supports_options
+    device = dr.async_get(hass).devices[backup[0].device_id]
+    assert device.name == "Easy Shopping Backup"
+    assert device.configuration_url == "/einkaufszettel_backup"
+    await hass.services.async_call(
+        "button", "press", {"entity_id": backup[0].entity_id}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert (
+        len(
+            [
+                entity
+                for entity in registry.entities.values()
+                if entity.platform == DOMAIN and entity.unique_id == f"{DOMAIN}_backup"
+            ]
+        )
+        == 1
+    )
 
 
 async def test_backup_http_restore_and_websocket_generation(

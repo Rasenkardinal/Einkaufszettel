@@ -462,8 +462,66 @@ async def test_old_websocket_connections_must_reload_after_restore(backup_env):
     assert connection not in env.manager.connections
 
 
-async def test_options_flow_links_to_admin_page_without_changing_options(backup_env):
-    flow = backup_env.config_flow.EinkaufszettelOptionsFlow()
-    result = await flow.async_step_init()
-    assert result["description_placeholders"]["backup_url"] == "/einkaufszettel_backup"
-    assert (await flow.async_step_init({}))["type"] == "abort"
+def test_list_config_flow_no_longer_exposes_backup_options(backup_env):
+    assert (
+        "async_get_options_flow"
+        not in backup_env.config_flow.EinkaufszettelConfigFlow.__dict__
+    )
+
+
+async def test_one_central_backup_entity_without_hub_and_independent_of_load_order(
+    backup_env,
+):
+    env = backup_env
+    other = SimpleNamespace(
+        entry_id="second", data={"name": "Andere", "source_entity_id": "todo.other"}
+    )
+    env.hass.config_entries.async_entries.return_value = [other, env.entry]
+    added = Mock()
+    await env.button.async_setup_entry(env.hass, other, added)
+    await env.button.async_setup_entry(env.hass, env.entry, added)
+    entities = [entity for call in added.call_args_list for entity in call.args[0]]
+    backup = [
+        entity for entity in entities if isinstance(entity, env.button.BackupButton)
+    ]
+    assert len(backup) == 1
+    assert (
+        len(
+            [
+                entity
+                for entity in entities
+                if isinstance(entity, env.button.CopySourceButton)
+            ]
+        )
+        == 2
+    )
+    assert backup[0]._attr_device_info["identifiers"] == {("einkaufszettel", "backup")}
+    assert backup[0]._attr_device_info["configuration_url"] == "/einkaufszettel_backup"
+    backup[0].hass = env.hass
+    await backup[0].async_press()
+    notification = env.persistent_notification.async_create.call_args
+    assert "[BACKUP / RESTORE öffnen](/einkaufszettel_backup)" in notification.args[1]
+    assert "einzelnen Liste" in notification.args[1]
+    assert "entry_id=" not in notification.args[1]
+
+
+async def test_backup_entity_keeps_registry_owner_when_entries_are_added(backup_env):
+    env = backup_env
+    env.registry.entities["button.backup"] = SimpleNamespace(
+        platform="einkaufszettel",
+        unique_id="einkaufszettel_backup",
+        config_entry_id=env.entry.entry_id,
+    )
+    hub = SimpleNamespace(entry_id="a-hub", data={"name": "Einkaufszettel"})
+    env.hass.config_entries.async_entries.return_value = [hub, env.entry]
+    added = Mock()
+    await env.button.async_setup_entry(env.hass, hub, added)
+    assert not any(
+        isinstance(entity, env.button.BackupButton)
+        for entity in added.call_args.args[0]
+    )
+    await env.button.async_setup_entry(env.hass, env.entry, added)
+    assert any(
+        isinstance(entity, env.button.BackupButton)
+        for entity in added.call_args.args[0]
+    )

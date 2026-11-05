@@ -5,6 +5,8 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.network import NoURLAvailableError, get_url
@@ -22,11 +24,56 @@ async def async_setup_entry(
     entry: EinkaufszettelConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Expose one copy button per configured list."""
+    """Expose list actions and one integration-wide backup device."""
     entities: list[ButtonEntity] = [InstallWebAppButton(entry)]
     if CONF_SOURCE in entry.data:
         entities.append(CopySourceButton(entry))
+    registry = er.async_get(hass)
+    registered = next(
+        (
+            entity
+            for entity in registry.entities.values()
+            if entity.platform == DOMAIN and entity.unique_id == f"{DOMAIN}_backup"
+        ),
+        None,
+    )
+    entries = hass.config_entries.async_entries(DOMAIN)
+    owner = (
+        registered.config_entry_id
+        if registered
+        and any(other.entry_id == registered.config_entry_id for other in entries)
+        else min((other.entry_id for other in entries), default=entry.entry_id)
+    )
+    if entry.entry_id == owner:
+        entities.append(BackupButton())
     async_add_entities(entities)
+
+
+class BackupButton(ButtonEntity):
+    """Link to the central backup UI without selecting an individual list."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "backup_restore"
+    _attr_unique_id = f"{DOMAIN}_backup"
+    _attr_icon = "mdi:backup-restore"
+    _attr_device_info = DeviceInfo(
+        identifiers={(DOMAIN, "backup")},
+        name="Easy Shopping Backup",
+        manufacturer="Easy Shopping",
+        model="Backup / Restore",
+        configuration_url=f"/{DOMAIN}_backup",
+    )
+
+    async def async_press(self) -> None:
+        persistent_notification.async_create(
+            self.hass,
+            f"[BACKUP / RESTORE öffnen](/{DOMAIN}_backup)\n\n"
+            "Zentrale Sicherung aller Easy-Shopping-Listen, Artikel, Kataloge, "
+            "Märkte und Einstellungen in einer Datei. Keine Auswahl einer "
+            "einzelnen Liste erforderlich. Zugriff nur für HA-Administratoren.",
+            title="Easy Shopping · Backup / Restore",
+            notification_id=f"{DOMAIN}_backup",
+        )
 
 
 class CopySourceButton(ButtonEntity):

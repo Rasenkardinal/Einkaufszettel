@@ -149,6 +149,7 @@ def integration(monkeypatch):
     )
     module("homeassistant.helpers")
     module("homeassistant.helpers.http", KEY_HASS=object())
+    module("homeassistant.helpers.device_registry", DeviceInfo=dict)
     network = module(
         "homeassistant.helpers.network",
         NoURLAvailableError=type("NoURLAvailableError", (Exception,), {}),

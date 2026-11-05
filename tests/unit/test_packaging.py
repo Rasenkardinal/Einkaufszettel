@@ -96,7 +96,7 @@ def test_web_app_assets_are_versioned_and_precached():
     assert 'id="app-version"' in html
     for asset in assets:
         assert f'"{asset}"' in worker
-    assert "einkaufszettel-shell-v97" in worker
+    assert "einkaufszettel-shell-v98" in worker
     assert ".then(() => self.skipWaiting())" in worker
     script = (webapp / "app.js").read_text(encoding="utf-8")
     assert "serviceWorkerRegistration.update()" in script
@@ -228,7 +228,13 @@ def test_app_menu_groups_existing_actions():
         (
             "menu-installation",
             "Installation",
-            ("connect", "install", "open-app-browser", "open-homeassistant"),
+            (
+                "connect",
+                "install",
+                "open-app-browser",
+                "open-homeassistant",
+                "open-backup",
+            ),
         ),
     ):
         match = re.search(
@@ -242,6 +248,7 @@ def test_app_menu_groups_existing_actions():
         assert 'class="setup-submenu"' in content
         for action in actions:
             assert f'id="{action}"' in content
+    assert html.count('id="open-backup"') == 1
     assert '<details id="menu-design" class="setup-section">' in settings.group(1)
     assert "App und Liste sind offline verfügbar" in html
 
