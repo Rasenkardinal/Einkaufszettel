@@ -2093,6 +2093,115 @@ async def test_list_rename_updates_catalog_statistics_and_other_lists(
     assert ctx.remote[0]["summary"] == "Vollmilch"
 
 
+@pytest.mark.parametrize("name", ["Kaffee", "Brot"])
+@pytest.mark.parametrize("completed", [False, True])
+async def test_source_readd_uses_learned_name_correction(
+    integration, monkeypatch, name, completed
+):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    ctx.remote[0]["summary"] = name
+    ctx.data.items = []
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    original_uid = ctx.data.items[0].uid
+    ctx.remote.append(
+        {"uid": "wrong", "summary": f"Und {name}", "status": "needs_action"}
+    )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    wrong = next(item for item in ctx.data.items if item.source_uid == "wrong")
+    await ctx.protocol.apply_operation(
+        ctx.data,
+        "learn-correction",
+        "update_item",
+        wrong.uid,
+        {
+            "summary": name,
+            "metadata": {"quantity": "2", "note": "Behalten"},
+            "product_rename": {
+                "source_name": f"Und {name}",
+                "catalog_id": "supermarket",
+            },
+        },
+    )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert len(ctx.data.items) == 1
+    assert original_uid in ctx.data.sync["deleted"]
+    if completed:
+        ctx.remote[0]["status"] = "completed"
+        await ctx.source.synchronize_source(env.hass, env.entry)
+    before_catalog = deepcopy(
+        await env.stores["einkaufszettel.supermarkets"].async_load()
+    )
+    ctx.remote.append(
+        {"uid": "repeated", "summary": f"Und {name}", "status": "needs_action"}
+    )
+    for _ in range(2):
+        await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.source_error is None
+    assert len(ctx.data.items) == 1
+    item = ctx.data.items[0]
+    assert (item.uid, item.summary, item.status, item.source_uid) == (
+        wrong.uid,
+        name,
+        "needs_action",
+        "repeated",
+    )
+    assert item.metadata["quantity"] == "2"
+    assert item.metadata["note"] == "Behalten"
+    assert ctx.data.sync["source"]["wrong"]["superseded"] is True
+    saved_catalog = await env.stores["einkaufszettel.supermarkets"].async_load()
+    before_added = before_catalog["products"][0]["usage"][env.entry.entry_id]["added"]
+    assert saved_catalog["products"][0]["usage"][env.entry.entry_id]["added"] == (
+        before_added + int(completed)
+    )
+    snapshot = env.store.async_save.call_args.args[0]
+    assert len(snapshot["items"]) == 1
+    env.store.async_load.return_value = snapshot
+    await env.package.async_setup_entry(env.hass, env.entry)
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert env.entry.runtime_data.items == [item]
+
+
+@pytest.mark.parametrize(
+    "case", ["multiple_items", "multiple_incoming", "other_catalog", "unlearned"]
+)
+async def test_source_learned_correction_does_not_guess(integration, monkeypatch, case):
+    env = integration
+    ctx = await sync_environment(env, monkeypatch)
+    ctx.data.items = []
+    ctx.remote[0]["summary"] = "Kaffee"
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    store = env.stores["einkaufszettel.supermarkets"]
+    if case != "unlearned":
+        catalog = await store.async_load()
+        catalog["catalogs"]["supermarket"]["product_aliases"]["und kaffee"] = "kaffee"
+        await store.async_save(catalog)
+    if case == "multiple_items":
+        ctx.data.items.append(env.model.ShoppingItem("other", "Kaffee"))
+    if case == "other_catalog":
+        await ctx.protocol.apply_operation(
+            ctx.data,
+            "catalog",
+            "update_item",
+            ctx.data.items[0].uid,
+            {"metadata": {"catalog_id": "hardware"}},
+        )
+    before = len(ctx.data.items)
+    ctx.remote.append(
+        {"uid": "wrong", "summary": "Und Kaffee", "status": "needs_action"}
+    )
+    if case == "multiple_incoming":
+        ctx.remote.append(
+            {"uid": "another", "summary": "Kaffee", "status": "needs_action"}
+        )
+    await ctx.source.synchronize_source(env.hass, env.entry)
+    assert ctx.data.source_error is None
+    assert len(ctx.data.items) == before + (2 if case == "multiple_incoming" else 1)
+    assert ctx.data.items[0].source_uid == "a"
+    if case == "unlearned":
+        assert ctx.data.items[-1].summary == "Und Kaffee"
+
+
 @pytest.mark.parametrize("failure", ["list", "other-list"])
 async def test_list_rename_retries_after_partial_save_without_repeating_statistics(
     integration, monkeypatch, failure

@@ -15,9 +15,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.storage import Store
 
 from .backup import get_manager
-from .const import CONF_SOURCE, update_signal
+from .catalog import product_key, validate_catalog
+from .const import CONF_SOURCE, DOMAIN, update_signal
 from .source import async_read_all_source
 from .sync import persist_items
 
@@ -245,17 +247,40 @@ async def _reconcile(hass, entry) -> None:
         and state["source"].get(source.uid, {}).get("present", True)
         and _normalized_name(source.summary) not in unresolved_names
     ]
+    catalogs = {}
+    if unlinked:
+        stored = await Store(hass, 1, f"{DOMAIN}.supermarkets").async_load()
+        catalogs = validate_catalog(stored if stored is not None else {})["catalogs"]
+
+    def matching_name(name, catalog_id):
+        catalog = catalogs.get(catalog_id)
+        if catalog is None:
+            raise ValueError("Ein Artikel verweist auf einen unbekannten Katalog.")
+        key = product_key(name)
+        return catalog["product_aliases"].get(key, key)
+
     # Decide all matches against the same snapshot, never by source iteration order.
     for source in unlinked:
-        name = _normalized_name(source.summary)
         matches = [
             item
             for item in merged
-            if _normalized_name(item.summary) == name
+            if matching_name(
+                item.summary, item.metadata.get("catalog_id", "supermarket")
+            )
+            == matching_name(
+                source.summary, item.metadata.get("catalog_id", "supermarket")
+            )
             and not state["creates"].get(item.uid, {}).get("local_only")
         ]
+        catalog_id = (
+            matches[0].metadata.get("catalog_id", "supermarket")
+            if len(matches) == 1
+            else "supermarket"
+        )
+        name = matching_name(source.summary, catalog_id)
         unique_incoming = (
-            sum(_normalized_name(item.summary) == name for item in unlinked) == 1
+            sum(matching_name(item.summary, catalog_id) == name for item in unlinked)
+            == 1
         )
         if source.uid not in state["source"] and unique_incoming and len(matches) == 1:
             old = matches[0]
