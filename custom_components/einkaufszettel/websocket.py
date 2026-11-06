@@ -199,12 +199,16 @@ async def _project_product_name(
             )
         ]
         source_uids = {item.uid for item in source_items}
-        has_target = bool(source_uids) and target_key != source_key and any(
-            item.uid not in source_uids
-            and item.metadata.get("catalog_id", "supermarket") == catalog_id
-            and aliases.get(product_key(item.summary), product_key(item.summary))
-            == target_key
-            for item in runtime.items
+        has_target = (
+            bool(source_uids)
+            and target_key != source_key
+            and any(
+                item.uid not in source_uids
+                and item.metadata.get("catalog_id", "supermarket") == catalog_id
+                and aliases.get(product_key(item.summary), product_key(item.summary))
+                == target_key
+                for item in runtime.items
+            )
         )
         items = [
             replace(item, summary=name) if item.uid in source_uids else item
