@@ -249,6 +249,7 @@ async def apply_operation(
             receipt_payload,
             rename["catalog_id"],
             old.summary,
+            uid,
         )
     if (
         result == "applied"

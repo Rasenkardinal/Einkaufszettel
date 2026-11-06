@@ -21,8 +21,11 @@ async def apply_product_rules(
         store = Store[dict[str, Any]](hass, 1, f"{DOMAIN}.supermarkets")
         stored = await store.async_load()
         catalog = deepcopy(validate_catalog(stored if stored is not None else {}))
+        renamed_uid = None
         if rename is not None:
-            identity, source, name, payload, catalog_id, expected_name = rename
+            identity, source, name, payload, catalog_id, expected_name, renamed_uid = (
+                rename
+            )
             value = catalog["catalogs"].get(catalog_id)
             if value is None:
                 raise ValueError("Der Artikelkatalog wurde nicht gefunden.")
@@ -65,6 +68,9 @@ async def apply_product_rules(
             }
             for catalog_id, value in catalogs.items()
         }
+        rename_aliases = (
+            catalogs[rename[4]]["product_aliases"] if rename is not None else {}
+        )
 
         def catalog_for(item):
             catalog_id = item.metadata.get("catalog_id", "supermarket")
@@ -90,6 +96,21 @@ async def apply_product_rules(
             return products.get(key)
 
         items = [canonical_item(item) for item in items]
+        if rename is not None and product_key(source) != product_key(name):
+            target_key = rename_aliases.get(product_key(name), product_key(name))
+            if any(
+                item.uid != renamed_uid
+                and item.metadata.get("catalog_id", "supermarket") == catalog_id
+                and product_key(item.summary) == target_key
+                for item in items
+            ):
+                items = [
+                    item
+                    for item in items
+                    if item.uid == renamed_uid
+                    or item.metadata.get("catalog_id", "supermarket") != catalog_id
+                    or product_key(item.summary) != target_key
+                ]
         seed = [canonical_item(item) for item in seed]
         # Only bootstrap names never seen before; an explicit removal stays removed.
         for item in [*seed, *items]:

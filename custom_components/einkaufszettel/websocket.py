@@ -185,18 +185,44 @@ async def websocket_delete_supermarket(
 async def _project_product_name(
     hass, entries, catalog_id, aliases, source_key, name
 ) -> None:
+    target_key = aliases.get(product_key(name), product_key(name))
     for entry in entries:
         runtime = entry.runtime_data
-        items = [
-            replace(item, summary=name)
-            if item.metadata.get("catalog_id", "supermarket") == catalog_id
-            and aliases.get(product_key(item.summary), product_key(item.summary))
-            == source_key
-            else item
+        source_items = [
+            item
             for item in runtime.items
+            if item.metadata.get("catalog_id", "supermarket") == catalog_id
+            and (
+                product_key(item.summary) == source_key
+                or aliases.get(product_key(item.summary), product_key(item.summary))
+                == source_key
+            )
+        ]
+        source_uids = {item.uid for item in source_items}
+        has_target = bool(source_uids) and target_key != source_key and any(
+            item.uid not in source_uids
+            and item.metadata.get("catalog_id", "supermarket") == catalog_id
+            and aliases.get(product_key(item.summary), product_key(item.summary))
+            == target_key
+            for item in runtime.items
+        )
+        items = [
+            replace(item, summary=name) if item.uid in source_uids else item
+            for item in runtime.items
+            if not (
+                has_target
+                and item.uid not in source_uids
+                and item.metadata.get("catalog_id", "supermarket") == catalog_id
+                and aliases.get(product_key(item.summary), product_key(item.summary))
+                == target_key
+            )
         ]
         if items != runtime.items:
             state = deepcopy(runtime.sync)
+            remaining = {item.uid for item in items}
+            for item in runtime.items:
+                if item.uid not in remaining:
+                    state["deleted"][item.uid] = deletion_marker(item)
             state["revision"] += 1
             await runtime.store.async_save(
                 {
@@ -731,7 +757,7 @@ async def websocket_apply_operation(
                     )
                 if target is not None:
                     await _project_product_name(
-                        hass, entries, catalog_id, aliases, source_key, target["name"]
+                        hass, entries, catalog_id, aliases, source, target["name"]
                     )
         except (HomeAssistantError, OSError, ValueError, KeyError, TypeError) as err:
             connection.send_error(msg["id"], "cannot_apply_operation", str(err))

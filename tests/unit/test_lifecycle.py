@@ -2018,6 +2018,7 @@ async def test_list_rename_updates_catalog_statistics_and_other_lists(
     ctx = await sync_environment(env, monkeypatch)
     ctx.data.items = []
     await ctx.source.synchronize_source(env.hass, env.entry)
+    renamed_uid = ctx.data.items[0].uid
     await ctx.protocol.apply_operation(
         ctx.data,
         "category",
@@ -2036,7 +2037,10 @@ async def test_list_rename_updates_catalog_statistics_and_other_lists(
         )
     other_data = env.package.EinkaufszettelData(
         SimpleNamespace(async_save=AsyncMock()),
-        [env.model.ShoppingItem("other", "Milch", "completed")],
+        [
+            env.model.ShoppingItem("other", "Milch", "completed"),
+            env.model.ShoppingItem("other-target", "Vollmilch"),
+        ],
     )
     other_data.product_rules = ctx.data.product_rules
     other_entry = SimpleNamespace(entry_id="other", runtime_data=other_data)
@@ -2071,10 +2075,18 @@ async def test_list_rename_updates_catalog_statistics_and_other_lists(
     )
     assert saved["product_aliases"]["milch"] == "vollmilch"
     assert set(saved["product_events"].values()) == {"vollmilch"}
-    assert ctx.data.items[0].summary == other_data.items[0].summary == "Vollmilch"
+    assert len(ctx.data.items) == 1
+    assert ctx.data.items[0].uid == renamed_uid
+    assert ctx.data.items[0].summary == "Vollmilch"
+    if merge:
+        assert "target" in ctx.data.sync["deleted"]
     assert ctx.data.items[0].metadata["quantity"] == "1 l"
     assert ctx.data.items[0].description == "laktosefrei"
+    assert len(other_data.items) == 1
+    assert other_data.items[0].uid == "other"
+    assert other_data.items[0].summary == "Vollmilch"
     assert other_data.items[0].status == "completed"
+    assert "other-target" in other_data.sync["deleted"]
     await env.websocket.websocket_apply_operation(env.hass, connection, message)
     assert await store.async_load() == saved
     await ctx.source.synchronize_source(env.hass, env.entry)
